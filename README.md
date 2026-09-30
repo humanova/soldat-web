@@ -139,6 +139,18 @@ lacks are then downloaded from the game servers, like any custom map.
 server (join probe, spectator that decodes what the server relays, capture decoder,
 admin console client; they need `pip install pycryptodome`).
 
+`tools/bench/bench.mjs` measures frame pacing and the CPU and GPU time of each frame in
+a separate headless Chrome (Node 22, no dependencies; `CHROME=` points to another
+browser binary). Join a server that has bots, for example:
+
+```bash
+node tools/bench/bench.mjs --server 1.2.3.4:23073 --url http://localhost:8080/ --profile out.cpuprofile
+```
+
+`--uncapped` turns vsync off to show the highest frame rate; `--profile` also prints
+where the CPU time goes, by Pascal function name (`tools/bench/profile.mjs` summarizes a
+saved profile).
+
 ## Credits
 
 Soldat by Michal Marcinkowski; open-source client by Transhuman Design and contributors
