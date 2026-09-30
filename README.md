@@ -46,6 +46,10 @@ independent client decoding what the server relays to other players:
 - chat, team chat, radio, Unicode chat, server messages and scripts, server commands
   such as `/votemap` and `/kill`, scoreboard, kill feed
 - settings and downloaded maps persist in the browser (IndexedDB)
+- rendering at the display's refresh rate (60, 120, 144 Hz...) with the engine's
+  interpolation between the 60 Hz physics ticks; a frame takes about 1 ms of CPU on an
+  Apple M2 Pro with 24 bots on the server. `Alt+F3` shows the frame rate and ping.
+  The `r_fpslimit`/`r_maxfps` settings have no effect in the browser.
 
 Implemented the same way as the original client but not verified end to end: sounds
 (WebAudio; they start after the first click, as browsers require), the vote menus, and

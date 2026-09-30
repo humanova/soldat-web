@@ -242,14 +242,15 @@ export class SoldatRuntime {
     if (this.running) return;
     this.running = true;
     this.lastFrame = 0;
-    const run = () => {
+    const run = (frameTime) => {
       this.lastFrame = performance.now();
+      this.sdl.setFrameClock(frameTime || this.lastFrame);
       this.frame();
     };
-    const tick = () => {
+    const tick = (frameTime) => {
       if (!this.running) return;
       this.rafId = requestAnimationFrame(tick);
-      run();
+      run(frameTime);
     };
     this.rafId = requestAnimationFrame(tick);
     // requestAnimationFrame is paused in background tabs and throttled in some
@@ -270,6 +271,7 @@ export class SoldatRuntime {
   stopLoop() {
     this.running = false;
     cancelAnimationFrame(this.rafId);
+    this.sdl.setFrameClock(0);
     clearInterval(this.hiddenTimer);
     if (this.timerWorker) {
       this.timerWorker.terminate();

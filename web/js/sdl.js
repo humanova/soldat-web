@@ -70,6 +70,7 @@ export function createSDL(rt, canvas, hooks = {}) {
   let active = false;
   const enc = new TextEncoder();
   const t0 = performance.now();
+  let frameClock = 0, lastClock = 0;
 
   function now() { return (performance.now() - t0) | 0; }
 
@@ -256,7 +257,14 @@ export function createSDL(rt, canvas, hooks = {}) {
       if (navigator.clipboard) navigator.clipboard.writeText(clipboard).catch(() => {});
       return 0;
     },
-    SDL_GetPerformanceCounter: () => BigInt(Math.round(performance.now() * 1000)),
+    // Only the frame timing reads this: it returns the display frame's timestamp,
+    // so every frame advances the simulation and interpolation by exactly one
+    // refresh interval instead of by when the callback happened to run.
+    SDL_GetPerformanceCounter: () => {
+      const t = Math.max(frameClock || performance.now(), lastClock);
+      lastClock = t;
+      return BigInt(Math.round(t * 1000));
+    },
     SDL_GetPerformanceFrequency: () => 1000000n,
     SDL_GetTicks: () => now(),
     MessageBox: (titlePtr, textPtr, buttons) => {
@@ -280,6 +288,8 @@ export function createSDL(rt, canvas, hooks = {}) {
     if (!on && document.pointerLockElement === canvas) document.exitPointerLock();
   };
   api.requestLock = requestLock;
+  // timestamp of the display frame being produced, 0 outside the frame loop
+  api.setFrameClock = (t) => { frameClock = t; };
   api.wantsPointerLock = () => relativeMouse;
   api.getContext = () => gl;
   return api;

@@ -98,8 +98,14 @@ begin
   FrameTiming.Fps := 0;
   FrameTiming.FpsAccum := 0;
 
+  {$IFNDEF WEB}
   if r_fpslimit.Value then
     FrameTiming.MinDeltaTime := 1.0 / r_maxfps.Value;
+  {$ELSE}
+  // The browser already paces frames to the display (requestAnimationFrame at
+  // 60/120/144 Hz). A limiter on top of it skips every frame whose callback
+  // comes a fraction of a millisecond early, which halves the frame rate in bursts.
+  {$ENDIF}
 
   TickTime := 0;
   TickTimeLast := 0;
