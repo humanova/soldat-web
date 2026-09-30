@@ -82,8 +82,10 @@ def main():
         core['configs/' + f.lower()] = ('configs/' + f, os.path.join(cfg_dir, f))
     extra_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
     if os.path.isdir(extra_cfg):
+        # defaults of the 1.7.1 soldat.ini (see tools/configs/README.md)
         for f in sorted(os.listdir(extra_cfg)):
-            core['configs/' + f.lower()] = ('configs/' + f, os.path.join(extra_cfg, f))
+            if f.lower().endswith('.cfg'):
+                core['configs/' + f.lower()] = ('configs/' + f, os.path.join(extra_cfg, f))
 
     smod = os.path.join(a.out, 'soldat.smod')
     tmp = smod + '.tmp'

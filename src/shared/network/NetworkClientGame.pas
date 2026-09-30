@@ -27,7 +27,7 @@ implementation
 
 uses
   Client, NetworkUtils, Game, Demo, ClientGame, Sparks, GameMenus,
-  InterfaceGraphics, Cvar, PhysFS, NetworkClientConnection;
+  InterfaceGraphics, Cvar, PhysFS, NetworkClientConnection, GameRendering, WebDownload;
 
 function FixedCharsToString(const A: array of Char): string;
 var
@@ -290,6 +290,7 @@ end;
 procedure ClientHandlePlayerDisconnect(NetMessage: PSteamNetworkingMessage_t);
 var
   PlayerMsg: TMsg_PlayerDisconnect;
+  Text: WideString;
 begin
   if not VerifyPacket(sizeof(TMsg_PlayerDisconnect), NetMessage^.m_cbSize, MsgID_PlayerDisconnect) then
     Exit;
@@ -315,28 +316,39 @@ begin
           [Sprite[PlayerMsg.Num].Player.Name]), DELTAJ_MESSAGE_COLOR);
     end;
 
+  Text := '';
   case PlayerMsg.Why of
-    KICK_NORESPONSE: MainConsole.Console(WideFormat(_('%s has disconnected'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_NOCHEATRESPONSE: MainConsole.Console(WideFormat(_('%s has been disconnected'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_CHANGETEAM: MainConsole.Console(WideFormat(_('%s is changing teams'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_PING: MainConsole.Console(WideFormat(_('%s has been ping kicked (for 15 minutes)'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_FLOODING: MainConsole.Console(WideFormat(_('%s has been flood kicked (for 5 minutes)'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_CONSOLE: MainConsole.Console(WideFormat(_('%s has been kicked from console'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_CONNECTCHEAT: MainConsole.Console(WideFormat(_('%s has been ''connect cheat'' kicked'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_CHEAT: MainConsole.Console(WideFormat(_('%s has been kicked for possible cheat'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_VOTED: MainConsole.Console(WideFormat(_('%s has been voted to leave the game'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
-    KICK_AC: MainConsole.Console(WideFormat(_('%s has been kicked for Anti-Cheat violation'),
-        [Sprite[PlayerMsg.Num].Player.Name]), CLIENT_MESSAGE_COLOR);
+    KICK_NORESPONSE: Text := WideFormat(_('%s has disconnected'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_NOCHEATRESPONSE: Text := WideFormat(_('%s has been disconnected'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_CHANGETEAM: Text := WideFormat(_('%s is changing teams'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_PING: Text := WideFormat(_('%s has been ping kicked (for 15 minutes)'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_FLOODING: Text := WideFormat(_('%s has been flood kicked (for 5 minutes)'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_CONSOLE: Text := WideFormat(_('%s has been kicked from console'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_CONNECTCHEAT: Text := WideFormat(_('%s has been ''connect cheat'' kicked'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_CHEAT: Text := WideFormat(_('%s has been kicked for possible cheat'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_VOTED: Text := WideFormat(_('%s has been voted to leave the game'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
+    KICK_AC: Text := WideFormat(_('%s has been kicked for Anti-Cheat violation'),
+        [Sprite[PlayerMsg.Num].Player.Name]);
     end;
+  if Text <> '' then
+    MainConsole.Console(Text, CLIENT_MESSAGE_COLOR);
+  // shown when the game ends because of it
+  if (PlayerMsg.Num = MySprite) and (PlayerMsg.Why <> KICK_CHANGETEAM) and
+    (PlayerMsg.Why <> KICK_LEFTGAME) then
+  begin
+    if Text = '' then
+      Text := _('Disconnected by the server');
+    ExitReason := Text;
+  end;
   if VoteActive then
     case PlayerMsg.Why of
       KICK_NORESPONSE: if (VoteTarget = IntToStr(PlayerMsg.Num)) then
@@ -380,23 +392,84 @@ begin
   end;
 end;
 
+function ValidMapName(const Name: ShortString): Boolean;
+var
+  i: Integer;
+begin
+  Result := (Length(Name) > 0) and (Length(Name) <= NET_MAPNAME_CHARS);
+  if not Result then
+    Exit;
+  for i := 1 to Length(Name) do
+    if Name[i] < ' ' then
+      Exit(False);
+end;
+
+// The answer to RequestMap is a MapChange with Counter = 5 whose fields are
+// encrypted (the announcement of a map change is not).
+function DecryptMapReply(var Msg: TMsg_MapChange): Boolean;
+var
+  Plain: TMsg_MapChange;
+begin
+  Plain := Msg;
+  UDP.Cipher.Reset;
+  UDP.Cipher.Decrypt(Plain.Counter, SizeOf(Plain.Counter));
+  UDP.Cipher.Decrypt(Plain.MapName, SizeOf(Plain.MapName));
+  UDP.Cipher.Reset;
+  Result := (Plain.Counter = 5) and ValidMapName(Plain.MapName);
+  if Result then
+    Msg := Plain;
+end;
+
 procedure ClientHandleMapChange(NetMessage: PSteamNetworkingMessage_t);
 var
   MapChange: TMsg_MapChange;
   I: Integer;
+  Reply: Boolean;
 begin
   if not VerifyPacket(sizeof(TMsg_MapChange), NetMessage^.m_cbSize, MsgID_MapChange) then
     Exit;
 
   MapChange := PMsg_MapChange(NetMessage^.m_pData)^;
 
+  Reply := MapResyncRequested and not DemoPlayer.Active and DecryptMapReply(MapChange);
+  if MapResyncRequested and not Reply and not DemoPlayer.Active and
+    ((MapChange.Counter < 0) or not ValidMapName(MapChange.MapName)) then
+  begin
+    // an answer that does not decrypt: the server started a new session (admin
+    // commands such as /gamemode restart it). Join again to obtain the new key.
+    MapResyncRequested := False;
+    MapRejoin := True;
+    ClientRequestGame;
+    Exit;
+  end;
+  if Reply then
+  begin
+    MapResyncRequested := False;
+    if SameText(MapChange.MapName, Map.Name) then
+    begin
+      // the server runs this map, but the local copy differs: use the server's
+      MainConsole.Console(_('Wrong map version detected'), SERVER_MESSAGE_COLOR);
+      if not RedownloadMap(UDP.Host, UDP.Port, Map.Name) then
+      begin
+        ExitToMenu;
+        RenderGameInfo(_('Wrong map version detected'));
+      end;
+      Exit;
+    end;
+    // otherwise it is a map change this client missed: switch to it now
+  end;
+
   MapChangeName := MapChange.MapName;
   MapChangeCounter := MapChange.Counter;
-  FragsMenuShow := True;
+  FragsMenuShow := not Reply;
   StatsMenuShow := False;
   GameMenuShow(LimboMenu, False);
   HeartbeatTime := MainTickCounter;
   HeartbeatTimeWarnings := 0;
+
+  // fetch what the next map needs while the scoreboard is shown
+  if not DemoPlayer.Active then
+    PrefetchMap(UDP.Host, UDP.Port, MapChangeName);
 
   if cl_endscreenshot.Value then
     ScreenTaken := True;

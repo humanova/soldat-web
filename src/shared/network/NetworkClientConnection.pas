@@ -36,9 +36,14 @@ procedure ClientHandleGravity(NetMessage: PSteamNetworkingMessage_t);
 function GetHardwareID: AnsiString;
 
 var
-  // set when the map changed and the client re-requests the game to obtain the new session
+  // set when the client re-requests the game while playing (after downloading the map
+  // it joined on), so that it keeps its team
   MapRejoin: Boolean = False;
   RejoinTeam: Byte = 0;
+  // the heartbeat reported another map than the loaded one: RequestMap was sent and
+  // the (encrypted) MapChange answer is expected
+  MapResyncRequested: Boolean = False;
+  MapResyncTries: Integer = 0;
   LastServerName: AnsiString = '';
 
 implementation
@@ -260,6 +265,8 @@ begin
     ExitToMenu;
   end;
   MapRejoin := False;
+  MapResyncRequested := False;
+  MapResyncTries := 0;
   RequestingGame := False;
   CancelMapDownload;
 end;
@@ -388,6 +395,9 @@ begin
   RequestingGame := False;
   WasRejoin := MapRejoin;
   MapRejoin := False;
+  MapResyncRequested := False;
+  MapResyncTries := 0;
+  ExitReason := '';
 
   PlayersListMsg := PMsg_PlayersList(NetMessage^.m_pData)^;
 
@@ -695,7 +705,10 @@ begin
   ShowMapChangeScoreboard();
 
   if not DemoPlayer.Active then
-    MainConsole.Console(_('Server disconnected'), SERVER_MESSAGE_COLOR)
+  begin
+    MainConsole.Console(_('Server disconnected'), SERVER_MESSAGE_COLOR);
+    ExitReason := _('Server disconnected');
+  end
   else
     DemoPlayer.StopDemo;
 end;

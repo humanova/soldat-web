@@ -14,7 +14,7 @@ procedure ClientHandleHeartBeat(NetMessage: PSteamNetworkingMessage_t);
 implementation
 
 uses
-  Client, NetworkUtils, NetworkClientConnection, Game, Demo, WebDownload, TraceLog;
+  Client, NetworkUtils, NetworkClientConnection, Game, Demo, GameRendering, WebDownload, TraceLog;
 
 // Soldat 1.7.1 sends the scoreboard in three sizes (message 36/35/2 for up to
 // 8/16/32 active players). Entries are packed in slot order of active players:
@@ -108,13 +108,21 @@ begin
 
   if BadMapIDCount < 1 then
   begin
-    MainConsole.Console(_('Wrong map version detected'), SERVER_MESSAGE_COLOR);
     Debug('[NET] map id mismatch: server ' + IntToHex(MapID, 8) + ' local ' + IntToHex(Map.MapID, 8));
     BadMapIDCount := 2;
-    MapChangeCounter := -60;
-    if RedownloadMap(UDP.Host, UDP.Port, Map.Name) then
+    // The server runs another map (its change was announced before this client
+    // joined) or another version of this one. Ask which map it runs, like the
+    // original client: the answer is a MapChange to it (see ClientHandleMapChange).
+    if MapResyncTries < 3 then
+    begin
+      Inc(MapResyncTries);
+      MapResyncRequested := True;
+      ClientRequestMap;
       Exit;
-    ClientDisconnect;
+    end;
+    MainConsole.Console(_('Wrong map version detected'), SERVER_MESSAGE_COLOR);
+    ExitToMenu;
+    RenderGameInfo(_('Wrong map version detected'));
     Exit;
   end;
 

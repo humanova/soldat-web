@@ -7,7 +7,11 @@
   is mounted into the PhysFS search path, so downloaded files are found like built-in ones.
 
   Flow: fetch maps/NAME.pms -> parse it to find textures/sceneries that are missing
-  locally -> fetch those -> request the game again.
+  locally -> fetch those. What happens afterwards depends on why the files were needed:
+  - joining: the game is requested again and the handshake loads the map;
+  - map change: the files are fetched while the next map is announced and ChangeMap
+    waits for them (the session stays the same, nothing is re-requested);
+  - wrong map version: the server's copy replaces the local one and is loaded.
 }
 unit WebDownload;
 
@@ -19,15 +23,18 @@ procedure StartMapDownload(Host: AnsiString; Port: Word; MapName: AnsiString);
 function RedownloadMap(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
 function MapAssetsMissing(const MapName: AnsiString): Boolean;
 function EnsureMapAssets(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
+function PrefetchMap(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
+function MapFetchFailed(const MapName: AnsiString): Boolean;
 procedure UpdateMapDownload;
 procedure CancelMapDownload;
 function MapDownloadActive: Boolean;
+procedure ResetDownloadState;
 
 implementation
 
 uses
   SysUtils, Classes, PhysFS, Util, MapFile, GameRendering, GameStrings, Client,
-  Game, Net, NetworkClientConnection;
+  Game, Net, NetworkClientConnection, Constants;
 
 // Starts a transfer; Files is a #10 separated list of relative paths. Returns a job id.
 function js_fetch_files(Host: PAnsiChar; Port: LongInt; Files: PAnsiChar): LongInt; cdecl; external 'net' name 'fetch_files';
@@ -38,20 +45,38 @@ procedure js_fetch_cancel(Job: LongInt); cdecl; external 'net' name 'fetch_cance
 
 type
   TDownloadStage = (dsIdle, dsMap, dsAssets);
+  TDownloadPurpose = (dpJoin, dpMapChange, dpRedownload);
 
 var
   Redownloaded: TStringList = nil;
   AssetsAttempted: TStringList = nil;
+  FailedMaps: TStringList = nil;
   Stage: TDownloadStage = dsIdle;
+  Purpose: TDownloadPurpose = dpJoin;
   Job: LongInt = 0;
   DLHost: AnsiString;
   DLPort: Word;
   DLMap: AnsiString;
   LastProgress: LongInt = -1;
 
+function NameList(var List: TStringList): TStringList;
+begin
+  if List = nil then
+  begin
+    List := TStringList.Create;
+    List.CaseSensitive := False;
+  end;
+  Result := List;
+end;
+
 function MapDownloadActive: Boolean;
 begin
   Result := Stage <> dsIdle;
+end;
+
+function MapFetchFailed(const MapName: AnsiString): Boolean;
+begin
+  Result := (FailedMaps <> nil) and (FailedMaps.IndexOf(MapName) >= 0);
 end;
 
 procedure CancelMapDownload;
@@ -61,32 +86,58 @@ begin
   Stage := dsIdle;
 end;
 
-procedure StartMapDownload(Host: AnsiString; Port: Word; MapName: AnsiString);
+// a new connection tries every download again (the page can delete downloaded files)
+procedure ResetDownloadState;
+begin
+  CancelMapDownload;
+  if Redownloaded <> nil then
+    Redownloaded.Clear;
+  if AssetsAttempted <> nil then
+    AssetsAttempted.Clear;
+  if FailedMaps <> nil then
+    FailedMaps.Clear;
+end;
+
+procedure ShowProgress(const Text: WideString);
+begin
+  // during a map change the game keeps rendering (paused): report in the console
+  if Purpose = dpMapChange then
+    MainConsole.Console(Text, GAME_MESSAGE_COLOR)
+  else
+    RenderGameInfo(Text);
+end;
+
+procedure StartFetch(Host: AnsiString; Port: Word; MapName, Files: AnsiString;
+  NewStage: TDownloadStage; NewPurpose: TDownloadPurpose);
 begin
   CancelMapDownload;
   DLHost := Host;
   DLPort := Port;
   DLMap := MapName;
+  Purpose := NewPurpose;
   LastProgress := -1;
-  RenderGameInfo(WideString(_('Downloading map') + ' ' + MapName + '...'));
-  Job := js_fetch_files(PAnsiChar(Host), Port + 10, PAnsiChar('maps/' + MapName + '.pms'));
-  Stage := dsMap;
+  ShowProgress(WideString(_('Downloading map') + ' ' + MapName + '...'));
+  Job := js_fetch_files(PAnsiChar(Host), Port + 10, PAnsiChar(Files));
+  Stage := NewStage;
+end;
+
+procedure StartMapDownload(Host: AnsiString; Port: Word; MapName: AnsiString);
+begin
+  StartFetch(Host, Port, MapName, 'maps/' + MapName + '.pms', dsMap, dpJoin);
 end;
 
 // The local copy of a map differs from the server's (heartbeat map id mismatch):
 // fetch the server's version once; it takes precedence over the built-in one.
 function RedownloadMap(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
+var
+  Key: AnsiString;
 begin
   Result := False;
-  if Redownloaded = nil then
-  begin
-    Redownloaded := TStringList.Create;
-    Redownloaded.CaseSensitive := False;
-  end;
-  if Redownloaded.IndexOf(Host + ':' + IntToStr(Port) + '/' + MapName) >= 0 then
+  Key := Host + ':' + IntToStr(Port) + '/' + MapName;
+  if NameList(Redownloaded).IndexOf(Key) >= 0 then
     Exit;
-  Redownloaded.Add(Host + ':' + IntToStr(Port) + '/' + MapName);
-  StartMapDownload(Host, Port, MapName);
+  Redownloaded.Add(Key);
+  StartFetch(Host, Port, MapName, 'maps/' + MapName + '.pms', dsMap, dpRedownload);
   Result := True;
 end;
 
@@ -141,50 +192,95 @@ end;
 
 function MapAssetsMissing(const MapName: AnsiString): Boolean;
 begin
+  if (AssetsAttempted <> nil) and (AssetsAttempted.IndexOf(MapName) >= 0) then
+    Exit(False);  // already tried: play with whatever could be found
   Result := MissingAssets(MapName) <> '';
-  if Result and (AssetsAttempted <> nil) and (AssetsAttempted.IndexOf(MapName) >= 0) then
-    Result := False;  // already tried: play with whatever could be found
+end;
+
+// Fetches the textures and scenery of a map that is available locally. Returns False
+// when there is nothing to fetch.
+function FetchAssets(Host: AnsiString; Port: Word; MapName: AnsiString;
+  NewPurpose: TDownloadPurpose): Boolean;
+var
+  Assets: AnsiString;
+begin
+  Result := False;
+  if (AssetsAttempted <> nil) and (AssetsAttempted.IndexOf(MapName) >= 0) then
+    Exit;
+  Assets := MissingAssets(MapName);
+  if Assets = '' then
+    Exit;
+  NameList(AssetsAttempted).Add(MapName);
+  StartFetch(Host, Port, MapName, Assets, dsAssets, NewPurpose);
+  Result := True;
 end;
 
 // Map textures and scenery are not part of the base archive: they come from the
 // static asset mirror or the game server's file server. Returns False while they
 // are being fetched (the game is requested again afterwards).
 function EnsureMapAssets(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
-var
-  Assets: AnsiString;
 begin
-  Result := True;
-  if not MapAssetsMissing(MapName) then
-    Exit;
-  Assets := MissingAssets(MapName);
-  if AssetsAttempted = nil then
-  begin
-    AssetsAttempted := TStringList.Create;
-    AssetsAttempted.CaseSensitive := False;
-  end;
-  AssetsAttempted.Add(MapName);
+  Result := not FetchAssets(Host, Port, MapName, dpJoin);
+end;
 
-  CancelMapDownload;
-  DLHost := Host;
-  DLPort := Port;
-  DLMap := MapName;
-  LastProgress := -1;
-  RenderGameInfo(WideString(_('Downloading map') + ' ' + MapName + '...'));
-  Job := js_fetch_files(PAnsiChar(Host), Port + 10, PAnsiChar(Assets));
-  Stage := dsAssets;
+// A map change was announced: fetch what the next map needs while the scoreboard is
+// shown. Returns True if a download was started (ChangeMap waits for it).
+function PrefetchMap(Host: AnsiString; Port: Word; MapName: AnsiString): Boolean;
+var
+  Info: TMapInfo;
+begin
   Result := False;
+  if (Stage <> dsIdle) and SameText(DLMap, MapName) then
+    Exit(True);  // already on its way
+  if not GetMapInfo(MapName, UserDirectory, Info) then
+  begin
+    if MapFetchFailed(MapName) then
+      Exit;
+    StartFetch(Host, Port, MapName, 'maps/' + MapName + '.pms', dsMap, dpMapChange);
+    Result := True;
+  end
+  else
+    Result := FetchAssets(Host, Port, MapName, dpMapChange);
 end;
 
 procedure Finish;
 begin
   Stage := dsIdle;
-  // rejoin; the map is now available locally
   FillCaseInsensitiveImageMap;
-  Map.Filename := '';  // reload even if a map with this name is loaded
-  if MySprite > 0 then
-    MapRejoin := True;
-  RenderGameInfo(_('Loading'));
-  ClientRequestGame;
+  case Purpose of
+    dpJoin:
+      begin
+        // rejoin; the map is now available locally
+        Map.Filename := '';  // reload even if a map with this name is loaded
+        if MySprite > 0 then
+          MapRejoin := True;
+        RenderGameInfo(_('Loading'));
+        ClientRequestGame;
+      end;
+    dpMapChange:
+      ;  // ChangeMap is waiting for the files and loads the map
+    dpRedownload:
+      begin
+        // load the server's copy of the current map, like a map change to it
+        Map.Filename := '';
+        MapChangeName := DLMap;
+        MapChangeCounter := 0;
+      end;
+  end;
+end;
+
+procedure Fail(const Reason: WideString);
+begin
+  Stage := dsIdle;
+  NameList(FailedMaps).Add(DLMap);
+  if Purpose = dpMapChange then
+  begin
+    // ChangeMap reports it when the map is due
+    MainConsole.Console(Reason, WARNING_MESSAGE_COLOR);
+    Exit;
+  end;
+  ExitToMenu;
+  RenderGameInfo(Reason);
 end;
 
 procedure UpdateMapDownload;
@@ -199,21 +295,17 @@ begin
   if Status = 0 then
   begin
     Progress := js_fetch_progress(Job);
-    if Progress <> LastProgress then
-    begin
-      LastProgress := Progress;
+    if (Progress <> LastProgress) and (Purpose <> dpMapChange) then
       RenderGameInfo(WideString(Format('%s %s (%d KB)', [_('Downloading map'), DLMap,
         Progress div 1024])));
-    end;
+    LastProgress := Progress;
     Exit;
   end;
 
   if Status < 0 then
   begin
-    Stage := dsIdle;
-    RenderGameInfo(WideString(_('Could not download map') + ' ' + DLMap +
+    Fail(WideString(_('Could not download map') + ' ' + DLMap +
       '. ' + _('The server may not allow downloads.')));
-    ClientDisconnect;
     Exit;
   end;
 
@@ -222,21 +314,14 @@ begin
       begin
         if not PHYSFS_exists(PChar('maps/' + DLMap + '.pms')) then
         begin
-          Stage := dsIdle;
-          RenderGameInfo(WideString(_('Server did not provide map') + ' ' + DLMap));
-          ClientDisconnect;
+          Fail(WideString(_('Server did not provide map') + ' ' + DLMap));
           Exit;
         end;
         Assets := MissingAssets(DLMap);
-        if Assets = '' then
+        if (Assets = '') or (NameList(AssetsAttempted).IndexOf(DLMap) >= 0) then
           Finish
         else
         begin
-          if AssetsAttempted = nil then
-          begin
-            AssetsAttempted := TStringList.Create;
-            AssetsAttempted.CaseSensitive := False;
-          end;
           AssetsAttempted.Add(DLMap);
           LastProgress := -1;
           Job := js_fetch_files(PAnsiChar(DLHost), DLPort + 10, PAnsiChar(Assets));

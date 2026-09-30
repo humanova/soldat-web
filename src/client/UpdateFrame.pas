@@ -203,6 +203,11 @@ begin
       Dec(HitSprayCounter);
 
     // Idle counter
+    {$IFDEF WEB}
+    // the module stays loaded between games: every game starts counting afresh
+    if MySprite = 0 then
+      IdleCounter := 0;
+    {$ENDIF}
     if MySprite > 0 then
       if MapChangeCounter < 99999999 then
         if Sprite[MySprite].IsNotSpectator() and

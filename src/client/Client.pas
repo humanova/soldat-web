@@ -65,6 +65,8 @@ type
 var
   GameLoopRun: Boolean;
   ProgReady: Boolean;
+  // why the server ended the game (disconnect, kick), shown when leaving it
+  ExitReason: WideString = '';
 
   JoinPassword: String; // server password
   JoinPort: String; // join port to server
@@ -566,6 +568,12 @@ end;
 
 {$ENDIF}
 
+{$IFDEF WEB}
+const
+  WEB_CONFIGS: array[0..7] of string = ('client.cfg', 'taunts.cfg', 'bindings.cfg',
+    'controls.cfg', 'game.cfg', 'graphics.cfg', 'player.cfg', 'sound.cfg');
+{$ENDIF}
+
 procedure StartGame();
 var
   ini: TMemINIFile;
@@ -719,16 +727,17 @@ begin
 
   LoadInterfaceArchives(UserDirectory + 'custom-interfaces/');
 
+  {$IFDEF WEB}
+  // client.cfg executes the others. Nothing edits these files in the browser (the page
+  // applies its settings as commands), so the shipped defaults always replace them.
+  for i := Low(WEB_CONFIGS) to High(WEB_CONFIGS) do
+  begin
+    DeleteFile(UserDirectory + '/configs/' + WEB_CONFIGS[i]);
+    PHYSFS_CopyFileFromArchive('configs/' + WEB_CONFIGS[i], UserDirectory + '/configs/' + WEB_CONFIGS[i]);
+  end;
+  {$ELSE}
   PHYSFS_CopyFileFromArchive('configs/client.cfg', UserDirectory + '/configs/client.cfg');
   PHYSFS_CopyFileFromArchive('configs/taunts.cfg', UserDirectory + '/configs/taunts.cfg');
-  {$IFDEF WEB}
-  // client.cfg executes these; ship the defaults (existing user files are kept)
-  PHYSFS_CopyFileFromArchive('configs/bindings.cfg', UserDirectory + '/configs/bindings.cfg');
-  PHYSFS_CopyFileFromArchive('configs/controls.cfg', UserDirectory + '/configs/controls.cfg');
-  PHYSFS_CopyFileFromArchive('configs/game.cfg', UserDirectory + '/configs/game.cfg');
-  PHYSFS_CopyFileFromArchive('configs/graphics.cfg', UserDirectory + '/configs/graphics.cfg');
-  PHYSFS_CopyFileFromArchive('configs/player.cfg', UserDirectory + '/configs/player.cfg');
-  PHYSFS_CopyFileFromArchive('configs/sound.cfg', UserDirectory + '/configs/sound.cfg');
   {$ENDIF}
 
   LoadConfig('client.cfg');

@@ -38,11 +38,13 @@ independent client decoding what the server relays to other players:
   updates and relays them to other players
 - staying connected on servers with anti-cheat enabled (the periodic status checks are
   answered truthfully)
-- map changes: the 1.7.1 server rotates the session key on every map, and the client
-  rejoins seamlessly the way the original client did
+- map changes at the end of a round, by `/map` or by vote: the next map is loaded when the
+  scoreboard countdown ends, like in the original client (the session carries over); a
+  change the client missed is noticed through the heartbeat and resolved with the
+  original client's map request
 - maps and graphics the browser lacks are downloaded from the game server's file server
   (custom maps included); map textures and scenery come from the web server's mirror
-  when it has them
+  when it has them. For a map change they are fetched while the scoreboard is shown
 - chat, team chat, radio, Unicode chat, server messages and scripts, server commands
   such as `/votemap` and `/kill`, scoreboard, kill feed
 - settings and downloaded maps persist in the browser (IndexedDB)
@@ -50,11 +52,14 @@ independent client decoding what the server relays to other players:
   interpolation between the 60 Hz physics ticks; a frame takes about 1 ms of CPU on an
   Apple M2 Pro with 24 bots on the server. `Alt+F3` shows the frame rate and ping.
   The `r_fpslimit`/`r_maxfps` settings have no effect in the browser.
+- sounds, including the compressed (MS ADPCM) ones, decoded like SDL does (WebAudio; sound
+  starts after the first click, as browsers require)
+- rendering at the display's native resolution, with the 1.7.1 defaults for texture
+  sharpness (mipmap LOD bias), smooth polygon edges and dithering
 
-Implemented the same way as the original client but not verified end to end: sounds
-(WebAudio; they start after the first click, as browsers require), the vote menus, and
-being kicked or banned. As in the original, the client disconnects itself after 3 minutes
-without mouse movement.
+Implemented the same way as the original client but not verified end to end: the vote
+menus, and being kicked or banned (the reason stays on screen until Esc). As in the
+original, the client disconnects itself after 3 minutes without mouse movement.
 
 Not supported: recording or playing demos, Steam features, the in-game voice chat.
 Desktop only (keyboard and mouse).

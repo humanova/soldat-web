@@ -22,7 +22,7 @@ procedure WebFree(P: Pointer); cdecl;
 implementation
 
 uses
-  SysUtils, Client, ClientGame, ControlGame, GameRendering, Net, Command, TraceLog;
+  SysUtils, Client, ClientGame, ControlGame, GameRendering, Net, Command, WebDownload, TraceLog;
 
 var
   Started: Boolean = False;
@@ -43,6 +43,8 @@ begin
   JoinIP := AnsiString(Host);
   JoinPort := IntToStr(Port);
   JoinPassword := AnsiString(Password);
+  ResetDownloadState;
+  FillCaseInsensitiveImageMap;
   JoinServer;
   if GameLoopRun then
     Result := 1;

@@ -23,13 +23,16 @@ function bytesPerPixel(format) {
   }
 }
 
-// GLSL 1.20 (desktop) -> GLSL ES 1.00
+// GLSL 1.20 (desktop) -> GLSL ES 1.00. Fragment shaders use highp (texture coordinates
+// address texels of 4096x4096 atlases; mediump is 16-bit on some GPUs) and apply the
+// texture LOD bias that desktop GL sets with glTexEnvf(GL_TEXTURE_LOD_BIAS), which
+// WebGL lacks: every texture2D(s, uv) becomes texture2D(s, uv, u_lodBias).
 function translateShader(src, type) {
   let s = src.replace(/^\s*#version\s+\d+[^\n]*\n?/m, '');
-  const header = type === 0x8B30 /*FRAGMENT*/
-    ? '#version 100\nprecision mediump float;\n'
-    : '#version 100\nprecision highp float;\n';
-  return header + s;
+  if (type !== 0x8B30 /*FRAGMENT*/) return '#version 100\nprecision highp float;\n' + s;
+  s = s.replace(/texture2D\s*\(\s*(\w+)\s*,((?:[^()]|\([^()]*\))*)\)/g,
+    (m, sampler, coord) => `texture2D(${sampler},${coord}, u_lodBias)`);
+  return '#version 100\nprecision highp float;\nuniform float u_lodBias;\n' + s;
 }
 
 export function createGL(rt, getContext) {
@@ -39,6 +42,16 @@ export function createGL(rt, getContext) {
   const strings = new Map();
   const shaderInfo = new Map();
   let pixelUnpackAlignment = 4, pixelPackAlignment = 4;
+  // texture LOD bias (GL_TEXTURE_FILTER_CONTROL / GL_TEXTURE_LOD_BIAS), per program state
+  let lodBias = 0;
+  let current = null;
+  const programBias = new Map();
+
+  function applyBias() {
+    if (!current || current.loc === null || current.value === lodBias) return;
+    ctx().uniform1f(current.loc, lodBias);
+    current.value = lodBias;
+  }
 
   function ctx() {
     if (!gl) gl = getContext();
@@ -131,8 +144,11 @@ export function createGL(rt, getContext) {
     glDeleteTextures: del(textures, (t) => ctx().deleteTexture(t)),
     glDetachShader: (p, s) => ctx().detachShader(programs[p], shaders[s]),
     glDisable: (cap) => { if (WEBGL_CAPS.has(cap)) ctx().disable(cap); },
-    glDrawArrays: (mode, first, count) => ctx().drawArrays(mode, first, count),
-    glDrawElements: (mode, count, type, offset) => ctx().drawElements(mode, count, type, offset),
+    glDrawArrays: (mode, first, count) => { applyBias(); ctx().drawArrays(mode, first, count); },
+    glDrawElements: (mode, count, type, offset) => {
+      applyBias();
+      ctx().drawElements(mode, count, type, offset);
+    },
     glEnable: (cap) => { if (WEBGL_CAPS.has(cap)) ctx().enable(cap); },
     glEnableClientState: noop,
     glEnableVertexAttribArray: (i) => ctx().enableVertexAttribArray(i),
@@ -197,6 +213,8 @@ export function createGL(rt, getContext) {
       g.linkProgram(programs[p]);
       if (!g.getProgramParameter(programs[p], g.LINK_STATUS))
         console.error('[gl] program link error:', g.getProgramInfoLog(programs[p]));
+      // uniforms start at 0 after linking
+      programBias.set(programs[p], { loc: g.getUniformLocation(programs[p], 'u_lodBias'), value: 0 });
     },
     glLoadMatrixf: noop,
     glPixelStorei: (pname, param) => {
@@ -220,7 +238,10 @@ export function createGL(rt, getContext) {
       ctx().shaderSource(shaders[s], translateShader(src, shaderInfo.get(s)));
     },
     glTexCoordPointer: noop,
-    glTexEnvf: noop,
+    glTexEnvf: (target, pname, param) => {
+      if (target === 0x8500 /*TEXTURE_FILTER_CONTROL*/ && pname === 0x8501 /*TEXTURE_LOD_BIAS*/)
+        lodBias = param;
+    },
     glTexImage2D: (target, level, internal, w, h, border, format, type, ptr) => {
       ctx().texImage2D(target, level, internal, w, h, 0, format, type,
         imageData(w, h, format, type, ptr));
@@ -237,7 +258,10 @@ export function createGL(rt, getContext) {
       const f = new Float32Array(rt.u8().slice(ptr, ptr + 36 * count).buffer);
       ctx().uniformMatrix3fv(uniforms[loc], !!transpose, f);
     },
-    glUseProgram: (p) => ctx().useProgram(programs[p] || null),
+    glUseProgram: (p) => {
+      ctx().useProgram(programs[p] || null);
+      current = programs[p] ? programBias.get(programs[p]) || null : null;
+    },
     glVertexAttribPointer: (index, size, type, normalized, stride, offset) =>
       ctx().vertexAttribPointer(index, size, type, !!normalized, stride, offset),
     glVertexPointer: noop,

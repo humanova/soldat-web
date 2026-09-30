@@ -223,13 +223,16 @@ export class VFS {
     if (this.db && !this.syncTimer) this.syncTimer = setTimeout(() => this.sync(), 500);
   }
 
+  // empties a directory and removes its contents from the store; the directory node
+  // itself stays, because PhysFS mounts refer to it
   async clearPersistent(prefix) {
     const base = splitPath(prefix).join('/');
     const node = this.lookup(base);
-    if (!node) return;
-    const [dir, name] = this.parentOf(base);
-    if (dir) dir.children.delete(name);
-    this.forget(base, node);
+    if (!node || node.type !== 'dir') return;
+    for (const [name, child] of [...node.children]) {
+      node.children.delete(name);
+      this.forget(base + '/' + name, child);
+    }
     await this.sync();
   }
 }

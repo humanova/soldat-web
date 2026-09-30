@@ -417,7 +417,15 @@ begin
 
   if (MapChangeCounter < 0) and (MapChangeCounter > -59) then
     if MapChangeName = 'EXIT*!*' then
+    begin
       ExitToMenu;
+      {$IFDEF WEB}
+      // keep the reason on screen; Esc returns to the server list
+      if ExitReason <> '' then
+        RenderGameInfo(ExitReason);
+      {$ENDIF}
+      ExitReason := '';
+    end;
 
   if MapChanged then
   begin

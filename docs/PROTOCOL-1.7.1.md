@@ -16,8 +16,10 @@ Status legend: [V] verified live against real 1.7.1 server, [D] decoded from dis
 * DCPcrypt `TDCP_blowfish`, `CipherMode = cmCBC`, `InitStr(Key, TDCP_ripemd160)`:
   Blowfish key = RIPEMD160(Key) (20 bytes), IV = BlowfishECB(0x00 * 8), CV := IV on Reset.
 * DCPcrypt CBC partial block (Size mod 8 <> 0): `CV := E(CV); data[tail] := data[tail] xor CV`.
-* Key = `#$A7 + IntToStr(SessionID + $25B3B1) (= +2470833)`; SessionID (Word) = Random(5000)+1001, regenerated
-  every map change, sent in clear in PlayersList.SessionID.
+* Key = `#$A7 + IntToStr(SessionID + $25B3B1) (= +2470833)`; SessionID (Word) = Random(5000)+1001, generated
+  by StartServer (server start and the admin commands /gamemode, /realistic, /survival, /advance,
+  /loadcon), sent in clear in PlayersList.SessionID. It stays the same across map changes (verified:
+  the same SessionID in PlayersList replies over several map rotations and /map).
 * Every message handler does `Reset` before and after processing; fields are
   encrypted/decrypted one by one in a fixed order with their own sizes (order matters!).
 
@@ -245,12 +247,25 @@ Reply resets countdown to 12000. Another timeout: no client packets for 1800 tic
 ### WeaponActiveMessage (65) 5: `3 Active; 4 Weapon`
 ### ChatMessage (6 ANSI / 66 Unicode) var: `3 Num; 4 Text (PChar / PWideChar)`
 ### MapChange (8) 22: `3 Counter: SmallInt; 5 MapName: string[16]`
+Sent in clear to every joined human player when the next map is announced (round end, /map, votes),
+Counter = ticks until the change (MapChangeTime, 320 by default). A player whose PlayerInfo is accepted
+during the countdown gets it with the remaining ticks. The client loads the map when the counter runs
+out; the session and the player's sprite carry over, nothing is re-requested. The answer to
+RequestMap (49) has the same layout with Counter = 5 and both fields encrypted (Counter (2), MapName (17)).
+
+## Map changes seen by the client [V]
+* Round end / `/map`: MapChange(Counter, Name) -> countdown (scoreboard) -> load map. The web client
+  fetches missing map files and graphics during the countdown and waits for them if needed.
+* A change the client did not see (its PlayerInfo arrived after the countdown, when the server no
+  longer announces it): the heartbeat MapID differs from the loaded map; after two heartbeats the
+  client sends RequestMap and switches to the map named in the (encrypted) answer. If that is the
+  loaded map, the local copy differs from the server's: fetch the server's copy and load it.
 ### PlaySound (70) 38: `3 Name[27]; 30 Emitter: TVector2`
 ### (127) 3 bytes, header only, unknown purpose (ignore)
 
 ## Map ID [V]
 Heartbeat MapID = crc32 (MSB-first table from 1.8 MapFile.pas) with init 5381 over the whole .pms file,
-identical to OpenSoldat's MapFile.Hash. Mismatch twice -> client should re-request/disconnect.
+identical to OpenSoldat's MapFile.Hash. Mismatch twice -> RequestMap (see above).
 
 ## File server (TCP, game port + 10) [V]
 Request: `STARTFILES\r\n` then paths `maps/NAME.pms`, `scenery-gfx/*.{png,jpg,bmp,gif}`,

@@ -544,22 +544,29 @@ begin
   {$ENDIF}
   {$IFNDEF SERVER}
     MapChangeStatus := Default(TMapInfo);
+
+    {$IFDEF WEB}
+    // The map (or its graphics) is fetched as soon as the change is announced. The
+    // session stays the same, so the client just waits for the files, paused on the
+    // scoreboard, and then loads the map like the original client.
+    if not DemoPlayer.Active and (MapDownloadActive or
+      (not GetMapInfo(MapChangeName, UserDirectory, MapChangeStatus) and
+       not MapFetchFailed(MapChangeName)) or
+      MapAssetsMissing(MapChangeName)) then
+    begin
+      if not MapDownloadActive then
+        PrefetchMap(UDP.Host, UDP.Port, MapChangeName);
+      if MapDownloadActive then
+      begin
+        MapChangeCounter := 0;  // runs again next tick
+        Exit;
+      end;
+    end;
+    {$ENDIF}
+
     MapChanged := True;
     DemoRecorder.StopRecord;
 
-    {$IFDEF WEB}
-    // Soldat 1.7.1 rotates the session key on every map change and only announces it
-    // in the PlayersList reply to a game request, so the client joins again. If the
-    // map is missing locally, the handshake downloads it first.
-    if not GetMapInfo(MapChangeName, UserDirectory, MapChangeStatus) or
-      MapAssetsMissing(MapChangeName) then
-    begin
-      MapChangeCounter := -60;  // ChangeMap runs once; the handshake loads the map
-      MapRejoin := True;
-      ClientRequestGame;
-      Exit;
-    end;
-    {$ENDIF}
     if GetMapInfo(MapChangeName, UserDirectory, MapChangeStatus) {$IFNDEF WEB}and VerifyMapChecksum(MapChangeStatus, TSHA1Digest(MapChangeChecksum)){$ENDIF} then
     begin
       if not Map.LoadMap(MapChangeStatus, r_forcebg.Value, r_forcebg_color1.Value, r_forcebg_color2.Value) then
@@ -573,7 +580,12 @@ begin
     else
     begin
       ExitToMenu;
+      {$IFDEF WEB}
+      // the server could not provide the next map
+      RenderGameInfo(_('Could not load map: ') + WideString(MapChangeName));
+      {$ELSE}
       JoinServer();
+      {$ENDIF}
       Exit;
     end;
   {$ENDIF}
@@ -730,11 +742,8 @@ begin
       PlaySound(SFX_SPAWN, SpriteParts.Pos[MySprite]);
 
     {$IFDEF WEB}
-    if not DemoPlayer.Active then
-    begin
-      MapRejoin := True;
-      ClientRequestGame;
-    end;
+    MapResyncRequested := False;
+    MapResyncTries := 0;
     {$ENDIF}
     {$ENDIF}
     // DEMO

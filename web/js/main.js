@@ -5,15 +5,27 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 
 const SETTINGS_KEY = 'soldat.settings';
+// player colors of the Soldat 1.7.1 default profile ("Major")
 const DEFAULTS = {
-  name: 'Major', shirt: '#8f8f8f', pants: '#8f8f8f', skin: '#e0b88c', hair: '#000000',
-  jet: '#8f8f8f', hairstyle: 1, headstyle: 1, chainstyle: 2, sens: 0.8, volume: 50,
+  name: 'Major', shirt: '#304289', pants: '#1f8957', skin: '#e6b478', hair: '#000000',
+  jet: '#ffff00', hairstyle: 1, headstyle: 1, chainstyle: 2, sens: 0.8, volume: 50,
   fullscreen: true, hideEmpty: false, hideFull: false, sort: 'NumPlayers', asc: false,
   last: '',
 };
+// defaults of earlier versions of this page: all gray
+const OLD_GRAY = '#8f8f8f';
 
 function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch (_) { return { ...DEFAULTS }; }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (_) {}
+  const s = { ...DEFAULTS, ...saved };
+  if (s.shirt === OLD_GRAY && s.pants === OLD_GRAY && s.jet === OLD_GRAY) {
+    s.shirt = DEFAULTS.shirt;
+    s.pants = DEFAULTS.pants;
+    s.jet = DEFAULTS.jet;
+    if (s.skin === '#e0b88c') s.skin = DEFAULTS.skin;
+  }
+  return s;
 }
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
@@ -46,9 +58,11 @@ const game = new SoldatRuntime(canvas, {
   relayUrl,
   args: params.has('debug') ? ['-log_level', params.get('debug') || '1'] : [],
   displaySize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // the game renders at the screen's native resolution like the original client
+    // (text and interface are drawn for that size); only very large screens are capped
+    const dpr = window.devicePixelRatio || 1;
     let w = Math.round(screen.width * dpr), h = Math.round(screen.height * dpr);
-    const max = 1920 * 1080;
+    const max = 3840 * 2400;
     if (w * h > max) { const s = Math.sqrt(max / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
     return [w, h];
   },
