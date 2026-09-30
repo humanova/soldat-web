@@ -1,0 +1,24 @@
+--- a/compiler/ogwasm.pas
++++ b/compiler/ogwasm.pas
+@@ -2854,7 +2854,8 @@
+                                           R_WASM_TYPE_INDEX_LEB,
+                                           R_WASM_GLOBAL_INDEX_LEB,
+                                           R_WASM_TAG_INDEX_LEB,
+-                                          R_WASM_GLOBAL_INDEX_I32]) then
++                                          R_WASM_GLOBAL_INDEX_I32,
++                                          R_WASM_TABLE_NUMBER_LEB]) then
+                       begin
+                         InputError('Unsupported relocation type: ' + tostr(Ord(RelocType)));
+                         exit;
+@@ -4816,6 +4817,11 @@
+                     end;
+                   R_WASM_TAG_INDEX_LEB:
+                     ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_TAG_INDEX_LEB));
++                  R_WASM_TABLE_NUMBER_LEB:
++                    { The only table is the indirect function table, which is table 0
++                      both in the input object and in the linked output, so the
++                      encoded (padded LEB) table number is already correct. }
++                    ;
+                   else
+                     internalerror(2023122802);
+                 end;

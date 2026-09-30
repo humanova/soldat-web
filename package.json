@@ -1,0 +1,13 @@
+{
+  "name": "soldat-web",
+  "version": "1.7.1-web",
+  "description": "Soldat 1.7.1 client for the browser (WebAssembly) with a WebSocket-to-UDP relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node relay/server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

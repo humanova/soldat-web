@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soldat Web</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23c9a227'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" hidden>
+  <header>
+    <h1>SOLDAT <span class="ver">1.7.1 · browser</span></h1>
+    <span id="status" class="status"></span>
+  </header>
+  <main>
+    <section class="panel" id="servers">
+      <div class="toolbar">
+        <input id="filter" type="search" placeholder="Filter servers, maps, countries" autocomplete="off">
+        <label class="check"><input id="hide-empty" type="checkbox"> Hide empty</label>
+        <label class="check"><input id="hide-full" type="checkbox"> Hide full</label>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="Name">Server</th>
+              <th data-sort="CurrentMap">Map</th>
+              <th data-sort="GameStyle">Mode</th>
+              <th data-sort="NumPlayers" class="num">Players</th>
+              <th data-sort="Country">Region</th>
+            </tr>
+          </thead>
+          <tbody id="server-list"></tbody>
+        </table>
+        <p id="list-empty" class="empty" hidden></p>
+      </div>
+      <form id="direct" class="direct" autocomplete="off">
+        <label>Address <input id="address" placeholder="host:port" spellcheck="false"></label>
+        <label>Password <input id="password" type="password" placeholder="optional"></label>
+        <button id="join" type="submit" class="primary">Join</button>
+      </form>
+    </section>
+    <aside class="panel" id="player">
+      <h2>Player</h2>
+      <label>Name <input id="p-name" maxlength="23" spellcheck="false"></label>
+      <div class="colors">
+        <label>Shirt <input id="p-shirt" type="color"></label>
+        <label>Pants <input id="p-pants" type="color"></label>
+        <label>Skin <input id="p-skin" type="color"></label>
+        <label>Hair <input id="p-hair" type="color"></label>
+        <label>Jets <input id="p-jet" type="color"></label>
+      </div>
+      <label>Hair style
+        <select id="p-hairstyle">
+          <option value="0">None</option><option value="1">Dreadlocks</option>
+          <option value="2">Punk</option><option value="3">Mr. T</option>
+          <option value="4">Normal</option>
+        </select>
+      </label>
+      <label>Head
+        <select id="p-headstyle">
+          <option value="0">Nothing</option><option value="1">Helmet</option><option value="2">Hat</option>
+        </select>
+      </label>
+      <label>Chain
+        <select id="p-chainstyle">
+          <option value="0">None</option><option value="1">Silver chain</option><option value="2">Gold chain</option>
+        </select>
+      </label>
+      <h2>Settings</h2>
+      <label>Mouse sensitivity <input id="s-sens" type="range" min="0.1" max="3" step="0.05"><output id="s-sens-v"></output></label>
+      <label>Volume <input id="s-vol" type="range" min="0" max="100" step="1"><output id="s-vol-v"></output></label>
+      <label class="check"><input id="s-fullscreen" type="checkbox"> Full screen while playing</label>
+      <details>
+        <summary>Controls</summary>
+        <p>A/D move, W jump, S crouch, X prone, right mouse jet, left mouse fire, Q switch weapon,
+          R reload, F drop weapon, E grenade, Space throw flag, T chat, Y team chat, V radio,
+          F1 scores, Esc menu. The browser keeps a few shortcuts (like Ctrl+W) for itself.</p>
+      </details>
+      <details>
+        <summary>Storage</summary>
+        <p>Settings and maps downloaded from servers are kept in this browser.</p>
+        <button id="clear-downloads" type="button">Delete downloaded maps</button>
+      </details>
+    </aside>
+  </main>
+  <footer>
+    Soldat © Michal Marcinkowski and contributors · game data CC BY 4.0 ·
+    connects to official 1.7.1 servers through a WebSocket relay
+  </footer>
+</div>
+
+<div id="game" hidden>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="lock-hint" hidden>Click to control the game · Esc opens the menu</div>
+</div>
+
+<div id="loading">
+  <div class="box">
+    <h1>SOLDAT</h1>
+    <p id="loading-text">Loading...</p>
+    <div class="bar"><div id="loading-bar"></div></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
