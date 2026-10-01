@@ -451,8 +451,15 @@ async function startFiles(ws, clientAddr, m) {
 
 // ---------------------------------------------------------------- http server
 
+// null for a request target that is no valid path (such as "//"): new URL throws on it,
+// which would stop the whole server
+function requestUrl(req) {
+  try { return new URL(req.url, 'http://x'); } catch (_) { return null; }
+}
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
+  const url = requestUrl(req);
+  if (!url) { res.writeHead(400).end(); return; }
   if (url.pathname === '/api/servers') {
     const l = await lobby();
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -464,9 +471,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url, 'http://x');
+  const url = requestUrl(req);
   socket.on('error', () => {});
-  if (url.pathname === '/relay') handleRelay(req, socket, head);
+  if (url && url.pathname === '/relay') handleRelay(req, socket, head);
   else socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
 });
 
