@@ -9,16 +9,21 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LLVM="${LLVM:-/opt/homebrew/opt/llvm/bin}"
 SYSROOT="${WASI_SYSROOT:-/opt/homebrew/opt/wasi-libc/share/wasi-sysroot}"
-FT="$HERE/freetype-VER-2-13-3"
+# FreeType 2.6.1 is the version the Windows client of Soldat 1.7.1 ships (freetype.dll);
+# later versions hint and size the Play font differently (other glyph shapes and widths,
+# 1 px taller x-height at some sizes, other ascender rounding)
+FT="$HERE/freetype-VER-2-6-1"
 OUT="$HERE/obj"
 
 if [ ! -d "$FT" ]; then
-  echo "Fetching FreeType 2.13.3..."
+  echo "Fetching FreeType 2.6.1..."
   curl -fsSL -o "$HERE/ft.tar.gz" \
-    "https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-2-13-3/freetype-VER-2-13-3.tar.gz"
+    "https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-2-6-1/freetype-VER-2-6-1.tar.gz"
   tar -xzf "$HERE/ft.tar.gz" -C "$HERE"
-  # the renderer's overflow handling uses setjmp/longjmp, which this toolchain lacks
-  patch -d "$FT" -p1 < "$HERE/ftgrays-no-longjmp.patch"
+  # the renderer's overflow handling uses setjmp/longjmp, which this toolchain lacks, and
+  # the auto-hinter calls its hinting functions through a pointer of another type (an
+  # indirect call with a mismatched signature traps in WebAssembly)
+  patch -d "$FT" -p1 < "$HERE/freetype-wasm.patch"
 fi
 
 mkdir -p "$OUT"

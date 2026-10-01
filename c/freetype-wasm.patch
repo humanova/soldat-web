@@ -1,0 +1,92 @@
+diff -ru a/src/autofit/afdummy.c
+--- a/src/autofit/afdummy.c
++++ b/src/autofit/afdummy.c
+@@ -37,14 +37,17 @@
+   }
+ 
+ 
++  /* soldat-wasm: takes all parameters of AF_WritingSystem_ApplyHintsFunc */
+   static FT_Error
+-  af_dummy_hints_apply( FT_UInt        glyph_index,
+-                        AF_GlyphHints  hints,
+-                        FT_Outline*    outline )
++  af_dummy_hints_apply( FT_UInt          glyph_index,
++                        AF_GlyphHints    hints,
++                        FT_Outline*      outline,
++                        AF_StyleMetrics  metrics )
+   {
+     FT_Error  error;
+ 
+     FT_UNUSED( glyph_index );
++    FT_UNUSED( metrics );
+ 
+ 
+     error = af_glyph_hints_reload( hints, outline );
+diff -ru a/src/autofit/aftypes.h
+--- a/src/autofit/aftypes.h
++++ b/src/autofit/aftypes.h
+@@ -216,7 +216,9 @@
+   (*AF_WritingSystem_InitHintsFunc)( AF_GlyphHints    hints,
+                                      AF_StyleMetrics  metrics );
+ 
+-  typedef void
++  /* soldat-wasm: the implementations return FT_Error; an indirect call */
++  /* through a pointer of another type traps in WebAssembly            */
++  typedef FT_Error
+   (*AF_WritingSystem_ApplyHintsFunc)( FT_UInt          glyph_index,
+                                       AF_GlyphHints    hints,
+                                       FT_Outline*      outline,
+diff -ru a/src/smooth/ftgrays.c
+--- a/src/smooth/ftgrays.c
++++ b/src/smooth/ftgrays.c
+@@ -425,6 +425,7 @@
+   typedef struct  gray_TWorker_
+   {
+     ft_jmp_buf  jump_buffer;
++    int         overflow;
+ 
+     TCoord  ex, ey;
+     TPos    min_ex, max_ex;
+@@ -579,7 +580,12 @@
+     }
+ 
+     if ( ras.num_cells >= ras.max_cells )
+-      ft_longjmp( ras.jump_buffer, 1 );
++    {
++      /* soldat-wasm: no setjmp/longjmp; flag the overflow instead, the */
++      /* band is then rendered again in two halves as after a longjmp   */
++      ras.overflow = 1;
++      return NULL;
++    }
+ 
+     cell        = ras.cells + ras.num_cells++;
+     cell->x     = x;
+@@ -602,8 +608,11 @@
+       PCell  cell = gray_find_cell( RAS_VAR );
+ 
+ 
+-      cell->area  += ras.area;
+-      cell->cover += ras.cover;
++      if ( cell )  /* NULL after a cell pool overflow */
++      {
++        cell->area  += ras.area;
++        cell->cover += ras.cover;
++      }
+     }
+   }
+ 
+@@ -1766,11 +1775,14 @@
+       Init_Class_func_interface(&func_interface);
+ #endif
+ 
++    ras.overflow = 0;
+     if ( ft_setjmp( ras.jump_buffer ) == 0 )
+     {
+       error = FT_Outline_Decompose( &ras.outline, &func_interface, &ras );
+       if ( !ras.invalid )
+         gray_record_cell( RAS_VAR );
++      if ( ras.overflow )
++        error = FT_THROW( Memory_Overflow );
+     }
+     else
+       error = FT_THROW( Memory_Overflow );

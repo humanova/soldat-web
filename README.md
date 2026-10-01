@@ -57,6 +57,9 @@ independent client decoding what the server relays to other players:
   starts after the first click, as browsers require)
 - rendering at the display's native resolution, with the 1.7.1 defaults for texture
   sharpness (mipmap LOD bias), smooth polygon edges and dithering
+- text rendered with FreeType 2.6.1, the version the 1.7.1 Windows client ships, so the
+  glyph shapes, widths and line metrics match the original (later versions hint the Play
+  font differently)
 
 Implemented the same way as the original client but not verified end to end: the vote
 menus, and being kicked or banned (the reason stays on screen until Esc). As in the
@@ -111,7 +114,8 @@ Things to know about relaying:
   session cipher and message hashes, `NetworkClient*.pas`); `src/web/` replaces SDL2,
   OpenGL, OpenAL, PhysFS and Steam with small units whose functions are implemented in
   JavaScript, plus `WebMain.pas` (entry points) and fixes for Free Pascal's wasm RTL.
-- `c/` — FreeType and stb_image compiled to wasm32 with clang and linked into the module.
+- `c/` — FreeType 2.6.1 (with `c/freetype-wasm.patch`) and stb_image compiled to wasm32
+  with clang and linked into the module.
 - `web/js/` — the JavaScript side: an in-memory file system with IndexedDB persistence
   (WASI), zip archives for PhysFS, WebGL2 (the game's GLSL 1.20 shaders are translated to
   GLSL ES), WebAudio, keyboard/mouse with pointer lock, and the relay client.

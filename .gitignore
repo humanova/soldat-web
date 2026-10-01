@@ -1,7 +1,7 @@
 # build intermediates (./build.sh, c/build-c.sh)
 /build/
 /c/obj/
-/c/freetype-VER-2-13-3/
+/c/freetype-VER-2-6-1/
 /c/ft.tar.gz
 
 # game data downloaded by tools/fetch-assets.sh
