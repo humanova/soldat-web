@@ -1,8 +1,7 @@
 # Soldat Web
 
 Soldat 1.7.1 in your browser, on the official public servers.
-Pick a server from the same list
-the game shows and press Join.
+Pick a server from the same list the game shows and press Join.
 
 ![A CTF round on ctf_Ash](docs/screenshots/battle.jpg)
 
