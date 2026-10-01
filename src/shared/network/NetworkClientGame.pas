@@ -69,7 +69,7 @@ var
    Player: TPlayer;
    a, b: TVector2;
    i, d: Integer;
-   IsMine: Boolean;
+   IsMine, Moved: Boolean;
 begin
   if not VerifyPacket(sizeof(TMsg_NewPlayer), NetMessage^.m_cbSize, MsgID_NewPlayer) then
     Exit;
@@ -89,6 +89,7 @@ begin
   Player.HairColor := NewPlayerMsg.HairColor and $00FFFFFF;
   Player.JetColor := NewPlayerMsg.JetColor;
   Player.Team := NewPlayerMsg.Team;
+  Player.ApplyShirtColorFromTeam;
 
   Player.ControlMethod := HUMAN;
 
@@ -117,12 +118,17 @@ begin
   // Soldat 1.7.1 broadcasts the same NewPlayer message to everybody, there is no
   // "this is you" flag. The client recognises its own sprite by the name it sent
   // (the server renames duplicates to "Name(n)"); after a team change the server
-  // re-creates the sprite in the same slot.
+  // re-creates the sprite in the same slot (Moved: a team change, possibly one the
+  // server made, e.g. a script balancing the teams at the end of a round).
   IsMine := False;
+  Moved := False;
   if not DemoPlayer.Active then
   begin
     if (MySprite > 0) and (i = MySprite) then
-      IsMine := True
+    begin
+      IsMine := True;
+      Moved := True;
+    end
     else if (MySprite = 0) and ClientPlayerSent and (not ClientPlayerReceived) and
       IsOwnPlayerName(Player.Name) then
       IsMine := True;
@@ -169,12 +175,17 @@ begin
     HeartbeatTime := MainTickCounter;
     HeartbeatTimeWarnings := 0;
 
-    r_zoom.SetValue(0.0);  // Reset zoom
+    // a team change must not cancel the countdown to the next map or close the
+    // scoreboard shown at the end of a round
+    if not Moved then
+    begin
+      r_zoom.SetValue(0.0);  // Reset zoom
 
-    if MapChangeCounter < 999999999 then
-      MapChangeCounter := -60;
-    FragsMenuShow := False;
-    StatsMenuShow := False;
+      if MapChangeCounter < 999999999 then
+        MapChangeCounter := -60;
+      FragsMenuShow := False;
+      StatsMenuShow := False;
+    end;
   end;
 
   SpriteParts.OldPos[i] := NewPlayerMsg.Pos;
@@ -187,7 +198,9 @@ begin
     Sprite[i].Weapon := Guns[NOWEAPON];
     Sprite[i].SecondaryWeapon := Guns[NOWEAPON];
 
-    if MySprite > 0 then
+    // no weapon menu for a spectator (a server may make players spectators when
+    // the teams are full)
+    if (MySprite > 0) and (Player.Team <> TEAM_SPECTATOR) then
     begin
       GameMenuShow(LimboMenu);
       NewPlayerWeapon;

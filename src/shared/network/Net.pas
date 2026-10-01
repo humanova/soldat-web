@@ -951,6 +951,15 @@ begin
   PacketHeader := PMsgHeader(IncomingMsg^.m_pData);
   LastReceiveTick := MainTickCounter;
 
+  // players the server still sends news about (byte 3: player slot)
+  if IncomingMsg^.m_cbSize > 3 then
+    case PacketHeader.ID of
+      MsgID_NewPlayer, MsgID_ServerSpriteSnapshot, MsgID_ServerSpriteSnapshot_Major,
+      MsgID_ServerSkeletonSnapshot, MsgID_SpriteDeath, MsgID_Delta_Movement,
+      MsgID_Delta_MouseAim, MsgID_Delta_Weapons, MsgID_Delta_Helmet, MsgID_IdleAnimation:
+        NoteSpriteHeard(PByte(IncomingMsg^.m_pData)[3]);
+    end;
+
   case PacketHeader.ID of
     MsgID_PlayersList:
       ClientHandlePlayersList(IncomingMsg);
@@ -1113,8 +1122,19 @@ begin
   Result.DemoPlayer := Self.DemoPlayer;
 end;
 
+// Players in team games wear their team's shirt (the colours the 1.7.1 server uses
+// outside clan matches). The team decides, not the colour in the server's messages:
+// when a server script moves a joining player to another team ("team is full"),
+// NewPlayer still carries the shirt of the team the player asked for.
 procedure TPlayer.ApplyShirtColorFromTeam;
 begin
+  if IsTeamGame() then
+    case Self.Team of
+      TEAM_ALPHA: Self.ShirtColor := $FFD20F05;
+      TEAM_BRAVO: Self.ShirtColor := $FF050FD2;
+      TEAM_CHARLIE: Self.ShirtColor := $FFD2D205;
+      TEAM_DELTA: Self.ShirtColor := $FF05D205;
+    end;
 end;
 
 end.

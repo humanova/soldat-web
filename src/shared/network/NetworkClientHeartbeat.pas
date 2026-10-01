@@ -10,11 +10,42 @@ uses
   LogFile, Steam, Net, Sprites, Sound, Constants, GameStrings;
 
 procedure ClientHandleHeartBeat(NetMessage: PSteamNetworkingMessage_t);
+procedure NoteSpriteHeard(Num: Byte);
 
 implementation
 
 uses
   Client, NetworkUtils, NetworkClientConnection, Game, Demo, GameRendering, WebDownload, TraceLog;
+
+var
+  // heartbeats received so far, and the heartbeat count when the server last sent
+  // something about each player
+  HeartbeatSeq: Integer = 0;
+  SpriteHeardSeq: array[1..MAX_SPRITES] of Integer;
+  ListMismatches: Integer = 0;
+
+procedure NoteSpriteHeard(Num: Byte);
+begin
+  if (Num >= 1) and (Num <= MAX_SPRITES) then
+    SpriteHeardSeq[Num] := HeartbeatSeq;
+end;
+
+// The heartbeat does not name its players, so a lost PlayerDisconnect leaves the
+// client with a player the server no longer has, and every later heartbeat would
+// mismatch. Such a player gets no snapshots: drop the ones the server has not
+// mentioned for several heartbeats (spectators get no snapshots at all; keep them).
+procedure DropSilentPlayers;
+var
+  i: Integer;
+begin
+  for i := 1 to MAX_PLAYERS do
+    if Sprite[i].Active and (i <> MySprite) and (not Sprite[i].Player.DemoPlayer) and
+      (not Sprite[i].IsSpectator) and (HeartbeatSeq - SpriteHeardSeq[i] >= 4) then
+    begin
+      Debug('[NET] dropping player ' + IntToStr(i) + ' the server no longer has');
+      Sprite[i].Kill;
+    end;
+end;
 
 // Soldat 1.7.1 sends the scoreboard in three sizes (message 36/35/2 for up to
 // 8/16/32 active players). Entries are packed in slot order of active players:
@@ -23,7 +54,7 @@ uses
 procedure ClientHandleHeartBeat(NetMessage: PSteamNetworkingMessage_t);
 var
   Data: PByte;
-  N, c, i: Integer;
+  N, c, i, ServerCount, LocalCount: Integer;
   MapID: LongWord;
   OfsActive, OfsKills, OfsCaps, OfsTeam, OfsDeaths, OfsScore, OfsPing, OfsFlags: Integer;
   NewScore: array[TEAM_ALPHA..TEAM_DELTA] of Word;
@@ -54,24 +85,53 @@ begin
   OfsPing := OfsScore + 8;
   OfsFlags := OfsPing + N;
 
-  c := 0;
+  Inc(HeartbeatSeq);
+
+  // The entries belong to the server's players in slot order, so they only line up
+  // with ours while both lists agree; otherwise they would move kills and teams to
+  // other players. A player the client misses comes back with its next snapshot
+  // (see RequestUnknownPlayer).
+  ServerCount := 0;
+  while (ServerCount < N) and (Data[OfsActive + ServerCount] <> 0) do
+    Inc(ServerCount);
+  LocalCount := 0;
   for i := 1 to MAX_PLAYERS do
     if Sprite[i].Active and (not Sprite[i].Player.DemoPlayer) then
-    begin
-      if c >= N then
-        Break;
-      Sprite[i].Active := Data[OfsActive + c] <> 0;
-      Sprite[i].Player.Kills := RdWord(OfsKills + 2 * c);
-      Sprite[i].Player.Flags := Data[OfsCaps + c];
-      Sprite[i].Player.Team := Data[OfsTeam + c];
-      Sprite[i].Player.Deaths := RdWord(OfsDeaths + 2 * c);
-      Sprite[i].Player.Flags := Data[OfsFlags + c];
-      Sprite[i].Player.PingTicks := Data[OfsPing + c];
-      Sprite[i].Player.PingTime := Sprite[i].Player.PingTicks * 1000 div 60;
-      Sprite[i].Player.RealPing := Sprite[i].Player.PingTime;
-      Sprite[i].Player.ConnectionQuality := 100;
-      Inc(c);
-    end;
+      Inc(LocalCount);
+
+  if LocalCount <> ServerCount then
+  begin
+    Inc(ListMismatches);
+    Debug('[NET] heartbeat lists ' + IntToStr(ServerCount) + ' players, the client has ' +
+      IntToStr(LocalCount));
+    if (LocalCount > ServerCount) and (ListMismatches >= 3) then
+      DropSilentPlayers;
+  end
+  else
+    ListMismatches := 0;
+
+  if LocalCount = ServerCount then
+  begin
+    c := 0;
+    for i := 1 to MAX_PLAYERS do
+      if Sprite[i].Active and (not Sprite[i].Player.DemoPlayer) then
+      begin
+        Sprite[i].Player.Kills := RdWord(OfsKills + 2 * c);
+        Sprite[i].Player.Flags := Data[OfsCaps + c];
+        if Sprite[i].Player.Team <> Data[OfsTeam + c] then
+        begin
+          Sprite[i].Player.Team := Data[OfsTeam + c];
+          Sprite[i].Player.ApplyShirtColorFromTeam;
+        end;
+        Sprite[i].Player.Deaths := RdWord(OfsDeaths + 2 * c);
+        Sprite[i].Player.Flags := Data[OfsFlags + c];
+        Sprite[i].Player.PingTicks := Data[OfsPing + c];
+        Sprite[i].Player.PingTime := Sprite[i].Player.PingTicks * 1000 div 60;
+        Sprite[i].Player.RealPing := Sprite[i].Player.PingTime;
+        Sprite[i].Player.ConnectionQuality := 100;
+        Inc(c);
+      end;
+  end;
 
   for i := TEAM_ALPHA to TEAM_DELTA do
     NewScore[i] := RdWord(OfsScore + 2 * (i - TEAM_ALPHA));

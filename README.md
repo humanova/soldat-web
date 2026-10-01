@@ -21,7 +21,8 @@ node relay/server.mjs
 
 Open http://localhost:8080, set your name and colors, pick a server and press **Join**
 (or double-click the server). Links like `http://localhost:8080/?join=1.2.3.4:23073`
-pre-fill the address.
+pre-fill the address. With `?debug=1` the browser's developer console shows the game
+console and network messages.
 
 The first click in the game captures the mouse. Esc opens the in-game menu ("Exit to
 menu" returns to the server list). With "Full screen while playing" enabled, Chrome and

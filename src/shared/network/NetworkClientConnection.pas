@@ -201,7 +201,8 @@ begin
     UDP.Cipher.Encrypt(ChangeMsg.Team, 1);
     UDP.Cipher.Reset;
     UDP.SendData(ChangeMsg, SizeOf(ChangeMsg), k_nSteamNetworkingSend_Reliable);
-    RejoinTeam := SelTeam;
+    // RejoinTeam changes with the NewPlayer message that confirms the move: the
+    // server refuses a change to a team that is not smaller when it balances teams
     Exit;
   end;
 
@@ -490,6 +491,7 @@ begin
       NewPlayer.HairColor := PlayersListMsg.HairColor[i] or $FF000000;
       NewPlayer.JetColor := PlayersListMsg.JetColor[i];
       NewPlayer.Team := PlayersListMsg.Team[i];
+      NewPlayer.ApplyShirtColorFromTeam;
       NewPlayer.ControlMethod := HUMAN;
 
       NewPlayer.SecWep := 0;

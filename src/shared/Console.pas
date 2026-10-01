@@ -35,7 +35,8 @@ type
   end;
 
 implementation
-  uses {$IFDEF SERVER}Server,{$ELSE}Client,{$ENDIF} Game, LogFile, sysutils {$IFDEF SERVER}, Net, NetworkServerMessages {$IFDEF RCON}, Rcon{$ENDIF}{$ENDIF};
+  uses {$IFDEF SERVER}Server,{$ELSE}Client,{$ENDIF} Game, LogFile, sysutils {$IFDEF SERVER}, Net, NetworkServerMessages {$IFDEF RCON}, Rcon{$ENDIF}{$ENDIF}
+    {$IFDEF WEB}, TraceLog{$ENDIF};
 
 procedure TConsole.ScrollConsole;
 var
@@ -89,6 +90,11 @@ begin
     Exit;
 
   AddLineToLogFile(GameLog, AnsiString(What), ConsoleLogFileName);
+
+  {$IFDEF WEB}
+  // the page's ?debug parameter shows the game console in the browser console
+  Debug('[console] ' + UTF8Encode(What));
+  {$ENDIF}
 
   {$IFDEF SERVER}
   if TerminalColors then

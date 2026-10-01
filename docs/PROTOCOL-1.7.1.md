@@ -272,3 +272,20 @@ Request: `STARTFILES\r\n` then paths `maps/NAME.pms`, `scenery-gfx/*.{png,jpg,bm
 `textures/*.{png,...}` each `\r\n`, then `ENDFILES\r\n`.
 Response: `STARTFILES\r\n` + TotalSize:u32 BE + for each existing file: `path\r\n` + Size:u32 BE + bytes;
 then `ENDFILES\r\n`. Missing files are skipped.
+
+## Teams [V]
+* The server dresses players in team games in their team's shirt when it creates the sprite
+  (join and team change): Alpha $FFD20F05, Bravo $FF050FD2, Charlie $FFD2D205, Delta $FF05D205.
+  With `Clanmatch=1` it copies shirt and pants of a teammate instead.
+* PlayerInfo: the server creates the sprite with the requested team and only then asks the
+  scripts (`Game.Teams[n].OnBeforeJoin`, returns the team) where the player goes. A script that
+  sends the player elsewhere ("team is full") leaves the requested team's shirt in NewPlayer
+  (seen: team bravo, shirt $00D20F05). The client therefore derives team shirts from the team.
+* A team change (ChangeTeam 63 accepted, `/setteamN`, script `Player.Team := n`) re-creates the
+  sprite in the same slot: one NewPlayer with the new team and shirt, no PlayerDisconnect. During a
+  map change countdown the server sends MapChange again afterwards.
+* With `Balance_Teams=1` the server refuses a change to a team that is not smaller than the
+  player's own and only sends the text "<Team> team is full". At join it does not balance; the
+  client joins the smaller team itself (or shows the team menu when they are equal).
+* Heartbeat entries are packed: after the player in slot 1 left, `Active=[1,1,0..]`,
+  `Team=[2,5,0..]` for slots 2 and 3. They only match the client's players while both lists agree.
