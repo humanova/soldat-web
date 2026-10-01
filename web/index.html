@@ -4,22 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Soldat Web</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23c9a227'/%3E%3C/svg%3E">
+<meta name="description" content="Soldat 1.7.1 in the browser. Join the official servers, no install.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d4a72c'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app" hidden>
-  <header>
-    <h1>SOLDAT <span class="ver">1.7.1 · browser</span></h1>
-    <span id="status" class="status"></span>
+  <header class="top">
+    <h1 class="brand">
+      <span id="logo" class="logo" hidden><img id="logo-l" alt=""><img id="logo-r" alt=""></span>
+      <span id="wordmark" class="wordmark">SOLDAT</span>
+      <span class="tagline">1.7.1 in your browser</span>
+    </h1>
+    <nav class="links" aria-label="Links">
+      <a href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
+      <a href="https://store.steampowered.com/app/638490/Soldat/" target="_blank" rel="noopener">Steam</a>
+      <a href="https://github.com/humanova" target="_blank" rel="noopener" class="gh">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        humanova
+      </a>
+    </nav>
   </header>
+
   <main>
-    <section class="panel" id="servers">
+    <section class="panel" id="servers" aria-labelledby="servers-title">
+      <div class="panel-head">
+        <h2 id="servers-title">Servers</h2>
+        <span id="status" class="status" role="status"></span>
+        <button id="refresh" type="button" class="ghost" title="Refresh the list">Refresh</button>
+      </div>
       <div class="toolbar">
-        <input id="filter" type="search" placeholder="Filter servers, maps, countries" autocomplete="off">
+        <input id="filter" type="search" placeholder="Search servers, maps, countries" autocomplete="off" aria-label="Search servers">
         <label class="check"><input id="hide-empty" type="checkbox"> Hide empty</label>
         <label class="check"><input id="hide-full" type="checkbox"> Hide full</label>
-        <button id="refresh" type="button">Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -36,59 +53,87 @@
         </table>
         <p id="list-empty" class="empty" hidden></p>
       </div>
-      <form id="direct" class="direct" autocomplete="off">
+      <form id="direct" class="joinbar" autocomplete="off">
         <label>Address <input id="address" placeholder="host:port" spellcheck="false"></label>
-        <label>Password <input id="password" type="password" placeholder="optional"></label>
-        <button id="join" type="submit" class="primary">Join</button>
+        <label>Password <input id="password" type="password" placeholder="if the server has one"></label>
+        <div class="actions">
+          <button id="quick" type="button" class="ghost" title="Join the busiest server that has room">Quick join</button>
+          <button id="join" type="submit" class="primary">Join</button>
+        </div>
       </form>
+      <p class="hint">Double-click a server to join. Esc in the game opens the menu, “Exit to menu” brings you back here.</p>
     </section>
-    <aside class="panel" id="player">
-      <h2>Player</h2>
-      <label>Name <input id="p-name" maxlength="23" spellcheck="false"></label>
-      <div class="colors">
-        <label>Shirt <input id="p-shirt" type="color"></label>
-        <label>Pants <input id="p-pants" type="color"></label>
-        <label>Skin <input id="p-skin" type="color"></label>
-        <label>Hair <input id="p-hair" type="color"></label>
-        <label>Jets <input id="p-jet" type="color"></label>
-      </div>
-      <label>Hair style
-        <select id="p-hairstyle">
-          <option value="0">None</option><option value="1">Dreadlocks</option>
-          <option value="2">Punk</option><option value="3">Mr. T</option>
-          <option value="4">Normal</option>
-        </select>
-      </label>
-      <label>Head
-        <select id="p-headstyle">
-          <option value="0">Nothing</option><option value="1">Helmet</option><option value="2">Hat</option>
-        </select>
-      </label>
-      <label>Chain
-        <select id="p-chainstyle">
-          <option value="0">None</option><option value="1">Silver chain</option><option value="2">Gold chain</option>
-        </select>
-      </label>
-      <h2>Settings</h2>
-      <label>Mouse sensitivity <input id="s-sens" type="range" min="0.1" max="3" step="0.05"><output id="s-sens-v"></output></label>
-      <label>Volume <input id="s-vol" type="range" min="0" max="100" step="1"><output id="s-vol-v"></output></label>
-      <label class="check"><input id="s-fullscreen" type="checkbox"> Full screen while playing</label>
-      <details>
-        <summary>Controls</summary>
-        <p>A/D move, W jump, S crouch, X prone, right mouse jet, left mouse fire, Q switch weapon,
-          R reload, F drop weapon, E grenade, Space throw flag, T chat, Y team chat, V radio,
-          F1 scores, Esc menu. The browser keeps a few shortcuts (like Ctrl+W) for itself.</p>
-      </details>
-      <details>
-        <summary>Storage</summary>
-        <p>Settings and maps downloaded from servers are kept in this browser.</p>
-        <button id="clear-downloads" type="button">Delete downloaded maps</button>
-      </details>
+
+    <aside class="side">
+      <section class="panel" id="player" aria-labelledby="player-title">
+        <h2 id="player-title">Your gostek</h2>
+        <div class="stage">
+          <canvas id="gostek" role="img" aria-label="Preview of your gostek"></canvas>
+        </div>
+        <label class="field">Name <input id="p-name" maxlength="23" spellcheck="false"></label>
+        <div class="swatches">
+          <label>Shirt <input id="p-shirt" type="color"></label>
+          <label>Pants <input id="p-pants" type="color"></label>
+          <label>Skin <input id="p-skin" type="color"></label>
+          <label>Hair <input id="p-hair" type="color"></label>
+          <label>Jets <input id="p-jet" type="color"></label>
+        </div>
+        <div class="cycler" data-key="hairstyle">
+          <span>Hair</span>
+          <button type="button" class="prev" aria-label="Previous hair style">‹</button>
+          <output aria-live="polite"></output>
+          <button type="button" class="next" aria-label="Next hair style">›</button>
+        </div>
+        <div class="cycler" data-key="headstyle">
+          <span>Head</span>
+          <button type="button" class="prev" aria-label="Previous headgear">‹</button>
+          <output aria-live="polite"></output>
+          <button type="button" class="next" aria-label="Next headgear">›</button>
+        </div>
+        <div class="cycler" data-key="chainstyle">
+          <span>Chain</span>
+          <button type="button" class="prev" aria-label="Previous chain">‹</button>
+          <output aria-live="polite"></output>
+          <button type="button" class="next" aria-label="Next chain">›</button>
+        </div>
+      </section>
+
+      <section class="panel" id="settings" aria-labelledby="settings-title">
+        <h2 id="settings-title">Settings</h2>
+        <label class="field">Mouse sensitivity <output id="s-sens-v"></output>
+          <input id="s-sens" type="range" min="0.1" max="3" step="0.05"></label>
+        <label class="field">Volume <output id="s-vol-v"></output>
+          <input id="s-vol" type="range" min="0" max="100" step="1"></label>
+        <label class="check"><input id="s-fullscreen" type="checkbox"> Full screen while playing</label>
+        <details>
+          <summary>Controls</summary>
+          <dl class="keys">
+            <dt><kbd>A</kbd> <kbd>D</kbd></dt><dd>move</dd>
+            <dt><kbd>W</kbd></dt><dd>jump</dd>
+            <dt><kbd>S</kbd> <kbd>X</kbd></dt><dd>crouch, prone</dd>
+            <dt>right mouse</dt><dd>jets</dd>
+            <dt>left mouse</dt><dd>shoot</dd>
+            <dt><kbd>E</kbd></dt><dd>grenade</dd>
+            <dt><kbd>Q</kbd> <kbd>R</kbd> <kbd>F</kbd></dt><dd>switch, reload, drop weapon</dd>
+            <dt><kbd>Space</kbd></dt><dd>throw the flag</dd>
+            <dt><kbd>T</kbd> <kbd>Y</kbd> <kbd>V</kbd></dt><dd>chat, team chat, radio</dd>
+            <dt><kbd>F1</kbd> <kbd>Esc</kbd></dt><dd>scores, menu</dd>
+          </dl>
+          <p>The browser keeps a few shortcuts (like Ctrl+W) unless the game runs full screen.</p>
+        </details>
+        <details>
+          <summary>Storage</summary>
+          <p>Settings and maps downloaded from servers stay in this browser.</p>
+          <button id="clear-downloads" type="button" class="ghost">Delete downloaded maps</button>
+        </details>
+      </section>
     </aside>
   </main>
+
   <footer>
-    Soldat © Michal Marcinkowski and contributors · game data CC BY 4.0 ·
-    connects to official 1.7.1 servers through a WebSocket relay
+    <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> © Transhuman Design ·
+    client code rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
+    web port by <a href="https://github.com/humanova" target="_blank" rel="noopener">humanova</a>
   </footer>
 </div>
 
@@ -99,7 +144,7 @@
 
 <div id="loading">
   <div class="box">
-    <h1>SOLDAT</h1>
+    <div class="wordmark">SOLDAT</div>
     <p id="loading-text">Loading...</p>
     <div class="bar"><div id="loading-bar"></div></div>
   </div>

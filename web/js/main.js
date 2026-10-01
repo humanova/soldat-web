@@ -1,5 +1,6 @@
 // Page logic: loading screen, server browser, player settings, entering/leaving the game.
 import { SoldatRuntime } from './runtime.js';
+import { GostekPreview, WEAPONS } from './gostek.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -10,7 +11,13 @@ const DEFAULTS = {
   name: 'Major', shirt: '#304289', pants: '#1f8957', skin: '#e6b478', hair: '#000000',
   jet: '#ffff00', hairstyle: 1, headstyle: 1, chainstyle: 2, sens: 0.8, volume: 50,
   fullscreen: true, hideEmpty: false, hideFull: false, sort: 'NumPlayers', asc: false,
-  last: '',
+  last: '', previewWeapon: 2,
+};
+// names of the look options, by their cl_player_* value
+const STYLES = {
+  hairstyle: ['None', 'Dreadlocks', 'Punk', 'Mr. T', 'Normal'],
+  headstyle: ['Nothing', 'Helmet', 'Hat'],
+  chainstyle: ['None', 'Silver chain', 'Gold chain'],
 };
 // defaults of earlier versions of this page: all gray
 const OLD_GRAY = '#8f8f8f';
@@ -53,6 +60,7 @@ function setStatus(text, error = false) {
 
 const canvas = $('canvas');
 let inGame = false;
+let preview = null;  // gostek preview of the menu, once the game data is loaded
 
 const game = new SoldatRuntime(canvas, {
   relayUrl,
@@ -114,6 +122,7 @@ function applySettings() {
 
 async function enterGameUi() {
   inGame = true;
+  if (preview) preview.stop();
   $('app').hidden = true;
   $('game').hidden = false;
   if (settings.fullscreen && document.documentElement.requestFullscreen && !document.fullscreenElement) {
@@ -138,6 +147,7 @@ function leaveGameUi() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $('game').hidden = true;
   $('app').hidden = false;
+  if (preview) preview.start();
   if (wasInGame && !$('status').classList.contains('error')) refreshServers();
 }
 
@@ -239,13 +249,26 @@ function renderServers() {
       name.appendChild(span);
     }
     const map = document.createElement('td'); map.textContent = s.CurrentMap;
-    const mode = document.createElement('td'); mode.textContent = s.GameStyle;
-    const pl = document.createElement('td'); pl.className = 'num'; pl.textContent = `${s.NumPlayers}/${s.MaxPlayers}`;
+    const mode = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = 'mode ' + String(s.GameStyle || '').toLowerCase();
+    badge.textContent = s.GameStyle || '?';
+    mode.appendChild(badge);
+    const pl = document.createElement('td'); pl.className = 'num';
+    const count = document.createElement('span'); count.className = 'players';
+    const meter = document.createElement('span'); meter.className = 'meter';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.min(100, (100 * (s.NumPlayers || 0)) / (s.MaxPlayers || 1))}%`;
+    meter.appendChild(fill);
+    count.append(`${s.NumPlayers}/${s.MaxPlayers}`, meter);
+    pl.appendChild(count);
     const cc = document.createElement('td'); cc.textContent = s.Country || '';
+    if (!s.NumPlayers) tr.classList.add('empty-server');
     tr.append(name, map, mode, pl, cc);
     tr.addEventListener('click', () => {
       selected = id;
       $('address').value = id;
+      showMapOnStage(s.CurrentMap);
       for (const r of body.children) r.classList.remove('sel');
       tr.classList.add('sel');
     });
@@ -260,6 +283,17 @@ function renderServers() {
   empty.textContent = servers.length ? 'No servers match the filter.' : 'No servers listed.';
 }
 
+// the server with the most human players that has room and no password
+function quickJoin() {
+  const open = servers.filter(s => !s.Private && s.NumPlayers < s.MaxPlayers);
+  if (!open.length) { setStatus('No open server to join right now.', true); return; }
+  const humans = (s) => (s.NumPlayers || 0) - (s.NumBots || 0);
+  open.sort((a, b) => humans(b) - humans(a) || b.NumPlayers - a.NumPlayers);
+  const s = open[0];
+  $('address').value = `${s.IP}:${s.Port}`;
+  join(s.IP, s.Port, '');
+}
+
 function parseAddress(text) {
   const m = text.trim().match(/^(?:soldat:\/\/)?\[?([^\]\s/]+?)\]?(?::(\d+))?\/?$/i);
   if (!m) return null;
@@ -271,18 +305,34 @@ function parseAddress(text) {
 function bindSettings() {
   const map = [
     ['p-name', 'name'], ['p-shirt', 'shirt'], ['p-pants', 'pants'], ['p-skin', 'skin'],
-    ['p-hair', 'hair'], ['p-jet', 'jet'], ['p-hairstyle', 'hairstyle'], ['p-headstyle', 'headstyle'],
-    ['p-chainstyle', 'chainstyle'], ['s-sens', 'sens'], ['s-vol', 'volume'],
+    ['p-hair', 'hair'], ['p-jet', 'jet'], ['s-sens', 'sens'], ['s-vol', 'volume'],
   ];
   for (const [id, key] of map) {
     const el = $(id);
     el.value = settings[key];
     el.addEventListener('input', () => {
-      settings[key] = el.type === 'range' || el.tagName === 'SELECT' ? Number(el.value) : el.value;
+      settings[key] = el.type === 'range' ? Number(el.value) : el.value;
       saveSettings();
       showRanges();
+      if (preview) preview.setLook(settings);
     });
   }
+  for (const el of document.querySelectorAll('.cycler[data-key]')) {
+    const key = el.dataset.key;
+    const names = STYLES[key];
+    const out = el.querySelector('output');
+    const show = () => { out.textContent = names[settings[key]] || names[0]; };
+    const step = (d) => {
+      settings[key] = ((settings[key] | 0) + d + names.length) % names.length;
+      saveSettings();
+      show();
+      if (preview) preview.setLook(settings);
+    };
+    el.querySelector('.prev').addEventListener('click', () => step(-1));
+    el.querySelector('.next').addEventListener('click', () => step(1));
+    show();
+  }
+  $('quick').addEventListener('click', quickJoin);
   $('s-fullscreen').checked = settings.fullscreen;
   $('s-fullscreen').addEventListener('change', () => { settings.fullscreen = $('s-fullscreen').checked; saveSettings(); });
   $('hide-empty').checked = settings.hideEmpty;
@@ -319,6 +369,110 @@ function showRanges() {
   $('s-vol-v').textContent = `${settings.volume | 0}%`;
 }
 
+// ---------- the gostek stands on the selected server's map ----------
+
+const STAGE_MAP = 'ctf_Ash';
+
+// sky and ground of a map, from its file header (MapFile.pas): version, name, texture,
+// then the sky's top and bottom colors (BGRA). The game spreads the two colors over the
+// whole map height, so on screen the sky is nearly one color: the stage takes it from
+// the middle. Maps come from the game data or from earlier downloads.
+function mapScenery(name) {
+  const path = `maps/${name}.pms`;
+  const pack = game.archives.get('soldat/soldat.smod');
+  const entry = pack && pack.get(path.toLowerCase());
+  const file = !entry && game.vfs.lookup('/user/downloads/' + path, { caseInsensitive: true });
+  const b = entry ? entry.data : file && file.type === 'file' ? file.bytes() : null;
+  if (!b || b.length < 80) return null;
+  let o = 4 + 1 + 38;
+  const texture = String.fromCharCode(...b.subarray(o + 1, o + 1 + Math.min(b[o], 24)));
+  o += 1 + 24;
+  const mix = (i) => Math.round(b[o + i] + (b[o + 4 + i] - b[o + i]) * 0.45);
+  const sky = `rgb(${mix(2)}, ${mix(1)}, ${mix(0)})`;
+  // how many world units the texture repeats over, from the polygons' texture coordinates
+  // (vertices: x, y, z, rhw, color, u, v; then 3 normals and the polygon type)
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  let p = o + 8 + 4 + 4 + 4;
+  const count = dv.getInt32(p, true);
+  p += 4;
+  const repeats = [];
+  for (let i = 0; i < count && p + 3 * 28 + 37 <= b.length; i++, p += 37) {
+    const v = [];
+    for (let k = 0; k < 3; k++, p += 28) v.push([dv.getFloat32(p, true), dv.getFloat32(p + 20, true)]);
+    for (const [a, c] of [[0, 1], [0, 2], [1, 2]]) {
+      const dx = v[c][0] - v[a][0], du = v[c][1] - v[a][1];
+      if (Math.abs(du) > 1e-4 && Math.abs(dx) > 5) repeats.push(Math.abs(dx / du));
+    }
+  }
+  repeats.sort((x, y) => x - y);
+  return { texture, sky, repeat: repeats.length ? repeats[repeats.length >> 1] : 128 };
+}
+
+function showMapOnStage(name) {
+  const m = (name && mapScenery(name)) || mapScenery(STAGE_MAP);
+  if (!m) return;
+  const stage = document.querySelector('.stage');
+  const tex = game.findAsset('textures/' + m.texture);
+  stage.style.backgroundColor = m.sky;
+  stage.style.setProperty('--ground', tex ? `url("${game.assetBase}${encodeURI(tex)}")` : 'none');
+  // the preview draws 33 world units over the stage's height (gostek.js)
+  stage.style.setProperty('--ground-size', `${Math.round((m.repeat * stage.clientHeight) / 33)}px`);
+}
+
+// ---------- logo and gostek preview ----------
+
+function packImageUrl(path) {
+  const pack = game.archives.get('soldat/soldat.smod');
+  const e = pack && pack.get(path);
+  return e && e.data ? URL.createObjectURL(new Blob([e.data], { type: 'image/png' })) : null;
+}
+
+// the title from the game's own interface graphics
+function showLogo() {
+  const l = packImageUrl('interface-gfx/title-l.png');
+  const r = packImageUrl('interface-gfx/title-r.png');
+  if (!l || !r) return;
+  $('logo-l').src = l;
+  $('logo-r').src = r;
+  $('logo').hidden = false;
+  $('wordmark').hidden = true;
+}
+
+async function setupPreview() {
+  try {
+    const p = new GostekPreview($('gostek'), game.archives.get('soldat/soldat.smod'));
+    await p.load();
+    preview = p;
+  } catch (e) {
+    console.warn('Gostek preview unavailable:', e);
+    document.querySelector('.stage').hidden = true;
+    return;
+  }
+  // number keys pick his weapon, like the game's weapon menu (1 Desert Eagles ... 0 Minigun)
+  window.addEventListener('keydown', (e) => {
+    const m = /^Digit(\d)$/.exec(e.code);
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+    if (!m || inGame || typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    settings.previewWeapon = (Number(m[1]) + 9) % WEAPONS.length;
+    preview.setWeapon(settings.previewWeapon);
+    saveSettings();
+  });
+  // left button shoots, right button holds the jets (like in the game)
+  const stage = $('gostek');
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.button === 0) preview.fire();
+    if (e.button === 2) { preview.setJets(true); stage.setPointerCapture(e.pointerId); }
+  });
+  stage.addEventListener('pointerup', (e) => { if (e.button === 2) preview.setJets(false); });
+  stage.addEventListener('pointercancel', () => preview.setJets(false));
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
+  $('p-jet').addEventListener('input', () => preview.showJets());
+  window.addEventListener('pointermove', (e) => { if (!inGame) preview.aimAt(e.clientX, e.clientY); });
+  preview.setLook(settings);
+  preview.setWeapon(settings.previewWeapon | 0);
+  if (!inGame) preview.start();
+}
+
 // ---------- boot ----------
 
 async function boot() {
@@ -344,6 +498,9 @@ async function boot() {
     $('loading').hidden = true;
     $('app').hidden = false;
     bindSettings();
+    showLogo();
+    showMapOnStage(null);
+    setupPreview();
     refreshServers();
     setInterval(() => { if (!inGame && !document.hidden) refreshServers(); }, 30000);
     const direct = params.get('join');
