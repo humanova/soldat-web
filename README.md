@@ -1,7 +1,7 @@
 # Soldat Web
 
 Soldat 1.7.1 in your browser, on the official public servers.
-Pick a server from the same list the game shows and press Join.
+See the [demo video]().
 
 ![A CTF round on ctf_Ash](docs/screenshots/battle.jpg)
 
@@ -35,8 +35,6 @@ Then open <http://localhost:8080>.
 A few extras:
 
 - `http://localhost:8080/?join=1.2.3.4:23073` fills in a server address.
-- `?debug=1` prints the game console and network messages to the browser's developer
-  console.
 - With "Full screen while playing" on, Chrome and Edge let the game have keys like Esc
   and Ctrl+W.
 - `Alt+F3` in the game shows the frame rate and ping.
@@ -47,16 +45,12 @@ Everything you do in a round: moving, jets, all weapons and grenades, team and
 spectator mode, chat, team chat, radio, the scoreboard and kill feed, and map changes.
 Joining works for any game mode.
 
-Vote menus and
-kick or ban messages work like in the original but haven't been tested end to end.
-
 Maps the browser doesn't have, custom maps included, are downloaded from the game server
 the same way the original client does it. Settings and downloaded maps stay in your
 browser.
 
 The game renders at your screen's resolution and refresh rate, and keeps the original's
-look: the same FreeType version for text, the same texture settings, and the compressed
-sounds decoded the way SDL decodes them.
+look: the same texture settings, and the compressed sounds decoded the way SDL decodes them.
 
 **Doesn't support**: Recording and playing demos.
 
@@ -115,15 +109,10 @@ python3 tools/build-assets.py --base assets-src/base --v171 assets-src/app --out
 ./build.sh                          # -> web/soldat.wasm
 ```
 
-Homebrew also runs on Linux, but this project's C build defaults use its macOS install
-paths. Use your distribution's packages and the Linux command above, or pass the matching
-`LLVM` and `WASI_SYSROOT` paths for your Homebrew installation.
-
 `tools/setup-fpc.sh` builds a pinned Free Pascal trunk commit with one small patch for
 its WebAssembly linker. Set `FPCROOT=...` for `build.sh` if you install it elsewhere.
 
-About the game data: the pack prefers the files of the official 1.7.1 download
-(freeware, © Transhuman Design, all rights reserved), because that's what servers run.
+The pack prefers the files of the official 1.7.1 download (freeware, © Transhuman Design, all rights reserved), because that's what servers run.
 The [base game content](https://github.com/opensoldat/base) is CC BY 4.0. For a pack you
 can share freely, leave out `--v171`: anything a map needs that the base set lacks is then
 downloaded from the game server, like for any custom map.
@@ -134,10 +123,10 @@ downloaded from the game server, like for any custom map.
 ```
  browser                                   relay (Node.js)              Soldat 1.7.1 server
  ┌───────────────────────────────┐        ┌──────────────────┐         ┌──────────────────┐
- │ soldat.wasm (Pascal client)   │  WS    │ /relay: WS <-> UDP│  UDP    │ game port        │
- │  WebGL2 / WebAudio / input    │<──────>│ file server proxy │<──────> │ port+10: files   │
- │ js/: WASI FS, SDL, GL, AL,    │  HTTP  │ /api/servers      │  HTTPS  │ lobby API        │
- │      PhysFS, net             │<──────>│ static files      │<──────> │                  │
+ │ soldat.wasm (Pascal client)   │  WS    │/relay: WS <-> UDP│  UDP    │ game port        │
+ │  WebGL2 / WebAudio / input    │<──────>│ file server proxy│<──────> │ port+10: files   │
+ │ js/: WASI FS, SDL, GL, AL,    │  HTTP  │   /api/servers   │  HTTPS  │ lobby API        │
+ │      PhysFS, net              │<──────>│   static files   │<──────> │                  │
  └───────────────────────────────┘        └──────────────────┘         └──────────────────┘
 ```
 
