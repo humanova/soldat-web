@@ -30,7 +30,7 @@ Then open <http://localhost:8080>.
 2. Pick a server and press **Join**, or double-click it. **Quick join** takes you to the
    busiest server that has room.
 
-![The menu: server list and soldier preview](docs/screenshots/menu.png)
+![The menu: server list and gostek preview](docs/screenshots/menu.png)
 
 A few extras:
 
@@ -60,7 +60,7 @@ sounds decoded the way SDL decodes them.
 
 **Doesn't support**: Recording and playing demos.
 
-![Respawning, with the weapon menu open](docs/screenshots/weapons.jpg)
+![A CTF round on ctf_Lanubya](docs/screenshots/lanubya.jpg)
 
 ## Host it for others
 
@@ -164,7 +164,8 @@ plus the web port by [humanova](https://github.com/humanova).
 
 The game data is not covered by that license: `web/soldat.smod` and `web/assets/` hold
 files of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
-[base game content](https://github.com/opensoldat/base) (CC BY 4.0).
+[base game content](https://github.com/opensoldat/base) (CC BY 4.0). The menu backdrop
+`web/backdrop.jpg` and the screenshots are pictures of the game.
 
 Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), stb_image
 (public domain) and FreeType (FreeType License). Portions of this software are copyright
