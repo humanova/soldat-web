@@ -58,7 +58,7 @@ uses
 
   uses
     {$IFNDEF SERVER}
-    Gfx, Sound, GameRendering, Sparks,
+    Gfx, Sound, GameRendering, Sparks, {$IFDEF SPECTATOR}Spectator,{$ENDIF}
     {$ELSE}
       {$IFDEF SCRIPT}
       ScriptDispatcher,
@@ -865,6 +865,8 @@ begin
                   mainconsole.console(Sprite[HoldingSprite].Player.Name + ' ' +
                     'scores for Alpha Team', ALPHA_MESSAGE_COLOR);
                   Inc(Sprite[HoldingSprite].Player.ScoresPerSecond);
+                  {$ELSEIF DEFINED(SPECTATOR)}
+                  SpectatorFlag(FLAG_SCORED, TEAM_ALPHA, HoldingSprite);
                   {$ELSE}
                   BigMessage(_('Alpha Team Scores!'), CAPTURECTFMESSAGEWAIT,
                     ALPHA_MESSAGE_COLOR);
@@ -896,6 +898,8 @@ begin
                   mainconsole.console(Sprite[HoldingSprite].Player.Name + ' ' +
                     'scores for Bravo Team', BRAVO_MESSAGE_COLOR);
                   Inc(Sprite[HoldingSprite].Player.ScoresPerSecond);
+                  {$ELSEIF DEFINED(SPECTATOR)}
+                  SpectatorFlag(FLAG_SCORED, TEAM_BRAVO, HoldingSprite);
                   {$ELSE}
                   BigMessage(_('Bravo Team Scores!'), CAPTURECTFMESSAGEWAIT,
                     BRAVO_MESSAGE_COLOR);
@@ -1885,8 +1889,16 @@ begin
               {$ELSE}
               if SmallCapText <> '' then
               begin
+                {$IFDEF SPECTATOR}
+                if (sv_gamemode.Value in [GAMESTYLE_CTF, GAMESTYLE_INF]) and
+                  (Sprite[j].Player.Team = Style) then
+                  SpectatorFlag(FLAG_RETURNED, Style, j)
+                else
+                  SpectatorFlag(FLAG_TAKEN, Style, j);
+                {$ELSE}
                 BigMessage(BigCapText, CAPTUREMESSAGEWAIT, CapColor);
                 mainconsole.console(WideFormat(SmallCapText, [Sprite[j].Player.Name]), CapColor);
+                {$ENDIF}
               end;
               {$ENDIF}
             end;

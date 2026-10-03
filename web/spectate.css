@@ -25,6 +25,10 @@
   --bravo: #3f74e0;
   --charlie: #d6c33a;
   --delta: #3fb35a;
+  --alpha-text: #ff8a7e;   /* the team colours on dark panels */
+  --bravo-text: #8ab0ff;
+  --charlie-text: #f4e27a;
+  --delta-text: #8ee09e;
   --glass: rgba(45, 54, 70, .9);
   color-scheme: dark;
 }
@@ -137,83 +141,113 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 #watch.idle .dock { transform: translate(-50%, 8px); }
 #watch.idle #canvas { cursor: none; }
 
-.icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; background: none;
+.icon-btn { position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; background: none;
   border: 0; color: var(--text); font-size: 20px; line-height: 1; }
 .icon-btn:hover { background: rgba(255, 255, 255, .1); }
 .icon-btn svg { width: 19px; height: 19px; }
+.icon-btn[aria-expanded="true"] { background: var(--green); }
+.unread { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
 
-.topbar { position: absolute; left: 0; right: 0; top: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+.topbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 6px max(8px, env(safe-area-inset-right)) 20px max(8px, env(safe-area-inset-left));
   background: linear-gradient(rgba(36, 43, 56, .82), rgba(36, 43, 56, 0)); pointer-events: none; }
 .topbar > * { pointer-events: auto; }
-.topbar #back { justify-self: start; position: absolute; left: max(8px, env(safe-area-inset-left)); top: 6px; }
-.channel-id { grid-column: 1; display: flex; align-items: center; gap: 9px; min-width: 0; margin-left: 42px;
+.topbar #back { flex: none; }
+.channel-id { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: calc(50vw - 230px); margin-right: auto;
   font-size: 14px; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
 .tally { background: var(--green-lo); color: var(--green-text); font-size: 11px; letter-spacing: .1em; padding: 2px 6px 1px; text-shadow: none; }
 .ch-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-delay { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.topbar-end { grid-column: 3; justify-self: end; display: flex; gap: 2px; }
+.topbar-end { display: flex; gap: 2px; }
 
-.scorebug { grid-column: 2; display: flex; align-items: stretch; height: 32px; background: var(--glass);
-  border: 1px solid var(--line); overflow: hidden; font-variant-numeric: tabular-nums; }
-.scorebug .team { display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 12px; letter-spacing: .1em; color: var(--muted); }
-.scorebug .team b { font-size: 19px; font-weight: 400; letter-spacing: 0; color: var(--text); }
-.scorebug .team.t1 { border-left: 4px solid var(--alpha); }
-.scorebug .team.t2 { border-right: 4px solid var(--bravo); flex-direction: row-reverse; }
-.scorebug .team.t3 { border-left: 4px solid var(--charlie); }
-.scorebug .team.t4 { border-right: 4px solid var(--delta); flex-direction: row-reverse; }
-.scorebug .clock { display: flex; align-items: center; padding: 0 12px; background: var(--deep); font-size: 15px; }
-.scorebug .leader { display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; }
-.scorebug .leader b { font-weight: 400; color: var(--green-text); }
-.scorebug .flag { width: 12px; height: 12px; }
+/* the score and the flag news: on screen all the time, like a broadcast */
+.hud-top { position: absolute; left: 50%; top: max(6px, env(safe-area-inset-top)); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; z-index: 1; }
+.scorebug { display: flex; flex-direction: column; font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .45)); }
+.sb-row { display: flex; align-items: stretch; height: 42px; }
+.side, .leader { display: flex; align-items: stretch; }
+.clock ~ .side { flex-direction: row-reverse; }
+.side.t1 { --tc: var(--alpha); }
+.side.t2 { --tc: var(--bravo); }
+.side.t3 { --tc: var(--charlie); }
+.side.t4 { --tc: var(--delta); }
+.tname { display: flex; align-items: center; padding: 0 12px; background: var(--tc, var(--green-lo)); color: #fff;
+  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 1px 1px rgba(0, 0, 0, .35); }
+.score { display: flex; align-items: center; justify-content: center; min-width: 50px; padding: 0 10px;
+  background: rgba(36, 43, 56, .94); color: #fff; font-size: 27px; font-weight: 700; }
+.clock { display: flex; align-items: center; padding: 0 14px; background: var(--deep); color: var(--text); font-size: 17px;
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.leader .who { display: flex; align-items: center; padding: 0 10px; background: rgba(36, 43, 56, .94); font-size: 14px;
+  max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leader .score { min-width: 40px; padding-left: 0; color: var(--green-text); }
+.sb-flags { display: grid; grid-template-columns: 1fr auto 1fr; background: rgba(36, 43, 56, .88); font-size: 12px;
+  border-top: 1px solid var(--line); }
+.fstat { display: flex; align-items: center; gap: 5px; padding: 3px 10px; color: var(--muted); white-space: nowrap;
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.sb-flags > :last-child { justify-content: flex-end; }
+.fstat .flag { width: 13px; height: 13px; flex: none; }
+.fstat.taken { color: #fff; font-weight: 700; }
+.fstat.taken .flag { animation: blink 1s steps(2, jump-none) infinite; }
+.fstat.dropped { color: var(--orange); }
+@keyframes blink { 50% { opacity: .25; } }
+
+.banners { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.banner { display: flex; align-items: center; gap: 7px; padding: 5px 14px 5px 10px; background: var(--glass);
+  border-left: 4px solid var(--c); font-size: 15px; white-space: nowrap; animation: drop-in .25s ease-out;
+  transition: opacity .4s, transform .4s; text-shadow: 0 1px 1px rgba(0, 0, 0, .4); }
+.banner b { font-weight: 700; }
+.banner .flag { width: 16px; height: 16px; flex: none; }
+.banner.score { padding: 7px 18px 7px 14px; font-size: 16px; border-left-width: 6px; }
+.banner .big { color: #fff; background: var(--c); margin: -7px 4px -7px -14px; padding: 7px 12px; font-size: 18px;
+  font-weight: 700; letter-spacing: .08em; text-transform: uppercase; align-self: stretch; display: flex; align-items: center; }
+.banner.gone { opacity: 0; transform: translateY(-6px); }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-8px); } }
+
+/* the followed player, bottom left */
+.card { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+  width: 230px; padding: 8px 12px 7px; background: var(--glass); border-left: 4px solid var(--c); pointer-events: none;
+  font-variant-numeric: tabular-nums; }
+.c-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.c-top .flag { width: 15px; height: 15px; flex: none; }
+.c-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-hp { height: 6px; margin: 6px 0 5px; background: var(--deep); }
+.c-hp i { display: block; height: 100%; background: var(--green); transition: width .25s; }
+.c-hp.low i { background: var(--orange); }
+.c-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+.c-weapon { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.dead .c-name { color: var(--muted); }
 
 .notice { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); background: var(--glass);
   border: 1px solid var(--line); padding: 12px 18px; font-size: 14px; max-width: min(520px, 86vw); text-align: center; pointer-events: none; }
 
 .dock { position: absolute; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-  display: flex; align-items: center; gap: 6px; padding: 4px; background: var(--glass); border: 1px solid var(--line);
+  display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--glass); border: 1px solid var(--line);
   max-width: calc(100vw - 20px); }
-/* the camera modes are the menu's tabs */
-.modes { display: flex; gap: 2px; background: var(--deep); padding: 2px; }
-.modes button { background: var(--tab); border: 0; padding: 5px 12px; color: #8593a8; font-size: 14px; font-weight: 700; }
-.modes button:hover { color: var(--text); }
-.modes button[aria-checked="true"] { background: var(--green); color: #fff; }
+/* Auto and Map are the menu's tabs: green when on */
+.seg { height: 34px; padding: 0 14px; background: var(--tab); border: 0; color: #8593a8; font-size: 14px; font-weight: 700; }
+.seg:hover { color: var(--text); }
+.seg[aria-pressed="true"] { background: var(--green); color: #fff; }
 .target { display: flex; align-items: center; }
-.target-name { display: flex; align-items: center; gap: 8px; min-width: 132px; max-width: 200px; height: 34px; padding: 0 8px;
-  background: var(--panel); border: 0; font-size: 14px; }
+.target-name { position: relative; display: flex; align-items: center; gap: 8px; min-width: 150px; max-width: 220px; height: 34px;
+  padding: 0 10px; background: var(--panel); border: 0; font-size: 14px; }
 .target-name:hover { background: var(--row-hover); }
 .target-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.target-name .hp { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--deep); }
+.target-name .hp i { display: block; height: 100%; background: var(--green); }
 .swatch { flex: none; width: 10px; height: 10px; background: var(--dim); }
 .zoom { display: flex; align-items: center; gap: 2px; }
-.zoom input { width: 110px; accent-color: var(--green); }
-#roster-btn[aria-expanded="true"] { background: var(--green); }
 
-.roster { position: absolute; right: max(10px, env(safe-area-inset-right)); top: 52px; max-height: calc(100% - 122px); width: 240px;
-  overflow: auto; background: var(--glass); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-/* a team: its name and score, then the column labels of its players */
-.roster h3, .player { display: grid; grid-template-columns: minmax(0, 1fr) 24px 24px; gap: 6px; align-items: center; }
-.roster h3 { margin: 0; padding: 3px 10px; background: var(--deep); font-size: 10px; font-weight: 400; color: var(--muted);
-  border-bottom: 1px solid var(--line); }
-.roster h3 .who { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--text); }
-.roster h3 .who b { margin-left: auto; font-weight: 400; font-size: 14px; }
-.roster h3 i { flex: none; width: 8px; height: 8px; }
-.roster h3 .num { text-align: right; }
-.player { width: 100%; padding: 2px 10px; background: rgba(60, 75, 97, .7); border: 0; text-align: left;
-  font-size: 13px; line-height: 1.4; }
-.player:nth-of-type(even) { background: rgba(48, 62, 84, .7); }
-.roster .player:hover { background: var(--row-hover); }
-.player .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.player .who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.player .swatch { width: 8px; height: 8px; }
-.player .flag { width: 12px; height: 12px; flex: none; }
-.player .n { text-align: right; color: var(--muted); }
-.player.dead .who span { color: var(--dim); }
-.roster .spec-head .who b { font-size: 13px; color: var(--muted); }
-.player.spectator { display: block; color: var(--muted); cursor: default; }
-.player.spectator .who { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.roster .player.spectator:hover { background: rgba(60, 75, 97, .7); }
-.roster .player.spectator:nth-of-type(even):hover { background: rgba(48, 62, 84, .7); }
-.roster .player.followed { background: rgba(0, 0, 0, .25); box-shadow: inset 0 0 0 1px var(--orange); }
+/* the chat: closed until the viewer opens it */
+.chat { position: absolute; left: max(10px, env(safe-area-inset-left)); top: 52px; width: 340px; max-height: 40%;
+  overflow: auto; padding: 4px 0; background: var(--glass); border: 1px solid var(--line); font-size: 13px; }
+.chat-lines { list-style: none; margin: 0; padding: 0; }
+.chat .line { padding: 2px 10px; overflow-wrap: anywhere; }
+.chat .line b { font-weight: 700; }
+.chat .line.server { color: var(--green-text); }
+.chat .tag { margin-right: 5px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.chat-empty { margin: 0; padding: 6px 10px; color: var(--muted); }
+.chat.has-lines .chat-empty { display: none; }
 
 .rotate { display: none; }
 
@@ -251,18 +285,33 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 @media (max-height: 520px) {
   .topbar { padding-top: 4px; padding-bottom: 14px; }
   .topbar #back { top: 4px; }
-  .scorebug { height: 30px; }
-  .scorebug .team b { font-size: 17px; }
+  .sb-row { height: 32px; }
+  .score { font-size: 20px; min-width: 38px; padding: 0 7px; }
+  .tname { padding: 0 8px; font-size: 11px; }
+  .clock { font-size: 14px; padding: 0 10px; }
+  .sb-flags { font-size: 11px; }
+  .fstat { max-width: 130px; padding: 2px 7px; }
+  .banner { font-size: 13px; padding: 4px 10px 4px 8px; }
+  .banner .big { font-size: 14px; }
   .dock { bottom: max(8px, env(safe-area-inset-bottom)); gap: 2px; padding: 3px; }
-  .modes button { padding: 9px 10px; }
-  .target-name { min-width: 104px; max-width: 150px; font-size: 13px; height: 40px; }
-  .zoom input { display: none; }
+  .seg { height: 40px; padding: 0 12px; }
+  .target-name { min-width: 110px; max-width: 150px; font-size: 13px; height: 40px; }
   .icon-btn { width: 40px; height: 40px; }
+  .chat { top: 46px; width: 280px; max-height: 45%; }
   .roster { top: 46px; max-height: calc(100% - 110px); width: 220px; }
   .channel-id .ch-delay { display: none; }
 }
 @media (max-width: 700px) and (max-height: 520px) {
   .channel-id .ch-name { display: none; }
+}
+/* no room for the player card: the player's health is a line under the name in the dock */
+@media (max-width: 960px), (max-height: 520px) {
+  .card { display: none; }
+  .target-name .hp { display: block; }
+}
+/* the chat stays clear of the score in the middle */
+@media (max-width: 960px) {
+  .chat { width: max(180px, calc(50vw - 150px)); font-size: 12px; }
 }
 /* a phone held upright: the match is a landscape picture */
 @media (orientation: portrait) and (max-width: 600px) {
@@ -271,7 +320,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .rotate .phone { width: 34px; height: 56px; border: 2px solid var(--green); border-radius: 5px;
     animation: turn 2.4s ease-in-out infinite; }
   .rotate p { margin: 0; }
-  #watch .dock, #watch .roster, #watch .scorebug, #watch .channel-id, #watch .topbar-end { visibility: hidden; }
+  #watch .dock, #watch .roster, #watch .hud-top, #watch .card, #watch .chat, #watch .channel-id,
+  #watch .topbar-end { visibility: hidden; }
   #watch .topbar, #watch.idle .topbar { z-index: 6; opacity: 1; transform: none; background: none; }
   #watch.idle .topbar #back { pointer-events: auto; }
 }
@@ -280,4 +330,5 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .ui { transition: none; }
   .rotate .phone { animation: none; transform: rotate(-90deg); }
   .meter .meter-bar i { transition: none; }
+  .banner, .fstat.taken .flag { animation: none; transition: none; }
 }

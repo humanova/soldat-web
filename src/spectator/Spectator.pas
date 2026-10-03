@@ -28,6 +28,26 @@ procedure SpectatorSet(Name, Value: PAnsiChar);
 // its length (0 when it does not fit)
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
 
+// What happened since the page last asked: chat and flag events. The game does not show
+// these itself in this build (no console, no chat bubbles, no big flag messages); the
+// page does. Shared code calls these through SPECTATOR hooks.
+const
+  CHAT_PUBLIC = 0;
+  CHAT_TEAM = 1;
+  CHAT_RADIO = 2;
+  CHAT_SERVER = 3;
+  FLAG_TAKEN = 'take';
+  FLAG_DROPPED = 'drop';
+  FLAG_RETURNED = 'return';
+  FLAG_SCORED = 'score';
+// Slot 0 for the server
+procedure SpectatorChat(Slot, Kind: Integer; const Text: WideString);
+// Team: the flag's team (1 red, 2 blue, 3 yellow); for FLAG_SCORED the team that scored
+procedure SpectatorFlag(const Kind: AnsiString; Team, Slot: Integer);
+// moves the queued events into Buf (UTF-8 lines, see SpectatorEvents in the .pas) and
+// returns their length; keeps them when they do not fit
+function SpectatorEvents(Buf: PAnsiChar; Size: LongInt): LongInt;
+
 const
   MIN_ZOOM = -0.9;
   MAX_ZOOM = 1.6;
@@ -35,10 +55,78 @@ const
 implementation
 
 uses
-  SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Constants, Cvar;
+  SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Constants, Cvar, Net;
+
+var
+  Events: AnsiString = '';
+  LastEvent: AnsiString = '';
+  LastEventTick: Integer = 0;
 
 procedure SpectatorInit;
 begin
+end;
+
+function CleanW(const S: WideString): AnsiString;
+var
+  i: Integer;
+begin
+  Result := UTF8Encode(S);
+  for i := 1 to Length(Result) do
+    if Result[i] < ' ' then
+      Result[i] := ' ';
+end;
+
+procedure QueueEvent(const Line: AnsiString);
+begin
+  // the same event can reach the client twice (its own flag code and the server's)
+  if (Line = LastEvent) and (MainTickCounter - LastEventTick < 120) then
+    Exit;
+  LastEvent := Line;
+  LastEventTick := MainTickCounter;
+  // the page drains this four times a second; never let it grow without bound
+  if Length(Events) > 32768 then
+    Events := '';
+  Events := Events + Line + #10;
+end;
+
+function SlotName(Slot: Integer): WideString;
+begin
+  if (Slot >= 1) and (Slot <= MAX_SPRITES) then
+    Result := WideString(Sprite[Slot].Player.Name)
+  else
+    Result := '';
+end;
+
+function SlotTeam(Slot: Integer): Integer;
+begin
+  if (Slot >= 1) and (Slot <= MAX_SPRITES) then
+    Result := Sprite[Slot].Player.Team
+  else
+    Result := 0;
+end;
+
+// C  slot  team  kind (CHAT_*)  name  text
+procedure SpectatorChat(Slot, Kind: Integer; const Text: WideString);
+begin
+  QueueEvent(Format('C'#9'%d'#9'%d'#9'%d'#9'%s'#9'%s',
+    [Slot, SlotTeam(Slot), Kind, CleanW(SlotName(Slot)), CleanW(Text)]));
+end;
+
+// F  kind (FLAG_*)  team  slot  player team  name
+procedure SpectatorFlag(const Kind: AnsiString; Team, Slot: Integer);
+begin
+  QueueEvent(Format('F'#9'%s'#9'%d'#9'%d'#9'%d'#9'%s',
+    [Kind, Team, Slot, SlotTeam(Slot), CleanW(SlotName(Slot))]));
+end;
+
+function SpectatorEvents(Buf: PAnsiChar; Size: LongInt): LongInt;
+begin
+  Result := Length(Events);
+  if (Result = 0) or (Result + 1 > Size) then
+    Exit(0);
+  Move(Events[1], Buf^, Result);
+  Buf[Result] := #0;
+  Events := '';
 end;
 
 procedure CenterMouse;
@@ -128,10 +216,11 @@ end;
 //   M  gamestyle  map  seconds left  alpha  bravo  charlie  delta  followed slot  zoom
 //   P  slot  team  kills  deaths  caps  dead  carries a flag  health %  shirt (hex)  weapon  name
 //   S  slot  name   (the other spectators; the hub's own one is the page)
+//   G  flag (1 red, 2 blue, 3 yellow)  state (0 in base, 1 carried, 2 dropped)  carrier slot
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
 var
   S: AnsiString;
-  i, Flag: Integer;
+  i, Flag, State: Integer;
 begin
   S := Format('M'#9'%d'#9'%s'#9'%d'#9'%d'#9'%d'#9'%d'#9'%d'#9'%d'#9'%.3f'#10,
     [sv_gamemode.Value, Clean(Map.Name), TimeLimitCounter div 60, TeamScore[1], TeamScore[2],
@@ -151,6 +240,19 @@ begin
       end
       else if Active and (i <> MySprite) then
         S := S + Format('S'#9'%d'#9'%s'#10, [i, Clean(Player.Name)]);
+  for i := 1 to 2 do
+    if (TeamFlag[i] > 0) and (TeamFlag[i] <= MAX_THINGS) then
+      with Thing[TeamFlag[i]] do
+        if Active and (Style in [OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG]) then
+        begin
+          if HoldingSprite > 0 then
+            State := 1
+          else if InBase then
+            State := 0
+          else
+            State := 2;
+          S := S + Format('G'#9'%d'#9'%d'#9'%d'#10, [Style, State, HoldingSprite]);
+        end;
   Result := Length(S);
   if Result + 1 > Size then
     Exit(0);

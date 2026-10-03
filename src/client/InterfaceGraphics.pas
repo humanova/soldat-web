@@ -361,6 +361,10 @@ end;
 // Does the HUD overlay belong to the player?
 function IsInteractiveInterface: Boolean;
 begin
+  {$IFDEF SPECTATOR}
+  // the page shows the followed player's health and weapon itself
+  Exit(False);
+  {$ENDIF}
   Result := Sprite[MySprite].IsNotSpectator or
     ((CameraFollowSprite > 0) and (sv_advancedspectator.Value));
 end;
@@ -1470,6 +1474,122 @@ begin
   Result := exp(r_zoom.Value);
 end;
 
+{$IFDEF SPECTATOR}
+// the team colours of the spectator page (spectate.css), and lighter ones for text
+function SpectatorTeamColor(i: Integer; Light: Boolean): Cardinal;
+begin
+  Result := Sprite[i].Player.ShirtColor and $FFFFFF;
+  if IsTeamGame then
+    case Sprite[i].Player.Team of
+      TEAM_ALPHA:   Result := iif(Light, $FF8A7E, $E8463A);
+      TEAM_BRAVO:   Result := iif(Light, $8AB0FF, $4A80F0);
+      TEAM_CHARLIE: Result := iif(Light, $F4E27A, $E0CC40);
+      TEAM_DELTA:   Result := iif(Light, $8EE09E, $46C060);
+    end
+  else if Light then
+    Result := $F0F0F0;
+end;
+
+function SpectatorFlagColor(Style: Integer): Cardinal;
+begin
+  case Style of
+    OBJECT_ALPHA_FLAG: Result := $FF4A3C;
+    OBJECT_BRAVO_FLAG: Result := $4A84FF;
+  else
+    Result := $FFDC3C;
+  end;
+end;
+
+// 0 at the normal view, 1 from about 1.9 times as far out
+function ZoomedOut: Single;
+begin
+  Result := EnsureRange((r_zoom.Value - 0.15) / 0.5, 0, 1);
+end;
+
+function CarriesFlag(i: Integer): Integer;
+begin
+  Result := 0;
+  with Sprite[i] do
+    if (HoldedThing > 0) and (HoldedThing <= MAX_THINGS) and
+      (Thing[HoldedThing].Style in [OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG]) then
+      Result := Thing[HoldedThing].Style;
+end;
+
+// Who is who when the view is far out: a team coloured arrow over every player (the
+// followed one always, a little bigger), a flag over flag carriers, and the flags
+// themselves. They keep their size on screen at any zoom.
+procedure RenderSpectatorMarkers(TimeElapsed: Single);
+var
+  i, Flag: Integer;
+  x, y, s, w, h, Out, Alpha: Single;
+  Arrow, FlagIcon: PGfxSprite;
+begin
+  Out := ZoomedOut;
+  Arrow := Textures[GFX_INTERFACE_ARROW];
+  FlagIcon := Textures[GFX_INTERFACE_FLAG];
+
+  // the flags nobody carries: dropped ones always, the ones in base when far out
+  for i := 1 to 2 do
+    if (TeamFlag[i] > 0) and (TeamFlag[i] <= MAX_THINGS) then
+      with Thing[TeamFlag[i]] do
+        if Active and (HoldingSprite = 0) and
+          (Style in [OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG]) then
+        begin
+          Alpha := Out;
+          if not InBase then
+            Alpha := Max(Out, 0.75);
+          if Alpha <= 0 then
+            Continue;
+          s := 11 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
+          w := FlagIcon.Width * FlagIcon.Scale * s;
+          h := FlagIcon.Height * FlagIcon.Scale * s;
+          x := ((Skeleton.Pos[1].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x - w / 2;
+          y := ((Skeleton.Pos[1].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y -
+            h - 30 / ViewScale * _rscala.y;
+          GfxDrawSprite(FlagIcon, x, y, s, s, RGBA(SpectatorFlagColor(Style), Round(255 * Alpha)));
+        end;
+
+  for i := 1 to MAX_SPRITES do
+    with Sprite[i] do
+    begin
+      if not Active or IsSpectator or ((sv_realisticmode.Value) and (Visible = 0)) then
+        Continue;
+      Flag := CarriesFlag(i);
+      // sizes in interface units (480 high), so the same on any screen
+      if i = CameraFollowSprite then
+      begin
+        s := 12 * _rscala.y / (Arrow.Height * Arrow.Scale);
+        Alpha := 1;
+      end
+      else
+      begin
+        s := 9 * _rscala.y / (Arrow.Height * Arrow.Scale);
+        Alpha := Out * iif(DeadMeat, 0.35, 0.9);
+      end;
+      if (Alpha <= 0) and (Flag = 0) then
+        Continue;
+
+      w := Arrow.Width * Arrow.Scale * s;
+      h := Arrow.Height * Arrow.Scale * s;
+      x := ((Skeleton.Pos[12].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+      y := ((Skeleton.Pos[12].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y -
+        14 / ViewScale * _rscala.y - h;
+      if i = CameraFollowSprite then
+        y := y - 2 * _rscala.y - 2 * _rscala.y * Sin(5.1 * TimeElapsed);
+      if Alpha > 0 then
+        GfxDrawSprite(Arrow, x - w / 2, y, s, s, RGBA(SpectatorTeamColor(i, False), Round(255 * Alpha)));
+
+      if Flag > 0 then
+      begin
+        s := 13 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
+        w := FlagIcon.Width * FlagIcon.Scale * s;
+        h := FlagIcon.Height * FlagIcon.Scale * s;
+        GfxDrawSprite(FlagIcon, x - w / 2, y - h - 1, s, s, RGBA(SpectatorFlagColor(Flag), 255));
+      end;
+    end;
+end;
+{$ENDIF}
+
 procedure RenderChatTexts;
 var
   i: Integer;
@@ -1804,12 +1924,25 @@ begin
 
     Alpha := Min(255, 50 + Round(100000 / (dx + dy / 2)));
 
+    {$IFDEF SPECTATOR}
+    if (i = CameraFollowSprite) or (CarriesFlag(i) > 0) then
+      Alpha := 255
+    else
+      Alpha := Round(255 * (1 - EnsureRange((r_zoom.Value - 0.7) / 0.4, 0, 1)));
+    if Alpha = 0 then
+      Exit;
+    if Sprite[i].DeadMeat then
+      GfxTextColor(RGBA($A0A0A0, Alpha div 2))
+    else
+      GfxTextColor(RGBA(SpectatorTeamColor(i, True), Alpha));
+    {$ELSE}
     if (Sprite[i].HoldedThing > 0) and (Thing[Sprite[i].HoldedThing].Style < 4) then
       GfxTextColor(RGBA(OUTOFSCREENFLAG_MESSAGE_COLOR, Alpha))
     else if Sprite[i].DeadMeat then
       GfxTextColor(RGBA(OUTOFSCREENDEAD_MESSAGE_COLOR, Alpha))
     else
       GfxTextColor(RGBA(OUTOFSCREEN_MESSAGE_COLOR, Alpha));
+    {$ENDIF}
 
     GfxDrawText(x, y);
   end;
@@ -1912,7 +2045,7 @@ begin
 
   GfxTextPixelRatio(PixelSize);
 
-  {$IF DEFINED(TESTING) or DEFINED(RELEASE_CANDIDATE)}
+  {$IF (DEFINED(TESTING) or DEFINED(RELEASE_CANDIDATE)) and not DEFINED(SPECTATOR)}
   SetFontStyle(FONT_SMALL);
   GfxTextColor(RGBA(250, 245, 255, 150));
   GfxDrawText(SOLDAT_VERSION_LONG, 565 * _iscala.x, 465 * _iscala.y);
@@ -2273,8 +2406,12 @@ begin
       {$ENDIF}
     end;
 
+    {$IFDEF SPECTATOR}
+    RenderSpectatorMarkers(TimeElapsed);
+    {$ENDIF}
+
     // Player indicator
-    if ui_playerindicator.Value and SpriteMe.IsNotSpectator then
+    if ui_playerindicator.Value and SpriteMe.IsNotSpectator {$IFDEF SPECTATOR}and False{$ENDIF} then
     begin
       CharacterOffset.x := GameWidthHalf  + (SpriteMe.Skeleton.Pos[12].x - camerax) / ViewScale;
       CharacterOffset.y := GameHeightHalf + (SpriteMe.Skeleton.Pos[12].y - cameray) / ViewScale;
@@ -2777,7 +2914,7 @@ begin
   end;
 
   // Team Box
-  if Int.Team and not DemoPlayer.Active and IsTeamGame then
+  if Int.Team and not DemoPlayer.Active and IsTeamGame {$IFDEF SPECTATOR}and False{$ENDIF} then
   begin
     x := Int.TeamBox_X * _iscala.x;
     y := Int.TeamBox_Y * _iscala.y;
@@ -2843,7 +2980,7 @@ begin
 
   if NoTexts = 0 then
   begin
-    if MySprite > 0 then
+    if (MySprite > 0) {$IFDEF SPECTATOR}and False{$ENDIF} then
     begin
       if Sprite[MySprite].IsSpectator and (CameraFollowSprite > 0) and
         (sv_advancedspectator.Value) then
@@ -2852,7 +2989,7 @@ begin
         RenderPlayerInterfaceTexts(MySprite);
     end;
 
-    if Int.Team then
+    if Int.Team {$IFDEF SPECTATOR}and False{$ENDIF} then
       RenderTeamScoreTexts;
 
     if MapChangeCounter > 0 then
@@ -2874,7 +3011,7 @@ begin
     if FragsMenuShow then
       RenderFragsMenuTexts(FragMenuBottom);
 
-    if ui_console.Value then
+    if ui_console.Value {$IFDEF SPECTATOR}and False{$ENDIF} then
       RenderConsoleTexts(Width);
 
     if MySprite > 0 then
@@ -2899,7 +3036,9 @@ begin
 
   if MySprite > 0 then
   begin
+    {$IFNDEF SPECTATOR}
     RenderChatTexts;
+    {$ENDIF}
 
     if PlayerNamesShow then
       RenderPlayerNames(Width, Height);

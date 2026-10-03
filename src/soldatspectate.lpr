@@ -50,7 +50,13 @@ begin
   Result := SpectatorState(Buf, Size);
 end;
 
+function soldat_spectator_events(Buf: PAnsiChar; Size: LongInt): LongInt; cdecl;
+begin
+  Result := SpectatorEvents(Buf, Size);
+end;
+
 exports
+  soldat_spectator_events,
   soldat_spectator_follow,
   soldat_spectator_zoom,
   soldat_spectator_pan,

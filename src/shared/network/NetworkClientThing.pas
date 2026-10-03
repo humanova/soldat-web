@@ -21,7 +21,7 @@ implementation
 
 uses
   Client, NetworkUtils, NetworkClientSprite, Game,
-  Demo, ClientGame, Things;
+  Demo, ClientGame, Things {$IFDEF SPECTATOR}, Spectator{$ENDIF};
 
 procedure ClientHandleServerThingSnapshot(NetMessage: PSteamNetworkingMessage_t);
 var
@@ -349,8 +349,16 @@ begin
 
         if SmallCapText <> '' then
         begin
+          {$IFDEF SPECTATOR}
+          if (sv_gamemode.Value in [GAMESTYLE_CTF, GAMESTYLE_INF]) and
+            (Sprite[j].Player.Team = Thing[i].Style) then
+            SpectatorFlag(FLAG_RETURNED, Thing[i].Style, j)
+          else
+            SpectatorFlag(FLAG_TAKEN, Thing[i].Style, j);
+          {$ELSE}
           BigMessage(BigCapText, CAPTUREMESSAGEWAIT, CapColor);
           MainConsole.Console(WideFormat(SmallCapText, [Sprite[j].Player.Name]), CapColor);
+          {$ENDIF}
         end;
       end;
     OBJECT_USSOCOM, OBJECT_DESERT_EAGLE, OBJECT_HK_MP5, OBJECT_AK74, OBJECT_STEYR_AUG,

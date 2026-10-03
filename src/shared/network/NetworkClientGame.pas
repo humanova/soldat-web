@@ -27,7 +27,8 @@ implementation
 
 uses
   Client, NetworkUtils, Game, Demo, ClientGame, Sparks, GameMenus,
-  InterfaceGraphics, Cvar, PhysFS, NetworkClientConnection, GameRendering, WebDownload;
+  InterfaceGraphics, Cvar, PhysFS, NetworkClientConnection, GameRendering, WebDownload
+  {$IFDEF SPECTATOR}, Spectator{$ENDIF};
 
 function FixedCharsToString(const A: array of Char): string;
 var
@@ -541,12 +542,16 @@ begin
     if sv_gamemode.Value = GAMESTYLE_CTF then
     begin
       PlaySound(SFX_CAPTURE);
+      {$IFDEF SPECTATOR}
+      SpectatorFlag(FLAG_RETURNED, OBJECT_ALPHA_FLAG, PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who);
+      {$ELSE}
       BigMessage(_('Red Flag returned!'), CAPTUREMESSAGEWAIT,
         ALPHA_MESSAGE_COLOR);
 
       MainConsole.Console(WideFormat(_('%s returned the Red Flag'),
         [Sprite[PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who].Player.Name]),
         ALPHA_MESSAGE_COLOR);
+      {$ENDIF}
       if TeamFlag[1] > 0 then
         Thing[TeamFlag[1]].Respawn;
     end;
@@ -554,22 +559,30 @@ begin
     if sv_gamemode.Value = GAMESTYLE_CTF then
     begin
       PlaySound(SFX_CAPTURE);
+      {$IFDEF SPECTATOR}
+      SpectatorFlag(FLAG_RETURNED, OBJECT_BRAVO_FLAG, PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who);
+      {$ELSE}
       BigMessage(_('Blue Flag returned!'), CAPTUREMESSAGEWAIT,
         ALPHA_MESSAGE_COLOR);
 
       MainConsole.Console(WideFormat(_('%s returned the Blue Flag'),
         [Sprite[PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who].Player.Name]),
         BRAVO_MESSAGE_COLOR);
+      {$ENDIF}
       if TeamFlag[2] > 0 then
         Thing[TeamFlag[2]].Respawn;
     end;
   if PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Style = CAPTURERED then
   begin
+    {$IFDEF SPECTATOR}
+    SpectatorFlag(FLAG_SCORED, TEAM_ALPHA, PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who);
+    {$ELSE}
     BigMessage(_('Alpha Team Scores!'), CAPTURECTFMESSAGEWAIT,
       ALPHA_MESSAGE_COLOR);
     MainConsole.Console(WideFormat(_('%s scores for Alpha Team'),
       [Sprite[PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who].Player.Name]),
       ALPHA_MESSAGE_COLOR);
+    {$ENDIF}
 
     if sv_gamemode.Value = GAMESTYLE_INF then
     begin
@@ -601,11 +614,15 @@ begin
   end;
   if PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Style = CAPTUREBLUE then
   begin
+    {$IFDEF SPECTATOR}
+    SpectatorFlag(FLAG_SCORED, TEAM_BRAVO, PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who);
+    {$ELSE}
     BigMessage(_('Bravo Team Scores!'), CAPTURECTFMESSAGEWAIT,
       BRAVO_MESSAGE_COLOR);
     MainConsole.Console(WideFormat(_('%s scores for Bravo Team'),
       [Sprite[PMsg_ServerFlagInfo(NetMessage^.m_pData)^.Who].Player.Name]),
       BRAVO_MESSAGE_COLOR);
+    {$ENDIF}
     PlaySound(SFX_CTF);
     if TeamFlag[1] > 0 then
       Thing[TeamFlag[1]].Respawn;

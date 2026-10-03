@@ -18,6 +18,7 @@
   <symbol id="i-sound" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mute" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="m13 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="6.5" r="2.7" fill="currentColor"/><path d="M2 16c.4-3 2.6-4.6 5.5-4.6S12.6 13 13 16z" fill="currentColor"/><circle cx="14" cy="7" r="2.2" fill="currentColor" opacity=".6"/><path d="M14 11.6c2.2 0 3.7 1.4 4 4.4h-3.6" fill="currentColor" opacity=".6"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 20 20"><path d="M3 4.5h14v9H8.5L5 16.5v-3H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -52,6 +53,8 @@
       <div class="box">
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
           watching. You can't play or chat from here.</p>
+        <p><a href="https://github.com/humanova/soldat-web/issues" target="_blank" rel="noopener">Create an issue on GitHub</a>
+          if you want your server to be included.</p>
       </div>
       <h2>Watching</h2>
       <div class="box">
@@ -77,6 +80,13 @@
 <div id="watch" hidden>
   <canvas id="canvas" tabindex="0" aria-label="The match"></canvas>
 
+  <!-- always on screen: the score, flag news, the followed player -->
+  <div class="hud-top">
+    <div id="scorebug" class="scorebug" hidden></div>
+    <ol id="banners" class="banners" aria-live="polite"></ol>
+  </div>
+  <div id="card" class="card" hidden></div>
+
   <div class="topbar ui">
     <button id="back" type="button" class="icon-btn" aria-label="Back to the guide"><svg><use href="#i-back"/></svg></button>
     <div class="channel-id">
@@ -84,8 +94,9 @@
       <span id="ch-name" class="ch-name"></span>
       <span id="ch-delay" class="ch-delay" hidden></span>
     </div>
-    <div id="scorebug" class="scorebug" hidden></div>
     <div class="topbar-end">
+      <button id="chat-btn" type="button" class="icon-btn" aria-label="Chat (C)" aria-expanded="false"><svg><use href="#i-chat"/></svg><i class="unread" hidden></i></button>
+      <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
       <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
       <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
     </div>
@@ -94,25 +105,23 @@
   <div id="notice" class="notice" hidden></div>
 
   <div id="dock" class="dock ui">
-    <div class="modes" role="radiogroup" aria-label="Camera">
-      <button type="button" role="radio" data-mode="auto" title="Follow the action (A)">Auto</button>
-      <button type="button" role="radio" data-mode="player" title="Follow one player (← →)">Player</button>
-      <button type="button" role="radio" data-mode="free" title="Move the camera yourself (F)">Free</button>
-      <button type="button" role="radio" data-mode="overview" title="The whole map (O)">Map</button>
-    </div>
+    <button id="auto" type="button" class="seg" aria-pressed="true" title="Follow the action (A)">Auto</button>
     <div class="target">
       <button id="prev" type="button" class="icon-btn" aria-label="Previous player"><svg><use href="#i-prev"/></svg></button>
-      <button id="target" type="button" class="target-name"><i class="swatch"></i><span>—</span></button>
+      <button id="target" type="button" class="target-name" title="Players (Tab)"><i class="swatch"></i><span>—</span><i class="hp"><i></i></i></button>
       <button id="next" type="button" class="icon-btn" aria-label="Next player"><svg><use href="#i-next"/></svg></button>
     </div>
+    <button id="map" type="button" class="seg" aria-pressed="false" title="The whole map (O)">Map</button>
     <div class="zoom">
       <button id="zoom-out" type="button" class="icon-btn" aria-label="Zoom out">−</button>
-      <input id="zoom" type="range" min="-1.6" max="0.9" step="0.01" value="0" aria-label="Zoom">
       <button id="zoom-in" type="button" class="icon-btn" aria-label="Zoom in">+</button>
     </div>
-    <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
   </div>
 
+  <aside id="chat" class="chat" hidden aria-label="Chat">
+    <ol id="chat-lines" class="chat-lines"></ol>
+    <p class="chat-empty">Nothing said yet.</p>
+  </aside>
   <aside id="roster" class="roster ui" hidden aria-label="Players"></aside>
 
   <div class="rotate" aria-hidden="true">

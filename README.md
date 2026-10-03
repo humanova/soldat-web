@@ -101,12 +101,18 @@ The page (`spectate.html`, the spectator client `soldat-spectate.wasm`) lists th
 servers busiest first, with their map, mode and players from the Soldat lobby. While
 watching:
 
-- **Auto** follows the hub's pick (a flag carrier, else whoever just scored a kill),
-  **Player** follows one player (arrows, or pick from the players list), **Free** moves
-  the camera yourself (drag) and **Map** shows the whole map.
+- **Auto** follows the hub's pick (a flag carrier, else whoever just scored a kill);
+  ‹ › or the players list follow one player; dragging moves the camera yourself; **Map**
+  shows the whole map.
 - Zoom with the mouse wheel, a touchpad pinch or two fingers; drag (or one finger) to
-  look around. The game's own keys and menus are off in this build: the page drives the
-  camera through the `soldat_spectator_*` exports (`src/spectator/Spectator.pas`).
+  look around. Zoomed out, team coloured arrows mark the players and flag icons the
+  flags and their carriers. The game's own keys and menus are off in this build: the
+  page drives the camera through the `soldat_spectator_*` exports
+  (`src/spectator/Spectator.pas`).
+- The page shows the score with where the flags are, flag news (taken, dropped,
+  returned, scored), the followed player's health and weapon, and the chat (closed until
+  you open it). The game draws none of these itself in this build: no HUD, console,
+  chat bubbles or team box.
 - Phones work held sideways; the page asks you to turn an upright phone.
 
 The server doesn't serve the game page and has no play relay. A viewer who opens a match

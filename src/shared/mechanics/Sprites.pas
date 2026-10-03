@@ -233,7 +233,7 @@ uses
     NetworkServerSprite, NetworkServerMessages, NetworkServerConnection, NetworkServerGame, NetworkServerThing,
   {$ELSE}
     Sound, Demo, GameStrings, ClientGame, GameMenus, Sparks,
-    NetworkClientSprite,
+    NetworkClientSprite, {$IFDEF SPECTATOR}Spectator,{$ENDIF}
   {$ENDIF}
   Bullets, {$IFDEF SERVER}Server,{$ELSE}Client,{$ENDIF} Util, SysUtils, Calc, Math, TraceLog, Game, Control, Things, Cvar;
 
@@ -2190,7 +2190,14 @@ begin
         Thing[i].HoldingSprite := 0;
         HoldedThing := 0;
         {$IFNDEF SERVER}
+        {$IFDEF SPECTATOR}
+        if (Thing[i].Style = OBJECT_ALPHA_FLAG) or (Thing[i].Style = OBJECT_BRAVO_FLAG) or
+          (Thing[i].Style = OBJECT_POINTMATCH_FLAG) then
+          SpectatorFlag(FLAG_DROPPED, Thing[i].Style, Num);
+        if False then
+        {$ELSE}
         if (Thing[i].Style = OBJECT_ALPHA_FLAG) or (Thing[i].Style = OBJECT_BRAVO_FLAG) then
+        {$ENDIF}
         begin
           MainConsole.Console(WideFormat(_('%s dropped the %s Flag'),
             [Player.Name,

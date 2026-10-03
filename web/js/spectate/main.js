@@ -119,6 +119,12 @@ function watch(ch) {
   $('ch-name').textContent = ch.name;
   $('ch-delay').hidden = true;
   $('scorebug').hidden = true;
+  $('card').hidden = true;
+  $('banners').textContent = '';
+  scoreKey = cardKey = '';
+  chatLines.length = 0;
+  $('chat-lines').textContent = '';
+  toggleChat(!!prefs.chat);
   director = 0;
   zoom = 0;
   match = null;
@@ -159,7 +165,9 @@ function showGuide() {
 function setMode(m, quiet) {
   const was = mode;
   mode = m;
-  for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-checked', String(b.dataset.mode === m));
+  $('auto').setAttribute('aria-pressed', String(m === 'auto'));
+  $('map').setAttribute('aria-pressed', String(m === 'overview'));
+  if (match) renderTarget(match);
   if (quiet) return;
   if (m === 'overview') {
     if (was !== 'overview') zoomBeforeMap = zoom;
@@ -205,7 +213,6 @@ function orderedPlayers() {
 function setZoom(z, fx = 0.5, fy = 0.5) {
   zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
   call('soldat_spectator_zoom', zoom, fx, fy);
-  $('zoom').value = String(-zoom);
 }
 
 // the part of the canvas the picture covers (object-fit: contain)
@@ -299,14 +306,16 @@ function moveGesture() {
 
 // ---------- controls
 
-for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
+$('auto').addEventListener('click', () => setMode('auto'));
+// Map again goes back to following the action
+$('map').addEventListener('click', () => setMode(mode === 'overview' ? 'auto' : 'overview'));
 $('prev').addEventListener('click', () => cycle(-1));
 $('next').addEventListener('click', () => cycle(1));
 $('target').addEventListener('click', () => toggleRoster());
-$('zoom').addEventListener('input', () => setZoom(-Number($('zoom').value)));
 $('zoom-in').addEventListener('click', () => setZoom(zoom - 0.25));
 $('zoom-out').addEventListener('click', () => setZoom(zoom + 0.25));
 $('roster-btn').addEventListener('click', () => toggleRoster());
+$('chat-btn').addEventListener('click', () => toggleChat());
 $('back').addEventListener('click', () => game.leave());
 $('sound').addEventListener('click', () => {
   prefs.muted = !prefs.muted;
@@ -341,7 +350,8 @@ window.addEventListener('keydown', (e) => {
     KeyO: () => setMode('overview'), KeyM: () => setMode('overview'),
     Equal: () => setZoom(zoom - 0.25), NumpadAdd: () => setZoom(zoom - 0.25),
     Minus: () => setZoom(zoom + 0.25), NumpadSubtract: () => setZoom(zoom + 0.25),
-    Digit0: () => setZoom(0), Tab: () => toggleRoster(), Escape: () => closeRoster(),
+    Digit0: () => setZoom(0), Tab: () => toggleRoster(), KeyC: () => toggleChat(),
+    Escape: () => closeRoster(),
   };
   const pan = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1] }[e.code];
   if (pan) {
@@ -381,7 +391,7 @@ function readState() {
   const n = call('soldat_spectator_state', stateBuf.ptr, stateBuf.size);
   if (!n) return null;
   const text = new TextDecoder('latin1').decode(game.rt.u8().subarray(stateBuf.ptr, stateBuf.ptr + n));
-  const s = { players: [], spectators: [] };
+  const s = { players: [], spectators: [], flags: [] };
   for (const line of text.split('\n')) {
     const f = line.split('\t');
     if (f[0] === 'M') {
@@ -392,13 +402,33 @@ function readState() {
         flag: +f[7], health: +f[8], color: '#' + f[9], weapon: f[10], name: f.slice(11).join('\t') });
     } else if (f[0] === 'S') {
       s.spectators.push({ slot: +f[1], name: f.slice(2).join('\t') });
+    } else if (f[0] === 'G') {
+      s.flags.push({ flag: +f[1], state: +f[2], carrier: +f[3] });  // state: 0 base, 1 carried, 2 dropped
     }
   }
   return s;
 }
 
+// chat and flag events since the last poll (soldat_spectator_events, Spectator.pas)
+const eventBuf = { ptr: 0, size: 32768 };
+function readEvents() {
+  if (!eventBuf.ptr) eventBuf.ptr = game.rt.alloc(eventBuf.size);
+  const n = call('soldat_spectator_events', eventBuf.ptr, eventBuf.size);
+  if (!n) return;
+  const text = new TextDecoder('utf-8').decode(game.rt.u8().subarray(eventBuf.ptr, eventBuf.ptr + n));
+  for (const line of text.split('\n')) {
+    const f = line.split('\t');
+    if (f[0] === 'C') {
+      addChat({ slot: +f[1], team: +f[2], kind: +f[3], name: f[4], text: f.slice(5).join('\t') });
+    } else if (f[0] === 'F') {
+      flagEvent({ kind: f[1], flag: +f[2], slot: +f[3], team: +f[4], name: f.slice(5).join('\t') });
+    }
+  }
+}
+
 function poll() {
   if (!game.running) return;
+  readEvents();
   const s = readState();
   if (!s) return;
   match = s;
@@ -410,6 +440,7 @@ function poll() {
   if (Math.abs(s.zoom - zoom) > 0.01 && performance.now() - joinedAt < 5000) setZoom(zoom);
   renderScorebug(s);
   renderTarget(s);
+  renderCard(s);
   if (!$('roster').hidden) renderRoster(s);
 }
 
@@ -417,43 +448,172 @@ function clock(sec) {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
 
+const FLAG_NAMES = { 1: 'Red', 2: 'Blue', 3: 'Yellow' };
+const FLAG_COLORS = { 1: 'var(--alpha)', 2: 'var(--bravo)', 3: 'var(--charlie)' };
+
+function flagIcon(style) {
+  const f = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  f.setAttribute('class', 'flag');
+  f.style.color = FLAG_COLORS[style] || 'var(--charlie)';
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  u.setAttribute('href', '#i-flag');
+  f.append(u);
+  return f;
+}
+
+// ---------- the score, always on screen
+
+let scoreKey = '';
 function renderScorebug(s) {
   const bug = $('scorebug');
-  bug.textContent = '';
   const teams = TEAM_GAMES.has(s.style)
     ? [1, 2, 3, 4].filter(t => t <= 2 || s.players.some(p => p.team === t)) : [];
+  const name = (slot) => (s.players.find(p => p.slot === slot) || {}).name || '';
+  const flags = s.flags.map(g => ({ ...g, name: name(g.carrier) }));
+  const lead = teams.length ? null : s.players.slice().sort((a, b) => b.kills - a.kills)[0];
+  const key = JSON.stringify([teams, s.scores, s.seconds, flags, lead && [lead.name, lead.kills]]);
+  if (key === scoreKey) return;
+  scoreKey = key;
+  bug.textContent = '';
+
+  const row = el('div', 'sb-row');
+  const side = (t) => {
+    const box = el('span', `side t${t}`);
+    box.append(el('span', 'tname', TEAMS[t]), el('b', 'score', String(s.scores[t])));
+    return box;
+  };
   if (teams.length) {
-    const side = (t) => {
-      const box = el('span', `team t${t}`);
-      const carrier = s.players.find(p => p.team === t && p.flag);
-      box.append(el('span', '', TEAMS[t].toUpperCase()), el('b', '', String(s.scores[t])));
-      if (carrier) box.title = `${carrier.name} has the flag`;
-      return box;
-    };
-    bug.append(side(teams[0]), el('span', 'clock', clock(s.seconds)), side(teams[1]));
-    for (const t of teams.slice(2)) bug.append(side(t));
+    const half = Math.ceil(teams.length / 2);
+    for (const t of teams.slice(0, half)) row.append(side(t));
+    row.append(el('span', 'clock', clock(s.seconds)));
+    for (const t of teams.slice(half)) row.append(side(t));
   } else {
-    bug.append(el('span', 'clock', clock(s.seconds)));
-    const lead = s.players.slice().sort((a, b) => b.kills - a.kills)[0];
+    row.append(el('span', 'clock', clock(s.seconds)));
     if (lead) {
       const l = el('span', 'leader');
-      l.append(el('span', '', lead.name), el('b', '', String(lead.kills)));
-      bug.append(l);
+      l.append(el('span', 'tname', 'Leader'), el('span', 'who', lead.name), el('b', 'score', String(lead.kills)));
+      row.append(l);
     }
+  }
+  bug.append(row);
+
+  // where the flags are: under their team (the yellow one in the middle)
+  if (flags.length) {
+    const st = el('div', 'sb-flags');
+    const status = (g) => {
+      const box = el('span', 'fstat ' + ['base', 'taken', 'dropped'][g.state]);
+      box.append(flagIcon(g.flag), el('span', '', g.state === 1 ? g.name || 'Taken' : g.state === 2 ? 'Dropped' : 'In base'));
+      box.title = `${FLAG_NAMES[g.flag]} flag: ` +
+        (g.state === 1 ? `carried by ${g.name}` : g.state === 2 ? 'dropped' : 'in its base');
+      return box;
+    };
+    const red = flags.find(g => g.flag === 1), blue = flags.find(g => g.flag === 2), yellow = flags.find(g => g.flag === 3);
+    st.append(red ? status(red) : el('span'), yellow ? status(yellow) : el('span'), blue ? status(blue) : el('span'));
+    bug.append(st);
   }
   bug.hidden = false;
 }
+
+// ---------- flag news
+
+function flagEvent(e) {
+  const inf = match && match.style === 5;
+  const thing = inf ? 'the objective' : `the ${FLAG_NAMES[e.flag] || ''} flag`;
+  const li = el('li', 'banner ' + e.kind);
+  const who = el('b', '', e.name);
+  who.style.color = teamColor({ team: e.team }, true);
+  let color = FLAG_COLORS[e.flag];
+  if (e.kind === 'score') {
+    color = teamColor({ team: e.flag });
+    li.append(el('span', 'big', `${TEAMS[e.flag] || ''} scores`), who);
+  } else {
+    li.append(flagIcon(e.kind === 'score' ? 0 : e.flag), who,
+      ` ${{ take: inf ? 'captured' : 'took', drop: 'dropped', return: 'returned' }[e.kind] || e.kind} ${thing}`);
+    if (!e.name) who.remove();
+  }
+  li.style.setProperty('--c', color);
+  const list = $('banners');
+  list.prepend(li);
+  while (list.children.length > 3) list.lastElementChild.remove();
+  setTimeout(() => { li.classList.add('gone'); setTimeout(() => li.remove(), 400); }, e.kind === 'score' ? 6000 : 4500);
+}
+
+// ---------- chat (off unless the viewer opens it)
+
+const chatLines = [];
+function addChat(c) {
+  chatLines.push(c);
+  if (chatLines.length > 150) chatLines.shift();
+  if ($('chat').hidden) { $('chat-btn').querySelector('.unread').hidden = false; return; }
+  appendChat(c);
+}
+function appendChat(c) {
+  const ol = $('chat-lines');
+  const li = el('li', 'line' + (c.kind === 3 ? ' server' : ''));
+  if (c.kind === 1 || c.kind === 2) li.append(el('span', 'tag', c.kind === 1 ? 'Team' : 'Radio'));
+  const who = el('b', '', c.kind === 3 ? 'Server' : c.name);
+  if (c.kind !== 3) who.style.color = c.team === 5 ? 'var(--muted)' : teamColor({ team: c.team }, true);
+  li.append(who, ' ', c.text);
+  ol.append(li);
+  while (ol.children.length > 150) ol.firstElementChild.remove();
+  $('chat').classList.add('has-lines');
+  const box = $('chat');
+  if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) box.scrollTop = box.scrollHeight;
+}
+function toggleChat(open = $('chat').hidden) {
+  $('chat').hidden = !open;
+  $('chat-btn').setAttribute('aria-expanded', String(open));
+  prefs.chat = open;
+  savePrefs();
+  if (open) {
+    $('chat-btn').querySelector('.unread').hidden = true;
+    $('chat-lines').textContent = '';
+    $('chat').classList.toggle('has-lines', chatLines.length > 0);
+    for (const c of chatLines) appendChat(c);
+    $('chat').scrollTop = $('chat').scrollHeight;
+  }
+}
+
+// ---------- the followed player
 
 function renderTarget(s) {
   const p = s.players.find(q => q.slot === s.follow);
   const t = $('target');
   t.querySelector('span').textContent = p ? p.name : mode === 'overview' ? 'Whole map' : 'Free camera';
   t.querySelector('.swatch').style.background = p ? teamColor(p) : 'transparent';
+  t.querySelector('.hp i').style.width = p ? `${p.dead ? 0 : p.health}%` : '0';
   t.title = p ? `${p.name} · ${p.weapon} · ${p.health}%` : '';
 }
 
-function teamColor(p) {
-  return { 1: 'var(--alpha)', 2: 'var(--bravo)', 3: 'var(--charlie)', 4: 'var(--delta)' }[p.team] || p.color;
+let cardKey = '';
+function renderCard(s) {
+  const p = s.players.find(q => q.slot === s.follow);
+  const card = $('card');
+  if (!p || mode === 'overview') { card.hidden = true; cardKey = ''; return; }
+  const key = JSON.stringify(p);
+  if (key === cardKey && !card.hidden) return;
+  cardKey = key;
+  card.textContent = '';
+  card.style.setProperty('--c', teamColor(p));
+  const top = el('div', 'c-top');
+  if (p.flag) top.append(flagIcon(p.flag));
+  top.append(el('b', 'c-name', p.name));
+  const hp = el('div', 'c-hp' + (p.health <= 30 ? ' low' : ''));
+  const fill = el('i');
+  fill.style.width = `${p.dead ? 0 : p.health}%`;
+  hp.append(fill);
+  const meta = el('div', 'c-meta');
+  meta.append(el('span', 'c-weapon', p.dead ? 'Dead' : p.weapon),
+    el('span', 'c-kd', `${p.kills} / ${p.deaths}`));
+  card.append(top, hp, meta);
+  card.classList.toggle('dead', p.dead);
+  card.hidden = false;
+}
+
+function teamColor(p, light) {
+  const c = { 1: 'alpha', 2: 'bravo', 3: 'charlie', 4: 'delta' }[p.team];
+  if (c) return `var(--${c}${light ? '-text' : ''})`;
+  return light ? 'var(--text)' : p.color || 'var(--dim)';
 }
 
 // ---------- players
@@ -473,15 +633,6 @@ function closeRoster() {
   $('roster-btn').setAttribute('aria-expanded', 'false');
 }
 
-function flagIcon(style) {
-  const f = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  f.setAttribute('class', 'flag');
-  f.style.color = style === 1 ? 'var(--alpha)' : style === 2 ? 'var(--bravo)' : 'var(--amber)';
-  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  u.setAttribute('href', '#i-flag');
-  f.append(u);
-  return f;
-}
 
 function renderRoster(s) {
   const box = $('roster');

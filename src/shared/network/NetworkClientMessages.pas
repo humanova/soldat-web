@@ -20,7 +20,7 @@ procedure ClientHandleSpecialMessage(NetMessage: PSteamNetworkingMessage_t);
 implementation
 
 uses
-  Client, Game, InterfaceGraphics, NetworkUtils;
+  Client, Game, InterfaceGraphics, NetworkUtils {$IFDEF SPECTATOR}, Spectator{$ENDIF};
 
 // Soldat 1.7.1 chat wire format: the text carries its type. The first character is a prompt
 // character the server ignores, followed by '^' for team chat or '*NN' for radio
@@ -125,6 +125,11 @@ begin
   begin
     if Copy(cs, 1, 5) = '/say ' then
       Delete(cs, 1, 5);
+    {$IFDEF SPECTATOR}
+    // the page shows the chat; the game shows none of it (console, bubbles)
+    SpectatorChat(0, CHAT_SERVER, cs);
+    Exit;
+    {$ENDIF}
     MainConsole.Console(_('*SERVER*: ') + cs, SERVER_MESSAGE_COLOR);
     Exit;
   end;
@@ -155,6 +160,16 @@ begin
 
   if (Sprite[i].Muted = True) or MuteAll then
     Exit;
+
+  {$IFDEF SPECTATOR}
+  case MsgType of
+    MSGTYPE_TEAM: SpectatorChat(i, CHAT_TEAM, cs);
+    MSGTYPE_RADIO: SpectatorChat(i, CHAT_RADIO, cs);
+  else
+    SpectatorChat(i, CHAT_PUBLIC, cs);
+  end;
+  Exit;
+  {$ENDIF}
 
   ChatMessage[i] := cs;
   ChatTeam[i] := (MsgType = MSGTYPE_TEAM);
