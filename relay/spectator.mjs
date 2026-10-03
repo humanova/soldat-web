@@ -9,7 +9,7 @@
 //
 // Config (JSON, see relay/spectator.example.json):
 //   servers: [{ id, name, host, port, password?, delaySeconds? }]   the only servers it joins
-//   playerName      name of the spectator on the servers
+//   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
 //   maxViewersPerIp, maxViewers, origins (other page origins allowed), trustProxy,
@@ -38,7 +38,7 @@ const PORT = parseInt(arg('port', process.env.PORT || config.port || '8090'), 10
 const ROOT = path.resolve(arg('root', process.env.ROOT || path.join(here, '..', 'web')));
 const MAX_VIEWERS = config.maxViewers ?? 500;
 const MAX_VIEWERS_PER_IP = config.maxViewersPerIp ?? 3;
-const PLAYER_NAME = String(config.playerName || '[TV] Soldat Web').slice(0, 23);
+const PLAYER_NAME = String(config.playerName || '[soldat.live] Soldat TV').slice(0, 23);
 const LOBBY_URL = config.lobbyUrl || 'https://api.soldat.pl/v0/servers';
 const lobby = makeLobby(LOBBY_URL, log);
 const lobbyPlayers = makeLobbyPlayers(LOBBY_URL, log);
