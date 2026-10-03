@@ -63,7 +63,8 @@
           <dt>Drag</dt><dd>look around</dd>
           <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
           <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
-          <dt><kbd>Tab</kbd></dt><dd>players</dd>
+          <dt><kbd>Tab</kbd> <kbd>C</kbd></dt><dd>players, chat</dd>
+          <dt>Drag a bar</dt><dd>move a panel (double-click: back)</dd>
         </dl>
       </div>
     </aside>
@@ -80,12 +81,19 @@
 <div id="watch" hidden>
   <canvas id="canvas" tabindex="0" aria-label="The match"></canvas>
 
-  <!-- always on screen: the score, flag news, the followed player -->
-  <div class="hud-top">
-    <div id="scorebug" class="scorebug" hidden></div>
-    <ol id="banners" class="banners" aria-live="polite"></ol>
+  <!-- always on screen: the score, flag news, the followed player. Drag them by their bars;
+       a double-click on a bar puts the panel back (js/spectate/main.js: movable panels) -->
+  <div id="scorebug" class="scorebug move" data-move="score" hidden></div>
+  <ol id="banners" class="banners move" data-move="news" aria-live="polite"></ol>
+  <div id="bigmsg" class="bigmsg" aria-live="polite" hidden></div>
+  <div id="card" class="card win move" data-move="card" hidden>
+    <div class="win-head handle"><span class="c-name"></span><i class="grip"></i></div>
+    <div class="c-body">
+      <span class="c-weapon"></span>
+      <span class="kd"><b class="k"></b><b class="d"></b></span>
+    </div>
+    <div class="c-hp"><i></i></div>
   </div>
-  <div id="card" class="card" hidden></div>
 
   <div class="topbar ui">
     <button id="back" type="button" class="icon-btn" aria-label="Back to the guide"><svg><use href="#i-back"/></svg></button>
@@ -104,7 +112,8 @@
 
   <div id="notice" class="notice" hidden></div>
 
-  <div id="dock" class="dock ui">
+  <div id="dock" class="dock ui move" data-move="dock">
+    <i class="grip handle" title="Drag to move (double-click: back)"></i>
     <button id="auto" type="button" class="seg" aria-pressed="true" title="Follow the action (A)">Auto</button>
     <div class="target">
       <button id="prev" type="button" class="icon-btn" aria-label="Previous player"><svg><use href="#i-prev"/></svg></button>
@@ -118,11 +127,17 @@
     </div>
   </div>
 
-  <aside id="chat" class="chat" hidden aria-label="Chat">
-    <ol id="chat-lines" class="chat-lines"></ol>
-    <p class="chat-empty">Nothing said yet.</p>
+  <aside id="chat" class="chat win move" data-move="chat" hidden aria-label="Chat">
+    <div class="win-head handle"><span>Chat</span><i class="grip"></i></div>
+    <div class="chat-scroll">
+      <ol id="chat-lines" class="chat-lines"></ol>
+      <p class="chat-empty">Nothing said yet.</p>
+    </div>
   </aside>
-  <aside id="roster" class="roster ui" hidden aria-label="Players"></aside>
+  <aside id="roster" class="roster win move ui" data-move="players" hidden aria-label="Players">
+    <div class="win-head handle"><span>Players</span><i class="grip"></i></div>
+    <div id="roster-list" class="roster-list"></div>
+  </aside>
 
   <div class="rotate" aria-hidden="true">
     <div class="phone"></div>

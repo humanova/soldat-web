@@ -110,9 +110,11 @@ watching:
   page drives the camera through the `soldat_spectator_*` exports
   (`src/spectator/Spectator.pas`).
 - The page shows the score with where the flags are, flag news (taken, dropped,
-  returned, scored), the followed player's health and weapon, and the chat (closed until
-  you open it). The game draws none of these itself in this build: no HUD, console,
-  chat bubbles or team box.
+  returned; a score is a big message), the followed player's health, weapon and kills and
+  deaths, and the chat (closed until you open it). The game draws none of these itself in
+  this build: no HUD, console, chat bubbles or team box, and a smaller kill feed.
+- Drag a panel by its bar (the score and the flag news anywhere) to move it; a
+  double-click on the bar puts it back. The browser remembers where they are.
 - Phones work held sideways; the page asks you to turn an upright phone.
 
 The server doesn't serve the game page and has no play relay. A viewer who opens a match

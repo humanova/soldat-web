@@ -121,7 +121,8 @@ function watch(ch) {
   $('scorebug').hidden = true;
   $('card').hidden = true;
   $('banners').textContent = '';
-  scoreKey = cardKey = '';
+  $('bigmsg').hidden = true;
+  scoreKey = cardKey = rosterKey = '';
   chatLines.length = 0;
   $('chat-lines').textContent = '';
   toggleChat(!!prefs.chat);
@@ -382,6 +383,70 @@ function toggleUi() {
 }
 for (const id of ['dock', 'roster']) $(id).addEventListener('pointerdown', wake);
 
+// ---------- movable panels: dragged by their bar (the score and the flag news anywhere), a
+// double-click on it puts the panel back. Kept as fractions of the free room across and down,
+// so a panel at an edge stays there on any screen.
+
+const layout = (prefs.layout && typeof prefs.layout === 'object') ? prefs.layout : (prefs.layout = {});
+const movables = [...document.querySelectorAll('#watch .move')];
+
+function place(box) {
+  const pos = layout[box.dataset.move];
+  if (!Array.isArray(pos)) {
+    box.classList.remove('placed');
+    box.style.left = box.style.top = '';
+    delete box.dataset.align;
+    return;
+  }
+  const area = $('watch');
+  box.classList.add('placed');
+  box.style.left = `${Math.round(Math.max(0, area.clientWidth - box.offsetWidth) * pos[0])}px`;
+  box.style.top = `${Math.round(Math.max(0, area.clientHeight - box.offsetHeight) * pos[1])}px`;
+  box.dataset.align = pos[0] < 0.34 ? 'start' : pos[0] > 0.66 ? 'end' : 'center';
+}
+
+function startMove(e, box) {
+  if (e.button !== 0 || (e.target.closest('button') && !e.target.closest('.handle'))) return;
+  e.preventDefault();
+  wake();
+  const area = $('watch').getBoundingClientRect();
+  const r = box.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top;
+  let moved = false;
+  const move = (ev) => {
+    if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+    moved = true;
+    box.classList.add('moving');
+    const freeX = area.width - box.offsetWidth, freeY = area.height - box.offsetHeight;
+    const x = Math.min(Math.max(0, ev.clientX - area.left - dx), Math.max(0, freeX));
+    const y = Math.min(Math.max(0, ev.clientY - area.top - dy), Math.max(0, freeY));
+    layout[box.dataset.move] = [freeX > 0 ? x / freeX : 0.5, freeY > 0 ? y / freeY : 0.5];
+    place(box);
+  };
+  const end = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', end);
+    window.removeEventListener('pointercancel', end);
+    box.classList.remove('moving');
+    if (moved) savePrefs();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+}
+
+for (const box of movables) {
+  const handles = box.querySelector('.handle') ? box.querySelectorAll('.handle') : [box];
+  for (const h of handles) {
+    h.addEventListener('pointerdown', (e) => startMove(e, box));
+    h.addEventListener('dblclick', () => { delete layout[box.dataset.move]; savePrefs(); place(box); });
+  }
+  // a panel that grows or shrinks keeps its place against the nearest edges
+  new ResizeObserver(() => place(box)).observe(box);
+}
+window.addEventListener('resize', () => movables.forEach(place));
+document.addEventListener('fullscreenchange', () => movables.forEach(place));
+
 // ---------- the match state (soldat_spectator_state, Spectator.pas)
 
 const stateBuf = { ptr: 0, size: 16384 };
@@ -399,7 +464,7 @@ function readState() {
         follow: +f[8], zoom: +f[9] });
     } else if (f[0] === 'P') {
       s.players.push({ slot: +f[1], team: +f[2], kills: +f[3], deaths: +f[4], caps: +f[5], dead: f[6] === '1',
-        flag: +f[7], health: +f[8], color: '#' + f[9], weapon: f[10], name: f.slice(11).join('\t') });
+        flag: +f[7], health: +f[8], color: '#' + f[9], gun: +f[10], weapon: f[11], name: f.slice(12).join('\t') });
     } else if (f[0] === 'S') {
       s.spectators.push({ slot: +f[1], name: f.slice(2).join('\t') });
     } else if (f[0] === 'G') {
@@ -514,28 +579,41 @@ function renderScorebug(s) {
   bug.hidden = false;
 }
 
-// ---------- flag news
+// ---------- flag news: the newest two lines; a score is the game's big message
 
 function flagEvent(e) {
+  if (e.kind === 'score') { bigMessage(e); return; }
   const inf = match && match.style === 5;
   const thing = inf ? 'the objective' : `the ${FLAG_NAMES[e.flag] || ''} flag`;
   const li = el('li', 'banner ' + e.kind);
-  const who = el('b', '', e.name);
-  who.style.color = teamColor({ team: e.team }, true);
-  let color = FLAG_COLORS[e.flag];
-  if (e.kind === 'score') {
-    color = teamColor({ team: e.flag });
-    li.append(el('span', 'big', `${TEAMS[e.flag] || ''} scores`), who);
-  } else {
-    li.append(flagIcon(e.kind === 'score' ? 0 : e.flag), who,
-      ` ${{ take: inf ? 'captured' : 'took', drop: 'dropped', return: 'returned' }[e.kind] || e.kind} ${thing}`);
-    if (!e.name) who.remove();
+  li.style.setProperty('--c', FLAG_COLORS[e.flag] || 'var(--charlie)');
+  li.append(flagIcon(e.flag));
+  if (e.name) {
+    const who = el('b', '', e.name);
+    who.style.color = teamColor({ team: e.team }, true);
+    li.append(who);
   }
-  li.style.setProperty('--c', color);
+  li.append(` ${{ take: inf ? 'captured' : 'took', drop: 'dropped', return: 'returned' }[e.kind] || e.kind} ${thing}`);
   const list = $('banners');
-  list.prepend(li);
-  while (list.children.length > 3) list.lastElementChild.remove();
-  setTimeout(() => { li.classList.add('gone'); setTimeout(() => li.remove(), 400); }, e.kind === 'score' ? 6000 : 4500);
+  list.append(li);
+  while (list.children.length > 2) list.firstElementChild.remove();
+  setTimeout(() => { li.classList.add('gone'); setTimeout(() => li.remove(), 400); }, 4500);
+}
+
+let bigTimer = 0;
+function bigMessage(e) {
+  const box = $('bigmsg');
+  box.textContent = '';
+  box.style.setProperty('--c', teamColor({ team: e.flag }, true));
+  box.append(el('span', 'big', `${TEAMS[e.flag] || ''} Team Scores!`));
+  if (e.name) box.append(el('span', 'by', e.name));
+  box.classList.remove('gone');
+  box.hidden = false;
+  clearTimeout(bigTimer);
+  bigTimer = setTimeout(() => {
+    box.classList.add('gone');
+    bigTimer = setTimeout(() => { box.hidden = true; }, 600);
+  }, 4000);
 }
 
 // ---------- chat (off unless the viewer opens it)
@@ -547,19 +625,21 @@ function addChat(c) {
   if ($('chat').hidden) { $('chat-btn').querySelector('.unread').hidden = false; return; }
   appendChat(c);
 }
+// like the game's console: [Name] text, team chat and radio in its team chat colour
 function appendChat(c) {
   const ol = $('chat-lines');
-  const li = el('li', 'line' + (c.kind === 3 ? ' server' : ''));
-  if (c.kind === 1 || c.kind === 2) li.append(el('span', 'tag', c.kind === 1 ? 'Team' : 'Radio'));
-  const who = el('b', '', c.kind === 3 ? 'Server' : c.name);
+  const li = el('li', 'line' + (c.kind === 3 ? ' server' : c.kind === 1 || c.kind === 2 ? ' team' : ''));
+  if (c.kind === 1 || c.kind === 2) li.append(c.kind === 1 ? '(TEAM) ' : '(RADIO) ');
+  const who = el('b', '', `[${c.kind === 3 ? 'Server' : c.name}]`);
   if (c.kind !== 3) who.style.color = c.team === 5 ? 'var(--muted)' : teamColor({ team: c.team }, true);
   li.append(who, ' ', c.text);
   ol.append(li);
   while (ol.children.length > 150) ol.firstElementChild.remove();
   $('chat').classList.add('has-lines');
-  const box = $('chat');
+  const box = chatScroll();
   if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) box.scrollTop = box.scrollHeight;
 }
+const chatScroll = () => $('chat').querySelector('.chat-scroll');
 function toggleChat(open = $('chat').hidden) {
   $('chat').hidden = !open;
   $('chat-btn').setAttribute('aria-expanded', String(open));
@@ -570,7 +650,7 @@ function toggleChat(open = $('chat').hidden) {
     $('chat-lines').textContent = '';
     $('chat').classList.toggle('has-lines', chatLines.length > 0);
     for (const c of chatLines) appendChat(c);
-    $('chat').scrollTop = $('chat').scrollHeight;
+    chatScroll().scrollTop = chatScroll().scrollHeight;
   }
 }
 
@@ -585,6 +665,21 @@ function renderTarget(s) {
   t.title = p ? `${p.name} · ${p.weapon} · ${p.health}%` : '';
 }
 
+// the weapon pictures of the game's kill feed (interface-gfx/guns, by weapon number)
+const GUN_FILES = { 0: '10', 205: 'flamer', 206: 'fist', 207: 'bow', 208: 'bow', 211: 'knife', 212: 'chainsaw',
+  224: 'law', 225: 'm2' };
+const gunUrls = new Map();
+function gunPicture(num) {
+  const file = num >= 1 && num <= 10 ? String(num % 10) : GUN_FILES[num];
+  if (file === undefined) return '';
+  if (!gunUrls.has(file)) {
+    const pack = game.archives.get('soldat/soldat.smod');
+    const entry = pack && pack.get(`interface-gfx/guns/${file}.png`);
+    gunUrls.set(file, entry && entry.data ? URL.createObjectURL(new Blob([entry.data], { type: 'image/png' })) : '');
+  }
+  return gunUrls.get(file);
+}
+
 let cardKey = '';
 function renderCard(s) {
   const p = s.players.find(q => q.slot === s.follow);
@@ -593,19 +688,31 @@ function renderCard(s) {
   const key = JSON.stringify(p);
   if (key === cardKey && !card.hidden) return;
   cardKey = key;
-  card.textContent = '';
   card.style.setProperty('--c', teamColor(p));
-  const top = el('div', 'c-top');
-  if (p.flag) top.append(flagIcon(p.flag));
-  top.append(el('b', 'c-name', p.name));
-  const hp = el('div', 'c-hp' + (p.health <= 30 ? ' low' : ''));
-  const fill = el('i');
-  fill.style.width = `${p.dead ? 0 : p.health}%`;
-  hp.append(fill);
-  const meta = el('div', 'c-meta');
-  meta.append(el('span', 'c-weapon', p.dead ? 'Dead' : p.weapon),
-    el('span', 'c-kd', `${p.kills} / ${p.deaths}`));
-  card.append(top, hp, meta);
+  card.style.setProperty('--tt', teamColor(p, true));
+  const name = card.querySelector('.c-name');
+  name.textContent = p.name;
+  const head = card.querySelector('.win-head');
+  head.querySelector('.flag')?.remove();
+  if (p.flag) head.prepend(flagIcon(p.flag));
+
+  const weapon = card.querySelector('.c-weapon');
+  const url = p.dead ? '' : gunPicture(p.gun);
+  let img = weapon.querySelector('img');
+  if (url) {
+    if (!img) { weapon.textContent = ''; img = weapon.appendChild(new Image()); }
+    if (img.getAttribute('src') !== url) img.src = url;
+    img.alt = p.weapon;
+  } else {
+    weapon.textContent = p.dead ? 'Dead' : p.weapon;
+  }
+  weapon.title = p.weapon;
+  card.querySelector('.k').textContent = p.kills;
+  card.querySelector('.d').textContent = p.deaths;
+  card.querySelector('.kd').title = `${p.kills} kills, ${p.deaths} deaths`;
+  const hp = card.querySelector('.c-hp');
+  hp.classList.toggle('low', p.health <= 30);
+  hp.firstElementChild.style.width = `${p.dead ? 0 : p.health}%`;
   card.classList.toggle('dead', p.dead);
   card.hidden = false;
 }
@@ -622,6 +729,7 @@ function toggleRoster() {
   if ($('roster').hidden) {
     $('roster').hidden = false;
     $('roster-btn').setAttribute('aria-expanded', 'true');
+    rosterKey = '';
     if (match) renderRoster(match);
     wake();
   } else {
@@ -633,9 +741,14 @@ function closeRoster() {
   $('roster-btn').setAttribute('aria-expanded', 'false');
 }
 
-
+// rebuilt only when something in it changes, so a click on a player is not lost
+let rosterKey = '';
 function renderRoster(s) {
-  const box = $('roster');
+  const key = JSON.stringify([s.style, s.scores, s.follow, s.spectators,
+    s.players.map(p => [p.slot, p.team, p.kills, p.deaths, p.dead, p.flag, p.name])]);
+  if (key === rosterKey) return;
+  rosterKey = key;
+  const box = $('roster-list');
   const scroll = box.scrollTop;
   box.textContent = '';
   const groups = new Map();
@@ -655,11 +768,12 @@ function renderRoster(s) {
     if (team) {
       const sw = el('i');
       sw.style.background = teamColor({ team });
+      h.style.setProperty('--tt', teamColor({ team }, true));
       name.append(sw, document.createTextNode(TEAMS[team] || 'Players'), el('b', '', String(s.scores[team] ?? '')));
     } else {
       name.append(document.createTextNode('Players'));
     }
-    h.append(name, el('span', 'num', 'K'), el('span', 'num', 'D'));
+    h.append(name, el('span', 'num k', 'K'), el('span', 'num d', 'D'));
     box.append(h);
     for (const p of list) {
       const row = el('button', 'player' + (p.dead ? ' dead' : '') + (p.slot === s.follow ? ' followed' : ''));
@@ -669,8 +783,7 @@ function renderRoster(s) {
       sw.style.background = teamColor(p);
       who.append(sw, el('span', '', p.name));
       if (p.flag) who.append(flagIcon(p.flag));
-      row.append(who, el('span', 'n', String(p.kills)), el('span', 'n', String(p.deaths)));
-      row.title = `${p.weapon} · ${p.health}%`;
+      row.append(who, el('span', 'n k', String(p.kills)), el('span', 'n d', String(p.deaths)));
       row.addEventListener('click', () => { setMode('player', true); follow(p.slot); });
       box.append(row);
     }

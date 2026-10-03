@@ -53,6 +53,12 @@ uses
   Demo, Weapons, GameStrings, Net, GameMenus, Gfx, GameRendering, PhysFS,
   ClientGame, Console, MapGraphics, Steam;
 
+{$IFDEF SPECTATOR}
+const
+  // the kill feed is a little smaller than the game's: the page has its own panels
+  KILLFEED_SCALE = 0.8;
+{$ENDIF}
+
 type
   TInterfaceRelInfo = record
     HealthBar_Rel_X, HealthBar_Rel_Y: Integer;
@@ -1420,6 +1426,13 @@ begin
   end;
 end;
 
+{$IFDEF SPECTATOR}
+procedure SetKillFeedFont(Style: Integer);
+begin
+  SetFontStyle(Style, KILLFEED_SCALE);
+end;
+{$ENDIF}
+
 procedure RenderKillConsoleTexts(w: Single);
 var
   i: Integer;
@@ -1431,7 +1444,7 @@ begin
   Tiny := False;
   dy := 0;
 
-  SetFontStyle(FONT_WEAPONS_MENU);
+  {$IFDEF SPECTATOR}SetKillFeedFont{$ELSE}SetFontStyle{$ENDIF}(FONT_WEAPONS_MENU);
 
   if w < 1024 then
   begin
@@ -1455,13 +1468,17 @@ begin
       Tiny := not Tiny;
 
       if Tiny then
-        SetFontStyle(FONT_SMALLEST)
+        {$IFDEF SPECTATOR}SetKillFeedFont{$ELSE}SetFontStyle{$ENDIF}(FONT_SMALLEST)
       else
-        SetFontStyle(FONT_WEAPONS_MENU);
+        {$IFDEF SPECTATOR}SetKillFeedFont{$ELSE}SetFontStyle{$ENDIF}(FONT_WEAPONS_MENU);
     end;
 
     x := 595 * _iscala.x - RectWidth(GfxTextMetrics(KillConsole.TextMessage[i]));
+    {$IFDEF SPECTATOR}
+    y := 60 + ((i - 1) * (font_weaponmenusize.Value + 2) + dy) * KILLFEED_SCALE;
+    {$ELSE}
     y := 60 + (i - 1) * (font_weaponmenusize.Value + 2) + dy;
+    {$ENDIF}
 
     GfxTextColor(RGBA(KillConsole.TextMessageColor[i], Alpha));
     GfxDrawText(x, y);
@@ -2511,6 +2528,11 @@ begin
             y := y + L2;
             _Scala.x := 0.8;
             _scala.y := 0.8;
+            {$IFDEF SPECTATOR}
+            y := 59 + (y - 59) * KILLFEED_SCALE;
+            _Scala.x := 0.8 * KILLFEED_SCALE;
+            _scala.y := 0.8 * KILLFEED_SCALE;
+            {$ENDIF}
 
             GfxDrawSprite(T^[KillConsole.NumMessage[j]], x, y,
               _Scala.x, _Scala.y, RGBA($FFFFFF, Alfa));
