@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#313d4f">
 <title>Soldat TV</title>
 <meta name="description" content="Soldat TV: watch Soldat 1.7.1 matches live in your browser. No install, no account.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='14' height='10' rx='2' fill='%233c8e37'/%3E%3Ccircle cx='5.5' cy='8' r='1.6' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico">
 <link rel="stylesheet" href="spectate.css">
 </head>
 <body>
@@ -24,8 +24,8 @@
 <!-- the channel guide -->
 <div id="guide" hidden>
   <header class="tabs">
-    <a class="tab active logo" href="./" aria-label="Soldat TV"><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
-    <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a>
+    <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
+    <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
     <a class="tab ext" href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">Source</a>
     <span class="fill-tab"></span>
     <span class="tag">Live matches</span>
@@ -39,19 +39,19 @@
         <span id="status" class="status" role="status"></span>
         <button id="refresh" type="button" class="btn">Refresh</button>
       </div>
-      <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+      <div class="meter" id="meter"><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-text" role="status"></span></div>
       <div class="columns" aria-hidden="true">
-        <span>Ch</span><span>Server</span><span>Map</span><span class="c-mode">Game type</span><span class="num">Players</span><span class="c-region">Region</span>
+        <span>Server</span><span>Map</span><span class="c-mode">Game Type</span><span class="num">Players</span>
       </div>
       <ol id="channels" class="channels"></ol>
       <p id="list-empty" class="list-empty" hidden></p>
     </section>
 
     <aside class="notes">
-      <h2>How it works</h2>
+      <h2>Information</h2>
       <div class="box">
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
-          watching. You can't play or chat from here, so the players never notice you.</p>
+          watching. You can't play or chat from here.</p>
       </div>
       <h2>Watching</h2>
       <div class="box">
@@ -81,7 +81,6 @@
     <button id="back" type="button" class="icon-btn" aria-label="Back to the guide"><svg><use href="#i-back"/></svg></button>
     <div class="channel-id">
       <span class="tally">LIVE</span>
-      <span id="ch-num" class="ch-num"></span>
       <span id="ch-name" class="ch-name"></span>
       <span id="ch-delay" class="ch-delay" hidden></span>
     </div>
@@ -124,7 +123,7 @@
 
 <div id="loading">
   <div class="loading-box">
-    <span class="logo"><span class="logo-word">SOLDAT</span><span class="logo-tv">TV</span></span>
+    <span class="logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></span>
     <p id="loading-text">Tuning in...</p>
     <div class="bar"><div id="loading-bar"></div></div>
   </div>

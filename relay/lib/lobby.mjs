@@ -1,4 +1,5 @@
-// The Soldat lobby's server list (api.soldat.pl), fetched at most every 15 seconds.
+// The Soldat lobby's server list (api.soldat.pl), fetched at most every 15 seconds (or as
+// often as the caller's maxAge asks, for a refresh someone asked for).
 import https from 'node:https';
 
 function fetchText(url) {
@@ -15,13 +16,13 @@ function fetchText(url) {
   });
 }
 
-// Returns a function that resolves to { time, servers } (servers: the lobby's entries;
-// the last good list, or none, when the lobby is unreachable).
+// Returns a function lobby(maxAge = 15 s) that resolves to { time, servers } (servers: the
+// lobby's entries; the last good list, or none, when the lobby is unreachable).
 export function makeLobby(url, log) {
   let cache = { time: 0, servers: [] };
   let pending = null;
-  return async function lobby() {
-    if (Date.now() - cache.time < 15_000 && cache.time) return cache;
+  return async function lobby(maxAge = 15_000) {
+    if (Date.now() - cache.time < Math.max(maxAge, 5_000) && cache.time) return cache;
     if (!pending) {
       pending = fetchText(url).then((text) => {
         const data = JSON.parse(text);

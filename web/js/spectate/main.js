@@ -2,6 +2,7 @@
 // spectator hub (relay/spectator.mjs). The game ignores its own keys and mouse in this
 // build; this page drives the camera through the soldat_spectator_* exports.
 import { SoldatRuntime } from '../runtime.js';
+import { flag } from './flags.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -115,7 +116,6 @@ let pollTimer = 0;
 function watch(ch) {
   watching = ch;
   setStatus('');
-  $('ch-num').textContent = ch.number ? String(ch.number).padStart(2, '0') : '';
   $('ch-name').textContent = ch.name;
   $('ch-delay').hidden = true;
   $('scorebug').hidden = true;
@@ -529,42 +529,64 @@ function setStatus(text, error = false) {
 }
 
 let channels = [];
+let listUpdated = null; // when the hub last asked the lobby, in this page's clock (0: never, null: unknown)
+let listError = '';
 
-async function refresh() {
-  try {
-    const res = await fetch(httpBase() + '/api/watch', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    channels = (await res.json()).servers || [];
-    channels.forEach((c, i) => { c.number = i + 1; });
-    if (!$('status').classList.contains('error')) setStatus('');
-  } catch (e) {
-    setStatus('The guide is unavailable right now (' + e.message + ').', true);
-  }
-  renderGuide();
-  // the strip above the list fills up until the next refresh
+// fresh: the Refresh button (the hub asks the lobby again instead of using its last answer)
+async function refresh(fresh = false) {
+  // the green strip runs while the hub requests the servers, like Request Servers
   const meter = $('meter');
-  meter.classList.remove('run');
+  meter.classList.remove('loading', 'done');
   void meter.offsetWidth;
-  meter.classList.add('run');
+  meter.classList.add('loading');
+  meterText('Requesting servers...');
+  try {
+    const res = await fetch(httpBase() + '/api/watch' + (fresh ? '?fresh' : ''), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    channels = data.servers || [];
+    listUpdated = data.updated == null ? null : data.updated && Date.now() - Math.max(0, data.now - data.updated);
+    listError = '';
+  } catch (e) {
+    listError = 'The server list is unavailable right now (' + e.message + ').';
+  }
+  meter.classList.remove('loading');
+  meter.classList.toggle('done', !listError);
+  renderGuide();
+  showAge();
   return channels;
 }
+
+function meterText(text, error = false) {
+  const t = $('meter').querySelector('.meter-text');
+  t.textContent = text;
+  t.classList.toggle('error', error);
+}
+
+// how old the list is
+function showAge() {
+  if ($('meter').classList.contains('loading')) return;
+  if (listError) { meterText(listError, true); return; }
+  if (listUpdated === null) { meterText(''); return; }
+  if (!listUpdated) { meterText('Lobby not reached yet'); return; }
+  const sec = Math.round((Date.now() - listUpdated) / 1000);
+  meterText(sec < 5 ? 'Updated just now' : sec < 120 ? `Updated ${sec} s ago` : `Updated ${Math.round(sec / 60)} min ago`);
+}
+setInterval(() => { if (!watching) showAge(); }, 1000);
 
 function renderGuide() {
   const ol = $('channels');
   ol.textContent = '';
-  let playing = 0, watchers = 0;
+  let players = 0;
   for (const c of channels) {
-    playing += Math.max(0, (c.players || 0) - (c.bots || 0));
-    watchers += c.viewers || 0;
+    players += c.players || 0;
     const li = el('li');
     const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
     b.type = 'button';
-    b.append(el('span', 'ch', String(c.number).padStart(2, '0')));
 
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
-    const dot = el('i', 'dot' + (c.state === 'live' ? ' live' : ''));
-    title.append(dot, el('span', '', c.name));
+    title.append(flag(c.country) || el('i', 'cflag none'), el('span', '', c.name));
     main.append(title);
     const sub = el('span', 'ch-sub');
     if (c.state === 'live') sub.append(el('span', 'on-air', c.viewers ? `On air · ${c.viewers} watching` : 'On air'));
@@ -575,7 +597,9 @@ function renderGuide() {
     b.append(main);
 
     b.append(el('span', 'ch-map', c.map || ''));
-    b.append(el('span', 'ch-mode', MODES[c.mode] || c.mode || ''));
+    const mode = el('span', 'ch-mode', c.mode || '');
+    if (c.mode) mode.title = MODES[c.mode] || c.mode;
+    b.append(mode);
 
     const pl = el('span', 'ch-players num');
     if (c.players != null) {
@@ -593,22 +617,20 @@ function renderGuide() {
       pl.append(el('small', '', '—'));
     }
     b.append(pl);
-    b.append(el('span', 'ch-region', c.country || ''));
     b.addEventListener('click', () => watch(c));
     li.append(b);
     ol.append(li);
   }
   $('list-empty').hidden = channels.length > 0;
-  $('list-empty').textContent = 'No channels are set up yet.';
+  $('list-empty').textContent = 'No servers are set up yet.';
   const summary = $('summary');
   summary.textContent = '';
   if (channels.length) {
-    summary.append('Channels: ', el('b', '', String(channels.length)), ' - Playing: ', el('b', '', String(playing)));
-    if (watchers) summary.append(' - Watching: ', el('b', '', String(watchers)));
+    summary.append('Servers: ', el('b', '', String(channels.length)), ' - Players: ', el('b', '', String(players)));
   }
 }
 
-$('refresh').addEventListener('click', refresh);
+$('refresh').addEventListener('click', () => refresh(true));
 
 // ================================================================== boot
 

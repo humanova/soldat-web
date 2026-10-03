@@ -171,8 +171,9 @@ setInterval(resolveAll, 10 * 60_000).unref();
 
 // The watchable servers, busiest first: what the hub knows when it watches, else what
 // the lobby reports (servers outside the lobby show only their name until watched).
-async function listServers() {
-  const l = await lobby();
+// fresh: someone pressed Refresh (the lobby is still asked at most every 5 seconds).
+async function listServers(fresh) {
+  const l = await lobby(fresh ? 5_000 : 15_000);
   const fromLobby = new Map();
   for (const e of l.servers) {
     const id = addresses.get(`${e.IP}:${e.Port}`);
@@ -197,7 +198,7 @@ async function listServers() {
   const humans = (s) => (s.players || 0) - (s.bots || 0);
   list.sort((a, b) => humans(b) - humans(a) || (b.players || 0) - (a.players || 0) ||
     b.viewers - a.viewers || a.name.localeCompare(b.name));
-  return list;
+  return { servers: list, updated: l.time };
 }
 
 // ---------------------------------------------------------------- http
@@ -206,9 +207,10 @@ const server = http.createServer((req, res) => {
   const url = requestUrl(req);
   if (!url) { res.writeHead(400).end(); return; }
   if (url.pathname === '/api/watch') {
-    listServers().then((servers) => {
+    listServers(url.searchParams.has('fresh')).then(({ servers, updated }) => {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ servers }));
+      // updated: when the lobby was asked (0: never), in the hub's clock like now
+      res.end(JSON.stringify({ servers, updated, now: Date.now() }));
     });
     return;
   }

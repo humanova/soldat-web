@@ -1491,7 +1491,7 @@ begin
 
     x  := ((Sprite[i].Skeleton.Pos[12].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
     y  := ((Sprite[i].Skeleton.Pos[12].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
-    dy := -25 * _rscala.y;
+    dy := -25 / ViewScale * _rscala.y;
 
     if Sprite[i].Typing and not Hide then
     begin
@@ -1788,6 +1788,9 @@ begin
   rc := GfxTextMetrics(WideString(Sprite[i].Player.Name));
   w  := RectWidth(rc);
   h  := RectHeight(rc);
+  // the gap between the player and the name scales with the world, the text does not
+  if not OnlyOffscreen then
+    dy := h / _rscala.y / 2 + (dy - h / _rscala.y / 2) / ViewScale;
   x  := ((Sprite[i].Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
   y  := ((Sprite[i].Skeleton.Pos[7].y - CameraY) / ViewScale + 0.5 * GameHeight + dy) * _rscala.y;
 
@@ -1847,8 +1850,8 @@ var
 begin
   x := Sprite[MySprite].Skeleton.Pos[9].x - 2;
   y := Sprite[MySprite].Skeleton.Pos[9].y - 15;
-  x := (x - CameraX + 0.5 * GameWidth) * _rscala.x;
-  y := (y - CameraY + 0.5 * GameHeight) * _rscala.y;
+  x := ((x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+  y := ((y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
 
   SetFontStyle(FONT_SMALL);
   GfxTextColor(RGBA(GAME_MESSAGE_COLOR));
@@ -2273,8 +2276,8 @@ begin
     // Player indicator
     if ui_playerindicator.Value and SpriteMe.IsNotSpectator then
     begin
-      CharacterOffset.x := GameWidthHalf  - camerax + SpriteMe.Skeleton.Pos[12].x;
-      CharacterOffset.y := GameHeightHalf - cameray + SpriteMe.Skeleton.Pos[12].y;
+      CharacterOffset.x := GameWidthHalf  + (SpriteMe.Skeleton.Pos[12].x - camerax) / ViewScale;
+      CharacterOffset.y := GameHeightHalf + (SpriteMe.Skeleton.Pos[12].y - cameray) / ViewScale;
 
       x := T^[GFX_INTERFACE_ARROW].Width * T^[GFX_INTERFACE_ARROW].Scale;
       y := T^[GFX_INTERFACE_ARROW].Height * T^[GFX_INTERFACE_ARROW].Scale;
@@ -2283,7 +2286,7 @@ begin
       IndicatorOffset.y := y / 2 / _rscala.y;
 
       x := CharacterOffset.x - IndicatorOffset.x;
-      y := CharacterOffset.y - IndicatorOffset.y - 15;
+      y := CharacterOffset.y - IndicatorOffset.y - 15 / ViewScale;
 
       if (SpriteMe.Alpha < 255) and (not sv_survivalmode.Value) then
         Alfa := SpriteMe.CeaseFireCounter * 2 + 75

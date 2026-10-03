@@ -195,8 +195,10 @@ plus the web port by [humanova](https://github.com/humanova).
 The game data is not covered by that license: `web/soldat.smod` and `web/assets/` hold
 files of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
 [base game content](https://github.com/opensoldat/base) (CC BY 4.0). The menu backdrop
-`web/backdrop.jpg` and the screenshots are pictures of the game.
+`web/backdrop.jpg` and the screenshots are pictures of the game, and the icon (`web/favicon.ico`,
+`web/soldat-icon.png`) is Soldat's own.
 
-Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), stb_image
+Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), the country
+flags of [flag-icons](https://github.com/lipis/flag-icons) (MIT, `web/flags.png`), stb_image
 (public domain) and FreeType (FreeType License). Portions of this software are copyright
 © 2015 The FreeType Project (www.freetype.org). All rights reserved.
