@@ -666,9 +666,10 @@ function renderTarget(s) {
   t.title = p ? `${p.name} · ${p.weapon} · ${p.health}%` : '';
 }
 
-// the weapon pictures of the game's kill feed (interface-gfx/guns, by weapon number)
-const GUN_FILES = { 0: '10', 205: 'flamer', 206: 'fist', 207: 'bow', 208: 'bow', 211: 'knife', 212: 'chainsaw',
-  224: 'law', 225: 'm2' };
+// the weapon pictures of the game's kill feed (interface-gfx/guns), by the weapon number
+// of the state line (Weapons.pas: *_NUM; 1-10 are the primaries, 255 empty hands)
+const GUN_FILES = { 0: '10', 11: 'knife', 12: 'chainsaw', 13: 'law', 14: 'flamer', 15: 'bow', 16: 'bow', 30: 'm2',
+  255: 'fist' };
 const gunUrls = new Map();
 function gunPicture(num) {
   const file = num >= 1 && num <= 10 ? String(num % 10) : GUN_FILES[num];
