@@ -208,6 +208,11 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .player .flag { width: 12px; height: 12px; flex: none; }
 .player .n { text-align: right; color: var(--muted); }
 .player.dead .who span { color: var(--dim); }
+.roster .spec-head .who b { font-size: 13px; color: var(--muted); }
+.player.spectator { display: block; color: var(--muted); cursor: default; }
+.player.spectator .who { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster .player.spectator:hover { background: rgba(60, 75, 97, .7); }
+.roster .player.spectator:nth-of-type(even):hover { background: rgba(48, 62, 84, .7); }
 .roster .player.followed { background: rgba(0, 0, 0, .25); box-shadow: inset 0 0 0 1px var(--orange); }
 
 .rotate { display: none; }

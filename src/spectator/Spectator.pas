@@ -127,6 +127,7 @@ end;
 // One line per item, fields separated by tabs:
 //   M  gamestyle  map  seconds left  alpha  bravo  charlie  delta  followed slot  zoom
 //   P  slot  team  kills  deaths  caps  dead  carries a flag  health %  shirt (hex)  weapon  name
+//   S  slot  name   (the other spectators; the hub's own one is the page)
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
 var
   S: AnsiString;
@@ -147,7 +148,9 @@ begin
           [i, Player.Team, Player.Kills, Player.Deaths, Player.Flags, Integer(DeadMeat), Flag,
            EnsureRange(Round(100 * Health / StartHealth), 0, 100), Player.ShirtColor and $FFFFFF,
            Clean(Weapon.Name), Clean(Player.Name)]);
-      end;
+      end
+      else if Active and (i <> MySprite) then
+        S := S + Format('S'#9'%d'#9'%s'#10, [i, Clean(Player.Name)]);
   Result := Length(S);
   if Result + 1 > Size then
     Exit(0);

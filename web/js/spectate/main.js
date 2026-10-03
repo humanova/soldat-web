@@ -381,7 +381,7 @@ function readState() {
   const n = call('soldat_spectator_state', stateBuf.ptr, stateBuf.size);
   if (!n) return null;
   const text = new TextDecoder('latin1').decode(game.rt.u8().subarray(stateBuf.ptr, stateBuf.ptr + n));
-  const s = { players: [] };
+  const s = { players: [], spectators: [] };
   for (const line of text.split('\n')) {
     const f = line.split('\t');
     if (f[0] === 'M') {
@@ -390,6 +390,8 @@ function readState() {
     } else if (f[0] === 'P') {
       s.players.push({ slot: +f[1], team: +f[2], kills: +f[3], deaths: +f[4], caps: +f[5], dead: f[6] === '1',
         flag: +f[7], health: +f[8], color: '#' + f[9], weapon: f[10], name: f.slice(11).join('\t') });
+    } else if (f[0] === 'S') {
+      s.spectators.push({ slot: +f[1], name: f.slice(2).join('\t') });
     }
   }
   return s;
@@ -491,7 +493,11 @@ function renderRoster(s) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(p);
   }
-  if (!groups.size) box.append(el('h3', '', 'Nobody is playing'));
+  if (!groups.size) {
+    const h = el('h3');
+    h.append(el('span', 'who', 'Nobody is playing'));
+    box.append(h);
+  }
   for (const [team, list] of groups) {
     const h = el('h3');
     const name = el('span', 'who');
@@ -515,6 +521,18 @@ function renderRoster(s) {
       row.append(who, el('span', 'n', String(p.kills)), el('span', 'n', String(p.deaths)));
       row.title = `${p.weapon} · ${p.health}%`;
       row.addEventListener('click', () => { setMode('player', true); follow(p.slot); });
+      box.append(row);
+    }
+  }
+  if (s.spectators.length) {
+    const h = el('h3', 'spec-head');
+    const name = el('span', 'who');
+    name.append(document.createTextNode('Spectators'), el('b', '', String(s.spectators.length)));
+    h.append(name);
+    box.append(h);
+    for (const p of s.spectators.slice().sort((a, b) => a.name.localeCompare(b.name))) {
+      const row = el('div', 'player spectator');
+      row.append(el('span', 'who', p.name));
       box.append(row);
     }
   }
