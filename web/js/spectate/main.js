@@ -7,6 +7,7 @@ import { flag } from '../flags.js';
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
+const TITLE = document.title;
 
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
@@ -161,7 +162,7 @@ function showGuide() {
   $('watch').hidden = true;
   $('guide').hidden = false;
   history.replaceState(null, '', location.pathname + (debug ? '?debug' : ''));
-  document.title = 'Soldat TV';
+  document.title = TITLE;
   refresh();
 }
 
@@ -924,7 +925,7 @@ function renderGuide() {
       pl.append(el('b', 'unknown', '—'));
     }
     b.append(pl);
-    b.addEventListener('click', () => watch(c));
+    b.addEventListener('click', () => tuneIn(c));
     li.append(b);
     appendNames(li, c);
     ol.append(li);
@@ -973,39 +974,62 @@ $('refresh').addEventListener('click', () => refresh(true));
 
 // ================================================================== boot
 
-async function boot() {
+// The guide shows at once and the game loads behind it (search engines see the guide, not
+// a loading screen). A channel picked before the game is ready waits on the loading screen.
+async function startGame() {
   const text = $('loading-text');
   const bar = $('loading-bar');
-  try {
-    if (!('WebAssembly' in window) || !document.createElement('canvas').getContext('webgl2')) {
-      throw new Error('This browser cannot show the matches (it needs WebAssembly and WebGL 2).');
-    }
-    const list = refresh();
-    await game.load({
-      base: '',
-      wasm: 'soldat-spectate.wasm',
-      onStatus: (s) => {
-        const m = s.match(/(\d+) \/ (\d+) MB/);
-        text.textContent = m ? `Tuning in... ${m[1]} of ${m[2]} MB` : 'Tuning in...';
-        if (m) bar.style.width = `${Math.min(100, (100 * m[1]) / m[2])}%`;
-      },
-    });
-    bar.style.width = '100%';
-    await new Promise(r => setTimeout(r, 30));
-    await game.instantiate();
-    game.startGame();
-    $('loading').hidden = true;
-    $('guide').hidden = false;
-    await list;
-    setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
-    const direct = params.get('watch');
-    const ch = direct && channels.find(c => c.id === direct);
-    if (ch) watch(ch);
-  } catch (e) {
-    console.error(e);
-    $('loading').classList.add('error');
-    text.textContent = 'Could not start: ' + (e && e.message ? e.message : e);
+  if (!('WebAssembly' in window) || !document.createElement('canvas').getContext('webgl2')) {
+    throw new Error('This browser cannot show the matches (it needs WebAssembly and WebGL 2).');
   }
+  await game.load({
+    base: '',
+    wasm: 'soldat-spectate.wasm',
+    onStatus: (s) => {
+      const m = s.match(/(\d+) \/ (\d+) MB/);
+      text.textContent = m ? `Tuning in... ${m[1]} of ${m[2]} MB` : 'Tuning in...';
+      if (m) bar.style.width = `${Math.min(100, (100 * m[1]) / m[2])}%`;
+    },
+  });
+  bar.style.width = '100%';
+  await new Promise(r => setTimeout(r, 30));
+  await game.instantiate();
+  game.startGame();
+  ready = true;
+}
+
+let ready = false, tuning = false;
+const started = startGame();
+started.catch((e) => console.error(e));
+
+async function tuneIn(ch) {
+  if (tuning) return;
+  if (!ready) {
+    tuning = true;
+    $('loading').hidden = false;
+    try {
+      await started;
+    } catch (e) {
+      setStatus('Could not start: ' + (e && e.message ? e.message : e), true);
+      return;
+    } finally {
+      tuning = false;
+      $('loading').hidden = true;
+    }
+  }
+  watch(ch);
+}
+
+async function boot() {
+  const direct = params.get('watch');
+  if (direct) { $('guide').hidden = true; $('loading').hidden = false; }
+  document.documentElement.classList.remove('direct');
+  await refresh();
+  setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
+  const ch = direct && channels.find(c => c.id === direct);
+  $('guide').hidden = false;
+  if (ch) await tuneIn(ch);
+  else $('loading').hidden = true;
 }
 
 boot();
