@@ -98,8 +98,9 @@ node relay/spectator.mjs                                # http://localhost:8090
 ```
 
 The page (`spectate.html`, the spectator client `soldat-spectate.wasm`) lists the
-servers busiest first, with their map, mode and who plays, from the Soldat lobby (or from
-the hub itself while it watches, with the players' teams). While watching:
+servers busiest first, with their map and mode; the arrow by the player count shows who
+plays, from the Soldat lobby (or from the hub itself while it watches, with the players'
+teams). While watching:
 
 - **Auto** follows the hub's pick (a flag carrier, else whoever just scored a kill);
   ‹ › or the players list follow one player; dragging moves the camera yourself; **Map**

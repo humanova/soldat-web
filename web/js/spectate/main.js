@@ -867,7 +867,7 @@ function renderGuide() {
     const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
     b.type = 'button';
 
-    // the name with its tags, then who plays (every row has both lines, so they are even)
+    // the name with its tags; on a phone the map and mode go under it
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
     title.append(flag(c.country) || el('i', 'cflag none'), el('span', 'ch-label', c.name));
@@ -878,22 +878,7 @@ function renderGuide() {
       title.append(el('span', 'chip bots', humans ? `${c.bots} bots` : 'Bots only'));
     }
     main.append(title);
-    const sub = el('span', 'ch-sub');
-    if (c.map) sub.append(el('span', 'sub-map', [c.map, c.mode].filter(Boolean).join(' · ')));
-    const who = el('span', 'who');
-    if (c.names && c.names.length) {
-      c.names.forEach((p, i) => {
-        if (i) who.append(', ');
-        const n = el('span', '', p.name);
-        if (p.team >= 1 && p.team <= 4) n.style.color = TEAM_TEXT[p.team];
-        who.append(n);
-      });
-      who.title = c.names.map((p) => p.name).join(', ');
-    } else {
-      who.append(el('span', 'nobody', c.players ? `${c.players} playing` : c.players === 0 ? 'Nobody playing' : ''));
-    }
-    sub.append(who);
-    main.append(sub);
+    if (c.map) main.append(el('span', 'ch-sub', [c.map, c.mode].filter(Boolean).join(' · ')));
     if (c.title && c.title !== c.name) title.title = c.title;
     b.append(main);
 
@@ -918,6 +903,7 @@ function renderGuide() {
     b.append(pl);
     b.addEventListener('click', () => watch(c));
     li.append(b);
+    appendNames(li, c);
     ol.append(li);
   }
   $('list-empty').hidden = channels.length > 0;
@@ -927,6 +913,37 @@ function renderGuide() {
   if (channels.length) {
     summary.append('Servers: ', el('b', '', String(channels.length)), ' - Players: ', el('b', '', String(players)));
   }
+}
+
+// the arrow after the player count opens the names of who plays under the row; open rows
+// stay open when the list refreshes
+const openRows = new Set();
+function appendNames(li, c) {
+  const names = c.names || [];
+  if (!names.length) { li.append(el('span', 'peek-none')); return; }
+  const open = openRows.has(c.id);
+  const t = el('button', 'peek icon-btn');
+  t.type = 'button';
+  t.setAttribute('aria-expanded', String(open));
+  t.setAttribute('aria-label', `Players on ${c.name}`);
+  t.title = open ? 'Hide the players' : 'Show the players';
+  t.innerHTML = '<svg><use href="#i-next"/></svg>';
+  t.addEventListener('click', () => {
+    if (openRows.has(c.id)) openRows.delete(c.id);
+    else openRows.add(c.id);
+    renderGuide();
+  });
+  li.append(t);
+  if (!open) return;
+  // the hub's own list has teams: keep each team together, in the order of the game
+  const list = names.map((p, i) => [p, i]).sort((a, b) => (a[0].team || 9) - (b[0].team || 9) || a[1] - b[1]);
+  const ul = el('ul', 'names');
+  for (const [p] of list) {
+    const n = el('li', '', p.name);
+    if (p.team >= 1 && p.team <= 4) n.style.color = TEAM_TEXT[p.team];
+    ul.append(n);
+  }
+  li.append(ul);
 }
 
 $('refresh').addEventListener('click', () => refresh(true));
