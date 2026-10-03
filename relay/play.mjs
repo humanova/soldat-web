@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { log, makeArg, originChecker, clientIpOf, requestUrl } from './lib/util.mjs';
 import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket } from './lib/ws.mjs';
+import { proxyFiles } from './lib/files.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -35,7 +36,6 @@ const MAX_SESSIONS_PER_IP = parseInt(process.env.MAX_SESSIONS_PER_IP || '4', 10)
 const MAX_SESSIONS = 1000;
 const IDLE_TIMEOUT = 60_000;
 const MAX_DATAGRAM = 8192;
-const MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 // The 1.7.1 server firewalls an address that sends more than 18 RequestGame/PlayerInfo
 // messages within 1000 ticks (~16.7 s). All relayed players share our address, so
@@ -220,40 +220,14 @@ async function startUdp(ws, clientAddr, m) {
   return () => { clearInterval(idle); try { sock.close(); } catch (_) {} };
 }
 
-const FILE_RE = /^(maps\/[^/\\]+\.pms|textures\/[^\\]+\.(png|jpg|jpeg|bmp|gif)|scenery-gfx\/[^/\\]+\.(png|jpg|jpeg|bmp|gif))$/i;
-
 async function startFiles(ws, clientAddr, m) {
   const filePort = Number(m.port);
   const { ip } = await resolveTarget(m.host, filePort - 10);
   if (!(await targetAllowed(m.host, ip, filePort - 10))) {
     throw new Error('This relay only connects to servers listed in the Soldat lobby.');
   }
-  const files = Array.isArray(m.files) ? m.files.filter(f => typeof f === 'string' && FILE_RE.test(f) && !f.includes('..')) : [];
-  if (!files.length || files.length > 256) throw new Error('bad file list');
-  const tcp = net.connect({ host: ip, port: filePort });
-  let total = 0;
-  const timer = setTimeout(() => tcp.destroy(new Error('timeout')), 90_000);
-  tcp.on('connect', () => {
-    tcp.write('STARTFILES\r\n' + files.join('\r\n') + '\r\nENDFILES\r\n');
-  });
-  tcp.on('data', (d) => {
-    total += d.length;
-    if (total > MAX_FILE_BYTES) { tcp.destroy(); return; }
-    ws.sendBinary(d);
-    if (ws.buffered > 8 << 20) tcp.pause();
-  });
-  const resume = setInterval(() => { if (tcp.isPaused() && ws.buffered < 1 << 20) tcp.resume(); }, 50);
-  const end = (err) => {
-    clearTimeout(timer);
-    clearInterval(resume);
-    if (err) ws.sendText({ type: 'error', message: 'file server: ' + err.message });
-    else ws.sendText({ type: 'end' });
-    ws.close(1000);
-  };
-  tcp.on('end', () => end());
-  tcp.on('error', (e) => end(e));
-  log(`file request ${clientAddr} -> ${ip}:${filePort} (${files.length} files)`);
-  return () => { clearTimeout(timer); clearInterval(resume); tcp.destroy(); };
+  log(`file request ${clientAddr} -> ${ip}:${filePort}`);
+  return proxyFiles(ws, ip, filePort, m.files);
 }
 
 // ---------------------------------------------------------------- http server

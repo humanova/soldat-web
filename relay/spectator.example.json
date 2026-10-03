@@ -1,0 +1,12 @@
+{
+  "playerName": "[TV] Soldat Web",
+  "delaySeconds": 0,
+  "lingerSeconds": 60,
+  "maxViewers": 500,
+  "maxViewersPerIp": 3,
+  "trustProxy": false,
+  "origins": [],
+  "servers": [
+    { "id": "local", "name": "Local test server", "host": "127.0.0.1", "port": 23073 }
+  ]
+}

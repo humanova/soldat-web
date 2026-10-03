@@ -20,6 +20,14 @@ uses
 
 {$I WebExports.inc}
 
+procedure soldat_spectator_follow(Slot: LongInt); cdecl;
+begin
+  SpectatorFollow(Slot);
+end;
+
+exports
+  soldat_spectator_follow;
+
 begin
   DefaultSystemCodePage := CP_UTF8;
   SpectatorInit;

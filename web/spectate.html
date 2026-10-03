@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soldat Live</title>
+<meta name="description" content="Watch Soldat 1.7.1 matches live in the browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23e5534b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="spectate.css">
+</head>
+<body>
+<div id="app" hidden>
+  <header class="top">
+    <h1 class="brand">
+      <span class="wordmark">SOLDAT</span>
+      <span class="live-badge">LIVE</span>
+      <span class="tagline">watch 1.7.1 matches in your browser</span>
+    </h1>
+  </header>
+
+  <main class="watch-main">
+    <section class="panel" id="matches" aria-labelledby="matches-title">
+      <div class="panel-head">
+        <h2 id="matches-title">Matches</h2>
+        <span id="status" class="status" role="status"></span>
+        <button id="refresh" type="button" class="ghost">Refresh</button>
+      </div>
+      <ul id="match-list" class="match-list"></ul>
+      <p id="list-empty" class="empty" hidden>No servers are set up for watching.</p>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> © Transhuman Design ·
+    client code rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
+    web port by <a href="https://github.com/humanova" target="_blank" rel="noopener">humanova</a>
+  </footer>
+</div>
+
+<div id="game" hidden>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="hud" class="watch-hud">
+    <button id="back" type="button" title="Back to the matches">‹ Matches</button>
+    <span id="hud-server"></span>
+    <span id="hud-delay" class="tag" hidden></span>
+    <button id="auto-cam" type="button" aria-pressed="true" title="Follow the action automatically">Auto camera: on</button>
+  </div>
+  <div id="hud-status" class="watch-status" hidden></div>
+</div>
+
+<div id="loading">
+  <div class="box">
+    <div class="wordmark">SOLDAT</div>
+    <p id="loading-text">Loading...</p>
+    <div class="bar"><div id="loading-bar"></div></div>
+  </div>
+</div>
+
+<script type="module" src="js/spectate/main.js"></script>
+</body>
+</html>

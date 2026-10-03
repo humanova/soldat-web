@@ -1,0 +1,26 @@
+/* spectator page (spectate.html), on top of style.css */
+.live-badge { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #fff; background: var(--danger);
+  padding: 2px 8px; border-radius: 4px; }
+.watch-main { grid-template-columns: minmax(0, 1fr); max-width: 980px; width: 100%; margin: 0 auto; }
+#matches { display: flex; flex-direction: column; gap: 12px; }
+.match-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.match { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(0,0,0,.22); cursor: pointer; text-align: left; width: 100%; }
+.match:hover { border-color: var(--accent); background: rgba(212,167,44,.08); }
+.match .name { font-size: 15px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match .meta { display: flex; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.match .state.live { color: #7fe0c9; }
+.match .state.waiting { color: var(--danger); }
+
+#game #canvas { cursor: default; }
+.watch-hud { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 10px;
+  color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; opacity: .35; transition: opacity .2s; }
+.watch-hud:hover, #game:hover .watch-hud { opacity: 1; }
+.watch-hud button { padding: 4px 10px; background: rgba(0,0,0,.6); }
+.watch-status { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(0,0,0,.75);
+  padding: 10px 16px; border-radius: 6px; color: #fff; font-size: 14px; pointer-events: none; }
+
+@media (max-width: 560px) {
+  .tagline { display: none; }
+}

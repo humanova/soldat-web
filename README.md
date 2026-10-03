@@ -84,6 +84,33 @@ Good to know before you open it to the public:
 - WebSockets run over TCP. On a lossy connection one lost packet holds up the ones behind
   it, which real UDP wouldn't do. On a good connection you won't notice.
 
+## Live spectator
+
+`relay/spectator.mjs` is a separate, public-facing server for watching matches. It joins
+each game server named in its config once, as a spectator, and streams that one
+connection to every viewer. Viewers can't play, chat or vote, and they can't pick a
+server that isn't in the config, so the hub's IP only ever reaches those servers, with
+a single spectator each.
+
+```bash
+cp relay/spectator.example.json relay/spectator.json   # list the servers to watch
+node relay/spectator.mjs                                # http://localhost:8090
+```
+
+It serves `spectate.html` (the spectator client, `soldat-spectate.wasm`) and the stream on
+`/watch`; it doesn't serve the game page and has no play relay. A viewer who opens a
+match mid-game gets the current players, items and scores from the hub. Settings:
+`servers` (`id`, `name`, `host`, `port`, optional `password` and `delaySeconds`),
+`playerName`, `delaySeconds` (a broadcast delay, so players can't use the stream to spy
+on their opponents), `lingerSeconds`, `maxViewers`, `maxViewersPerIp`, `origins` and
+`trustProxy`.
+
+- The game server needs a free spectator slot (`Max_Spectators`). If it has none, the
+  hub reports that and never joins a team. Ask the admins before you add their server.
+- The server sends frequent updates only around the player a spectator follows, so the
+  hub picks one for everyone: a flag carrier, else whoever just scored a kill. Viewers
+  follow it with "Auto camera". Players elsewhere move less smoothly.
+
 ## Build it yourself
 
 On macOS with Homebrew:
@@ -141,7 +168,8 @@ downloaded from the game server, like for any custom map.
 - `web/js/`: the browser side: a file system with IndexedDB storage, WebGL 2 (the game's
   shaders are translated to GLSL ES), WebAudio, input, the relay client and the menu.
 - `web/soldat.smod`: the game data. Map textures and scenery are in `web/assets/`.
-- `relay/play.mjs`: the relay, with shared code in `relay/lib/`. No dependencies.
+- `relay/play.mjs`: the relay. `relay/spectator.mjs`: the spectator hub
+  (`relay/lib/hub.mjs` does the work). Both share `relay/lib/` and have no dependencies.
 
 ## Credits and license
 

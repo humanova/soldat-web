@@ -1,9 +1,9 @@
 // Networking for the 1.7.1 protocol. Browsers cannot send UDP, so datagrams travel
 // over a WebSocket to the relay (relay/play.mjs), which forwards them to the game
 // server. The spectator page instead receives a match from the spectator hub
-// (relay/spectator.mjs): opts.request names what to watch and opts.receiveOnly drops
-// everything the game sends. Map downloads use the server's TCP file server through the same relay, or
-// the static asset mirror when it has the file.
+// (relay/spectator.mjs): opts.request names what to watch, and the hub's other messages
+// (player name, status, camera) go to opts.onMessage. Map downloads use the server's TCP
+// file server through the same relay, or the static asset mirror when it has the file.
 
 const NET_CONNECTING = 0, NET_OPEN = 1, NET_CLOSED = 2;
 const MAX_QUEUE = 256;
@@ -72,6 +72,7 @@ export function createNet(rt, vfs, opts) {
         let msg;
         try { msg = JSON.parse(ev.data); } catch (_) { return; }
         if (msg.type === 'ready') {
+          if (opts.onMessage) opts.onMessage(msg);
           state = NET_OPEN;
           for (const d of outQueue) socket.send(d);
           outQueue = [];
@@ -84,6 +85,8 @@ export function createNet(rt, vfs, opts) {
         } else if (msg.type === 'error') {
           opts.onError && opts.onError(msg.message || 'relay error');
           closeSocket();
+        } else if (opts.onMessage) {
+          opts.onMessage(msg);
         }
         return;
       }
@@ -212,7 +215,6 @@ export function createNet(rt, vfs, opts) {
     connect: (hostPtr, port) => { connect(rt.cstr(hostPtr), port); return 0; },
     state: () => state,
     send: (ptr, size) => {
-      if (opts.receiveOnly) return 0;
       const d = rt.u8().slice(ptr, ptr + size);
       if (state === NET_OPEN && ws && ws.readyState === 1) { ws.send(d); return 0; }
       if (state === NET_CONNECTING) {

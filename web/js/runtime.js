@@ -144,7 +144,7 @@ export class SoldatRuntime {
     this.net = createNet(rt, this.vfs, {
       relayUrl: () => hooks.relayUrl(),
       request: hooks.relayRequest,
-      receiveOnly: !!hooks.receiveOnly,
+      onMessage: hooks.onRelayMessage,
       assetBase: () => this.assetBase,
       assetIndex: (p) => this.findAsset(p),
       onError: (msg) => hooks.onNetError && hooks.onNetError(msg),
