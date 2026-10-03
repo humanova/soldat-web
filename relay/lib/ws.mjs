@@ -2,6 +2,8 @@
 import crypto from 'node:crypto';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+// the largest message, also when it comes in pieces (continuation frames)
+const MAX_MESSAGE = 1 << 20;
 
 export class WsConn {
   constructor(socket, head) {
@@ -9,6 +11,7 @@ export class WsConn {
     this.buf = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
     this.frag = null;
     this.fragOp = 0;
+    this.fragLen = 0;
     this.closed = false;
     this.onmessage = null;
     this.onclose = null;
@@ -43,7 +46,7 @@ export class WsConn {
         len = b.readUInt32BE(6); off = 10;
       }
       if (!masked) { this.close(1002); return; }
-      if (len > 1 << 20) { this.close(1009); return; }
+      if (len > MAX_MESSAGE) { this.close(1009); return; }
       if (b.length < off + 4 + len) return;
       const mask = b.subarray(off, off + 4);
       const payload = Buffer.from(b.subarray(off + 4, off + 4 + len));
@@ -55,6 +58,8 @@ export class WsConn {
       if (op === 0x0) {
         if (!this.frag) { this.close(1002); return; }
         this.frag.push(payload);
+        this.fragLen += payload.length;
+        if (this.fragLen > MAX_MESSAGE) { this.close(1009); return; }
         if (fin) {
           const data = Buffer.concat(this.frag);
           const fop = this.fragOp;
@@ -64,13 +69,20 @@ export class WsConn {
         continue;
       }
       if (op !== 0x1 && op !== 0x2) { this.close(1003); return; }
-      if (!fin) { this.frag = [payload]; this.fragOp = op; continue; }
+      if (!fin) { this.frag = [payload]; this.fragOp = op; this.fragLen = payload.length; continue; }
       this.deliver(op, payload);
     }
   }
 
   deliver(op, data) {
-    if (this.onmessage) this.onmessage(op === 0x1 ? data.toString('utf8') : data, op === 0x2);
+    if (!this.onmessage) return;
+    // a message the handler chokes on ends this connection, never the whole server
+    try {
+      this.onmessage(op === 0x1 ? data.toString('utf8') : data, op === 0x2);
+    } catch (e) {
+      console.error(new Date().toISOString(), 'websocket message failed:', e && e.stack || e);
+      this.close(1011);
+    }
   }
 
   sendFrame(op, payload) {

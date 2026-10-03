@@ -85,12 +85,16 @@ function handleWatch(req, socket, head) {
     cleanup();
   };
   const hello = setTimeout(() => ws.close(1008), 10_000);
+  let started = false;
   ws.onmessage = (msg, binary) => {
-    if (binary) return;
+    // one request per connection: a second one would start another stream or download
+    if (binary || started) return;
+    started = true;
     clearTimeout(hello);
     let m;
     try { m = JSON.parse(msg); } catch (_) { ws.close(1003); return; }
-    const hub = hubs.get(m.server);
+    if (!m || typeof m !== 'object') { ws.close(1003); return; }
+    const hub = typeof m.server === 'string' ? hubs.get(m.server) : null;
     if (!hub) { ws.sendText({ type: 'error', message: 'Unknown server.' }); ws.close(1008); return; }
     if (m.type === 'watch') cleanup = watch(ws, ip, hub);
     else if (m.type === 'files') cleanup = files(ws, ip, hub, m.files);
@@ -107,16 +111,17 @@ function watch(ws, ip, hub) {
   };
   let windowStart = Date.now(), windowCount = 0;
   ws.onmessage = (msg, binary) => {
-    if (!binary) {
-      try {
-        const c = JSON.parse(msg);
-        if (c.type === 'ping') ws.sendText({ type: 'pong', t: c.t });
-      } catch (_) {}
-      return;
-    }
+    // game messages and pings alike: at most 200 a second, of at most 2 KB
     const now = Date.now();
     if (now - windowStart > 1000) { windowStart = now; windowCount = 0; }
     if (++windowCount > 200 || msg.length > 2048) return;
+    if (!binary) {
+      try {
+        const c = JSON.parse(msg);
+        if (c && c.type === 'ping' && typeof c.t === 'number') ws.sendText({ type: 'pong', t: c.t });
+      } catch (_) {}
+      return;
+    }
     hub.fromViewer(viewer, msg);
   };
   hub.addViewer(viewer);
