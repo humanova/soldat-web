@@ -137,6 +137,7 @@ export class SoldatRuntime {
       onWindow: (w, h) => hooks.onWindow && hooks.onWindow(w, h),
       onPointerLock: (locked) => hooks.onPointerLock && hooks.onPointerLock(locked),
       onMessage: (title, text) => hooks.onMessage && hooks.onMessage(title, text),
+      input: hooks.input,
     });
     this.gl = createGL(rt, () => this.sdl.getContext());
     this.al = createAL(rt);

@@ -84,10 +84,10 @@ Good to know before you open it to the public:
 - WebSockets run over TCP. On a lossy connection one lost packet holds up the ones behind
   it, which real UDP wouldn't do. On a good connection you won't notice.
 
-## Live spectator
+## Soldat TV (live spectator)
 
-`relay/spectator.mjs` is a separate, public-facing server for watching matches. It joins
-each game server named in its config once, as a spectator, and streams that one
+`relay/spectator.mjs` is a separate, public-facing server for watching matches: Soldat TV.
+It joins each game server named in its config once, as a spectator, and streams that one
 connection to every viewer. Viewers can't play, chat or vote, and they can't pick a
 server that isn't in the config, so the hub's IP only ever reaches those servers, with
 a single spectator each.
@@ -97,19 +97,30 @@ cp relay/spectator.example.json relay/spectator.json   # list the servers to wat
 node relay/spectator.mjs                                # http://localhost:8090
 ```
 
-It serves `spectate.html` (the spectator client, `soldat-spectate.wasm`) and the stream on
-`/watch`; it doesn't serve the game page and has no play relay. A viewer who opens a
-match mid-game gets the current players, items and scores from the hub. Settings:
-`servers` (`id`, `name`, `host`, `port`, optional `password` and `delaySeconds`),
-`playerName`, `delaySeconds` (a broadcast delay, so players can't use the stream to spy
-on their opponents), `lingerSeconds`, `maxViewers`, `maxViewersPerIp`, `origins` and
-`trustProxy`.
+The page (`spectate.html`, the spectator client `soldat-spectate.wasm`) lists the
+servers busiest first, with their map, mode and players from the Soldat lobby. While
+watching:
+
+- **Auto** follows the hub's pick (a flag carrier, else whoever just scored a kill),
+  **Player** follows one player (arrows, or pick from the players list), **Free** moves
+  the camera yourself (drag) and **Map** shows the whole map.
+- Zoom with the mouse wheel, a touchpad pinch or two fingers; drag (or one finger) to
+  look around. The game's own keys and menus are off in this build: the page drives the
+  camera through the `soldat_spectator_*` exports (`src/spectator/Spectator.pas`).
+- Phones work held sideways; the page asks you to turn an upright phone.
+
+The server doesn't serve the game page and has no play relay. A viewer who opens a match
+mid-game gets the current players, items and scores from the hub. Settings: `servers`
+(`id`, `name`, `host`, `port`, optional `password` and `delaySeconds`), `playerName`,
+`delaySeconds` (a broadcast delay, so players can't use the stream to spy on their
+opponents), `lingerSeconds`, `maxViewers`, `maxViewersPerIp`, `origins`, `trustProxy` and
+`lobbyUrl`.
 
 - The game server needs a free spectator slot (`Max_Spectators`). If it has none, the
   hub reports that and never joins a team. Ask the admins before you add their server.
-- The server sends frequent updates only around the player a spectator follows, so the
-  hub picks one for everyone: a flag carrier, else whoever just scored a kill. Viewers
-  follow it with "Auto camera". Players elsewhere move less smoothly.
+- The server sends frequent updates (and bullets) only around the player a spectator
+  follows, and everyone shares the hub's camera target. Players far from it, as in
+  the Map view, move less smoothly.
 
 ## Build it yourself
 

@@ -704,6 +704,11 @@ begin
 
   while SDL_PollEvent(@Event) = 1 do
   begin
+    {$IFDEF SPECTATOR}
+    // the page drives the spectator (Spectator.pas): the game's keys, menus and chat stay closed
+    if Event.type_ <> SDL_QUITEV then
+      Continue;
+    {$ENDIF}
     case Event.type_ of
       SDL_QUITEV: begin
         ClientDisconnect;

@@ -131,23 +131,26 @@ export function createSDL(rt, canvas, hooks = {}) {
     }
   }
 
-  window.addEventListener('keydown', (e) => onKey(e, true), true);
-  window.addEventListener('keyup', (e) => onKey(e, false), true);
-  // events on the canvas bubble to the document, also while the pointer is locked
-  document.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', (e) => onMouseButton(e, true));
-  window.addEventListener('mouseup', (e) => { if (active) onMouseButton(e, false); });
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  canvas.addEventListener('wheel', (e) => {
-    if (!active) return;
-    e.preventDefault();
-    queue.push({ type: SDL_MOUSEWHEEL, x: 0, y: e.deltaY < 0 ? 1 : -1 });
-  }, { passive: false });
-  document.addEventListener('paste', (e) => {
-    if (!active) return;
-    clipboard = (e.clipboardData && e.clipboardData.getData('text')) || '';
-    e.preventDefault();
-  });
+  // hooks.input === false: the page handles input itself (the spectator); the game gets none
+  if (hooks.input !== false) {
+    window.addEventListener('keydown', (e) => onKey(e, true), true);
+    window.addEventListener('keyup', (e) => onKey(e, false), true);
+    // events on the canvas bubble to the document, also while the pointer is locked
+    document.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mousedown', (e) => onMouseButton(e, true));
+    window.addEventListener('mouseup', (e) => { if (active) onMouseButton(e, false); });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('wheel', (e) => {
+      if (!active) return;
+      e.preventDefault();
+      queue.push({ type: SDL_MOUSEWHEEL, x: 0, y: e.deltaY < 0 ? 1 : -1 });
+    }, { passive: false });
+    document.addEventListener('paste', (e) => {
+      if (!active) return;
+      clipboard = (e.clipboardData && e.clipboardData.getData('text')) || '';
+      e.preventDefault();
+    });
+  }
   document.addEventListener('pointerlockchange', () => {
     if (hooks.onPointerLock) hooks.onPointerLock(document.pointerLockElement === canvas);
   });
@@ -244,7 +247,7 @@ export function createSDL(rt, canvas, hooks = {}) {
     SDL_StartTextInput: () => { textInput = true; },
     SDL_StopTextInput: () => { textInput = false; },
     SDL_SetRelativeMouseMode: (on) => {
-      relativeMouse = !!on;
+      relativeMouse = !!on && hooks.input !== false;
       if (relativeMouse && document.pointerLockElement !== canvas && navigator.userActivation &&
           navigator.userActivation.isActive) requestLock();
       if (!relativeMouse && document.pointerLockElement === canvas) document.exitPointerLock();

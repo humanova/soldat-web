@@ -999,7 +999,13 @@ begin
     RenderProps(2);
     GfxSetMipmapBias(0);
 
-    if not r_scaleinterface.Value then
+    // the interface ignores the spectator zoom (w, h above are the zoomed view)
+    if r_scaleinterface.Value then
+    begin
+      w := GameWidth;
+      h := GameHeight;
+    end
+    else
     begin
       w := RenderWidth;
       h := RenderHeight;

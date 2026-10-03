@@ -1464,6 +1464,12 @@ begin
   end;
 end;
 
+// world size of one interface unit: the spectator zoom (r_zoom) scales the world only
+function ViewScale: Single;
+begin
+  Result := exp(r_zoom.Value);
+end;
+
 procedure RenderChatTexts;
 var
   i: Integer;
@@ -1483,8 +1489,8 @@ begin
        Sprite[MySprite].IsNotInSameTeam(Sprite[i]) and
        Sprite[MySprite].IsNotSpectator;
 
-    x  := (Sprite[i].Skeleton.Pos[12].x - CameraX + 0.5 * GameWidth) * _rscala.x;
-    y  := (Sprite[i].Skeleton.Pos[12].y - CameraY + 0.5 * GameHeight) * _rscala.y;
+    x  := ((Sprite[i].Skeleton.Pos[12].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+    y  := ((Sprite[i].Skeleton.Pos[12].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
     dy := -25 * _rscala.y;
 
     if Sprite[i].Typing and not Hide then
@@ -1782,8 +1788,8 @@ begin
   rc := GfxTextMetrics(WideString(Sprite[i].Player.Name));
   w  := RectWidth(rc);
   h  := RectHeight(rc);
-  x  := (Sprite[i].Skeleton.Pos[7].x - CameraX + 0.5 * GameWidth) * _rscala.x;
-  y  := (Sprite[i].Skeleton.Pos[7].y - CameraY + 0.5 * GameHeight + dy) * _rscala.y;
+  x  := ((Sprite[i].Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+  y  := ((Sprite[i].Skeleton.Pos[7].y - CameraY) / ViewScale + 0.5 * GameHeight + dy) * _rscala.y;
 
   if not OnlyOffscreen or (x < 0) or (x > Width) or (y < 0) or (y > Height) then
   begin
@@ -2905,7 +2911,7 @@ begin
     SetFontStyle(FONT_SMALL);
 
     // cursor text
-    if (CursorTextLength > 0) and (MapChangeCounter < 0) and not TeamMenu.Active and
+    if {$IFDEF SPECTATOR}False and{$ENDIF} (CursorTextLength > 0) and (MapChangeCounter < 0) and not TeamMenu.Active and
       not EscMenu.Active and not DemoPlayer.Active then
     begin
       x := mx * _rscala.x - 0.5 * RectWidth(GfxTextMetrics(WideString(CursorText)));
@@ -2915,15 +2921,15 @@ begin
       GfxDrawText(x, y);
     end;
 
-    // free camera / following player
-    if CameraFollowSprite = 0 then
+    // free camera / following player (the spectator page shows this itself)
+    if {$IFDEF SPECTATOR}False and{$ENDIF} (CameraFollowSprite = 0) then
     begin
       x := (Width - RectWidth(GfxTextMetrics(_('Free Camera')))) / 2;
       GfxTextColor(RGBA(205, 205, 205));
       GfxDrawText(x, 430 * _iscala.y);
     end
-    else if (CameraFollowSprite > 0) and (CameraFollowSprite <= MAX_SPRITES) and
-      (CameraFollowSprite <> MySprite) then
+    else if {$IFDEF SPECTATOR}False and{$ENDIF} (CameraFollowSprite > 0) and
+      (CameraFollowSprite <= MAX_SPRITES) and (CameraFollowSprite <> MySprite) then
     begin
       i := Integer(Sprite[CameraFollowSprite].DeadMeat);
       x := (Width - RectWidth(GfxTextMetrics(_('Following') + ' ' +
@@ -3057,7 +3063,8 @@ begin
   alfa := MySprite;
   if alfa < 1 then
     alfa := MAX_PLAYERS;
-  if EscMenu.Active or LimboMenu.Active or TeamMenu.Active or Sprite[alfa].DeadMeat then
+  if {$IFDEF SPECTATOR}False and{$ENDIF}
+    (EscMenu.Active or LimboMenu.Active or TeamMenu.Active or Sprite[alfa].DeadMeat) then
   begin
     if not DemoPlayer.Active or EscMenu.Active then
     begin

@@ -12,7 +12,8 @@
 //   playerName      name of the spectator on the servers
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
-//   maxViewersPerIp, maxViewers, origins (other page origins allowed), trustProxy
+//   maxViewersPerIp, maxViewers, origins (other page origins allowed), trustProxy,
+//   lobbyUrl (the Soldat lobby, for the current map and players of servers not watched)
 // Environment: PORT, ROOT, CONFIG.
 
 import http from 'node:http';
@@ -26,6 +27,7 @@ import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
+import { makeLobby } from './lib/lobby.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = makeArg(process.argv.slice(2));
@@ -36,6 +38,7 @@ const ROOT = path.resolve(arg('root', process.env.ROOT || path.join(here, '..', 
 const MAX_VIEWERS = config.maxViewers ?? 500;
 const MAX_VIEWERS_PER_IP = config.maxViewersPerIp ?? 3;
 const PLAYER_NAME = String(config.playerName || '[TV] Soldat Web').slice(0, 23);
+const lobby = makeLobby(config.lobbyUrl || 'https://api.soldat.pl/v0/servers', log);
 const originAllowed = originChecker(new Set(config.origins || []));
 const clientIp = clientIpOf(!!config.trustProxy);
 
@@ -149,14 +152,64 @@ function files(ws, ip, hub, list) {
   return release;
 }
 
+// ---------------------------------------------------------------- server list
+
+// addresses of the configured servers, to find them in the lobby's list
+const addresses = new Map();
+async function resolveAll() {
+  for (const h of hubs.values()) {
+    try {
+      const ip = net.isIP(h.cfg.host) ? h.cfg.host : (await dns.lookup(h.cfg.host, { family: 4 })).address;
+      addresses.set(`${ip}:${h.cfg.port}`, h.cfg.id);
+    } catch (e) {
+      log(`cannot resolve ${h.cfg.host}: ${e.message}`);
+    }
+  }
+}
+resolveAll();
+setInterval(resolveAll, 10 * 60_000).unref();
+
+// The watchable servers, busiest first: what the hub knows when it watches, else what
+// the lobby reports (servers outside the lobby show only their name until watched).
+async function listServers() {
+  const l = await lobby();
+  const fromLobby = new Map();
+  for (const e of l.servers) {
+    const id = addresses.get(`${e.IP}:${e.Port}`);
+    if (id) fromLobby.set(id, e);
+  }
+  const list = [...hubs.values()].map((h) => {
+    const info = h.info();
+    const e = fromLobby.get(h.cfg.id);
+    const bots = e ? e.NumBots || 0 : 0;
+    return {
+      ...info,
+      title: e ? e.Name : null,
+      mode: e ? e.GameStyle : null,
+      map: info.state === 'live' ? info.map : (e ? e.CurrentMap : info.map) || null,
+      players: info.players ?? (e ? e.NumPlayers : null),
+      maxPlayers: e ? e.MaxPlayers : null,
+      bots,
+      country: e ? e.Country : null,
+      listed: !!e,
+    };
+  });
+  const humans = (s) => (s.players || 0) - (s.bots || 0);
+  list.sort((a, b) => humans(b) - humans(a) || (b.players || 0) - (a.players || 0) ||
+    b.viewers - a.viewers || a.name.localeCompare(b.name));
+  return list;
+}
+
 // ---------------------------------------------------------------- http
 
 const server = http.createServer((req, res) => {
   const url = requestUrl(req);
   if (!url) { res.writeHead(400).end(); return; }
   if (url.pathname === '/api/watch') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ servers: [...hubs.values()].map(h => h.info()) }));
+    listServers().then((servers) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ servers }));
+    });
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }

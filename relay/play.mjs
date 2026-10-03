@@ -11,7 +11,6 @@
 // origins allowed to use the relay besides its own; "*" for any).
 
 import http from 'node:http';
-import https from 'node:https';
 import dgram from 'node:dgram';
 import net from 'node:net';
 import dns from 'node:dns/promises';
@@ -21,6 +20,7 @@ import { log, makeArg, originChecker, clientIpOf, requestUrl } from './lib/util.
 import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
+import { makeLobby } from './lib/lobby.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -50,41 +50,16 @@ const staticAllow = new Set((arg('allow', process.env.ALLOW || '') || '').split(
 
 // ---------------------------------------------------------------- lobby list
 
-let lobbyCache = { time: 0, body: null, allowed: new Set() };
-let lobbyPending = null;
+const lobbyList = makeLobby(LOBBY_URL, log);
 
-function fetchText(url) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: 10_000, headers: { 'User-Agent': 'soldat-web-relay' } }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
-      let data = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => { data += c; if (data.length > 2e6) req.destroy(new Error('too large')); });
-      res.on('end', () => resolve(data));
-    });
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', reject);
-  });
-}
-
+// the lobby's servers as the page gets them, and their addresses
 async function lobby() {
-  if (Date.now() - lobbyCache.time < 15_000 && lobbyCache.body) return lobbyCache;
-  if (!lobbyPending) {
-    lobbyPending = fetchText(LOBBY_URL).then((text) => {
-      const data = JSON.parse(text);
-      const allowed = new Set();
-      for (const s of data.Servers || []) allowed.add(`${s.IP}:${s.Port}`);
-      lobbyCache = { time: Date.now(), body: JSON.stringify({ Servers: data.Servers || [] }), allowed };
-      return lobbyCache;
-    }).finally(() => { lobbyPending = null; });
+  const l = await lobbyList();
+  if (l.body === undefined) {
+    l.body = JSON.stringify({ Servers: l.servers });
+    l.allowed = new Set(l.servers.map(s => `${s.IP}:${s.Port}`));
   }
-  try {
-    return await lobbyPending;
-  } catch (e) {
-    log('lobby fetch failed:', e.message);
-    if (lobbyCache.body) return lobbyCache;
-    return { time: 0, body: JSON.stringify({ Servers: [] }), allowed: new Set() };
-  }
+  return l;
 }
 
 async function resolveTarget(host, port) {

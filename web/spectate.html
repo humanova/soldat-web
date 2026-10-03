@@ -2,57 +2,123 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Soldat Live</title>
-<meta name="description" content="Watch Soldat 1.7.1 matches live in the browser.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23e5534b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0e">
+<title>Soldat TV</title>
+<meta name="description" content="Soldat TV: watch Soldat 1.7.1 matches live in your browser. No install, no account.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='14' height='10' rx='2' fill='%23e5483c'/%3E%3Ccircle cx='5.5' cy='8' r='1.6' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="spectate.css">
 </head>
 <body>
-<div id="app" hidden>
-  <header class="top">
-    <h1 class="brand">
-      <span class="wordmark">SOLDAT</span>
-      <span class="live-badge">LIVE</span>
-      <span class="tagline">watch 1.7.1 matches in your browser</span>
-    </h1>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 20 20"><path d="M12 5 7 10l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-next" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-full" viewBox="0 0 20 20"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="m13 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="6.5" r="2.7" fill="currentColor"/><path d="M2 16c.4-3 2.6-4.6 5.5-4.6S12.6 13 13 16z" fill="currentColor"/><circle cx="14" cy="7" r="2.2" fill="currentColor" opacity=".6"/><path d="M14 11.6c2.2 0 3.7 1.4 4 4.4h-3.6" fill="currentColor" opacity=".6"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- the channel guide -->
+<div id="guide" hidden>
+  <header class="masthead">
+    <a class="logo" href="./" aria-label="Soldat TV">
+      <span class="logo-word">SOLDAT</span><span class="logo-tv">TV</span>
+    </a>
+    <p id="summary" class="summary" aria-live="polite"></p>
   </header>
 
-  <main class="watch-main">
-    <section class="panel" id="matches" aria-labelledby="matches-title">
-      <div class="panel-head">
-        <h2 id="matches-title">Matches</h2>
+  <main class="guide-main">
+    <section class="listing" aria-labelledby="listing-title">
+      <div class="listing-head">
+        <h1 id="listing-title">On now</h1>
         <span id="status" class="status" role="status"></span>
-        <button id="refresh" type="button" class="ghost">Refresh</button>
+        <button id="refresh" type="button" class="text-btn">Refresh</button>
       </div>
-      <ul id="match-list" class="match-list"></ul>
-      <p id="list-empty" class="empty" hidden>No servers are set up for watching.</p>
+      <div class="columns" aria-hidden="true">
+        <span>Ch</span><span>Server</span><span>Map</span><span class="num">Players</span><span>Region</span>
+      </div>
+      <ol id="channels" class="channels"></ol>
+      <p id="list-empty" class="list-empty" hidden></p>
     </section>
+
+    <aside class="notes">
+      <h2>How it works</h2>
+      <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
+        watching. You can't play or chat from here, so the players never notice you.</p>
+      <h2>Watching</h2>
+      <dl class="keys">
+        <dt>Scroll, pinch</dt><dd>zoom</dd>
+        <dt>Drag</dt><dd>look around</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
+        <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
+        <dt><kbd>Tab</kbd></dt><dd>players</dd>
+      </dl>
+    </aside>
   </main>
 
-  <footer>
+  <footer class="credits">
     <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> © Transhuman Design ·
-    client code rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
-    web port by <a href="https://github.com/humanova" target="_blank" rel="noopener">humanova</a>
+    client rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
+    by <a href="https://github.com/humanova" target="_blank" rel="noopener">humanova</a>
   </footer>
 </div>
 
-<div id="game" hidden>
-  <canvas id="canvas" tabindex="0"></canvas>
-  <div id="hud" class="watch-hud">
-    <button id="back" type="button" title="Back to the matches">‹ Matches</button>
-    <span id="hud-server"></span>
-    <span id="hud-delay" class="tag" hidden></span>
-    <button id="auto-cam" type="button" aria-pressed="true" title="Follow the action automatically">Auto camera: on</button>
+<!-- watching a match -->
+<div id="watch" hidden>
+  <canvas id="canvas" tabindex="0" aria-label="The match"></canvas>
+
+  <div class="topbar ui">
+    <button id="back" type="button" class="icon-btn" aria-label="Back to the guide"><svg><use href="#i-back"/></svg></button>
+    <div class="channel-id">
+      <span class="tally">LIVE</span>
+      <span id="ch-num" class="ch-num"></span>
+      <span id="ch-name" class="ch-name"></span>
+      <span id="ch-delay" class="ch-delay" hidden></span>
+    </div>
+    <div id="scorebug" class="scorebug" hidden></div>
+    <div class="topbar-end">
+      <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
+      <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
+    </div>
   </div>
-  <div id="hud-status" class="watch-status" hidden></div>
+
+  <div id="notice" class="notice" hidden></div>
+
+  <div id="dock" class="dock ui">
+    <div class="modes" role="radiogroup" aria-label="Camera">
+      <button type="button" role="radio" data-mode="auto" title="Follow the action (A)">Auto</button>
+      <button type="button" role="radio" data-mode="player" title="Follow one player (← →)">Player</button>
+      <button type="button" role="radio" data-mode="free" title="Move the camera yourself (F)">Free</button>
+      <button type="button" role="radio" data-mode="overview" title="The whole map (O)">Map</button>
+    </div>
+    <div class="target">
+      <button id="prev" type="button" class="icon-btn" aria-label="Previous player"><svg><use href="#i-prev"/></svg></button>
+      <button id="target" type="button" class="target-name"><i class="swatch"></i><span>—</span></button>
+      <button id="next" type="button" class="icon-btn" aria-label="Next player"><svg><use href="#i-next"/></svg></button>
+    </div>
+    <div class="zoom">
+      <button id="zoom-out" type="button" class="icon-btn" aria-label="Zoom out">−</button>
+      <input id="zoom" type="range" min="-1.6" max="0.9" step="0.01" value="0" aria-label="Zoom">
+      <button id="zoom-in" type="button" class="icon-btn" aria-label="Zoom in">+</button>
+    </div>
+    <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
+  </div>
+
+  <aside id="roster" class="roster ui" hidden aria-label="Players"></aside>
+
+  <div class="rotate" aria-hidden="true">
+    <div class="phone"></div>
+    <p>Turn your phone sideways</p>
+  </div>
 </div>
 
 <div id="loading">
-  <div class="box">
-    <div class="wordmark">SOLDAT</div>
-    <p id="loading-text">Loading...</p>
+  <div class="loading-box">
+    <span class="logo"><span class="logo-word">SOLDAT</span><span class="logo-tv">TV</span></span>
+    <p id="loading-text">Tuning in...</p>
     <div class="bar"><div id="loading-bar"></div></div>
   </div>
 </div>

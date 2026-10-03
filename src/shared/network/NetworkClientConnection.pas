@@ -415,7 +415,7 @@ begin
   UDP.Cipher.Decrypt(Gravity, 4);
   UDP.Cipher.Reset;
 
-  if not WasRejoin then
+  if not WasRejoin {$IFDEF SPECTATOR}and False{$ENDIF} then
     MainConsole.Console(_('Connection accepted to') + ' ' + WideString(UDP.AddressString(True)),
       CLIENT_MESSAGE_COLOR);
 

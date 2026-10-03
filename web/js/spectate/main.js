@@ -1,9 +1,17 @@
-// Spectator page: the list of watchable matches and the spectator client
-// (soldat-spectate.wasm), fed by the spectator hub (relay/spectator.mjs).
+// Soldat TV: the channel guide and the spectator client (soldat-spectate.wasm), fed by the
+// spectator hub (relay/spectator.mjs). The game ignores its own keys and mouse in this
+// build; this page drives the camera through the soldat_spectator_* exports.
 import { SoldatRuntime } from '../runtime.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
+const debug = params.has('debug');
+
+const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
+const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
+const TEAM_GAMES = new Set([2, 3, 5, 6]);  // team match, CTF, infiltration, hold the flag
+const MODES = { DM: 'Deathmatch', PM: 'Pointmatch', TM: 'Team match', CTF: 'Capture the flag',
+  RM: 'Rambomatch', INF: 'Infiltration', HTF: 'Hold the flag' };
 
 // ?hub=wss://example.org lets a page hosted elsewhere use a hub
 function hubBase() {
@@ -13,59 +21,40 @@ function hubBase() {
 }
 const httpBase = () => hubBase().replace(/^ws/, 'http');
 
-function setStatus(text, error = false) {
-  const el = $('status');
-  el.textContent = text;
-  el.classList.toggle('error', error);
+const prefs = (() => {
+  try { return { muted: false, ...JSON.parse(localStorage.getItem('soldattv') || '{}') }; } catch (_) { return { muted: false }; }
+})();
+function savePrefs() {
+  try { localStorage.setItem('soldattv', JSON.stringify(prefs)); } catch (_) {}
 }
 
-function showHudStatus(text) {
-  $('hud-status').textContent = text || '';
-  $('hud-status').hidden = !text;
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
 }
 
-// ---------- game runtime ----------
+// ======================================================================= game
 
 const canvas = $('canvas');
-let watching = null;  // the match being watched: { id, name }
-// the hub's director picks whom to follow (the server sends the most detail around that
-// player); clicking in the game picks a player yourself
-let autoCamera = true;
-let director = 0;
-
-function setAutoCamera(on) {
-  autoCamera = on;
-  $('auto-cam').setAttribute('aria-pressed', String(on));
-  $('auto-cam').textContent = on ? 'Auto camera: on' : 'Auto camera: off';
-  if (on && director && game.running) game.call('soldat_spectator_follow', director);
-}
+let watching = null;  // the channel being watched
 
 const game = new SoldatRuntime(canvas, {
+  input: false,
   relayUrl: () => hubBase() + '/watch',
   relayRequest(kind, d) {
     if (kind === 'files') return { type: 'files', server: watching && watching.id, files: d.files };
     return { type: 'watch', server: watching && watching.id };
   },
-  onRelayMessage(msg) {
-    if (msg.type === 'ready') {
-      // the client recognizes "its" spectator by the name: it plays the hub's part
-      game.command(`cl_player_name "${String(msg.name).replace(/"/g, "'")}"`);
-      showHudStatus('');
-      $('hud-delay').hidden = !msg.delay;
-      $('hud-delay').textContent = `${msg.delay} s delay`;
-    } else if (msg.type === 'status') {
-      showHudStatus(msg.message);
-    } else if (msg.type === 'follow') {
-      director = msg.slot | 0;
-      if (params.has('debug')) console.log('[spectate] director follows slot', director);
-      if (autoCamera && game.running) game.call('soldat_spectator_follow', director);
-    }
-  },
-  args: params.has('debug') ? ['-log_level', params.get('debug') || '1'] : [],
+  onRelayMessage: onHubMessage,
+  args: debug ? ['-log_level', params.get('debug') || '1'] : [],
   displaySize() {
-    const dpr = window.devicePixelRatio || 1;
-    let w = Math.round(screen.width * dpr), h = Math.round(screen.height * dpr);
-    const max = 3840 * 2400;
+    // always a landscape picture; phones get at most 2x their CSS size (sharp and cheap)
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let w = Math.round(Math.max(screen.width, screen.height) * dpr);
+    let h = Math.round(Math.min(screen.width, screen.height) * dpr);
+    const max = 2560 * 1600;
     if (w * h > max) { const s = Math.sqrt(max / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
     return [w, h];
   },
@@ -73,125 +62,585 @@ const game = new SoldatRuntime(canvas, {
     setStatus(message, true);
     if (watching) game.leave();
   },
-  onLeave() { leaveUi(); },
-  onExit() { leaveUi(); },
+  onLeave: () => showGuide(),
+  onExit: () => showGuide(),
 });
 window.soldat = game; // for debugging from the browser console
 
-function watch(match) {
-  watching = match;
-  setStatus(`Opening ${match.name}...`);
-  $('hud-server').textContent = match.name;
-  $('hud-delay').hidden = true;
+// a client setting, without the console line game.command would print
+function setCvar(name, value) {
+  const n = game.rt.allocCString(name), v = game.rt.allocCString(value);
+  try { game.call('soldat_spectator_set', n, v); } finally { game.rt.free(n); game.rt.free(v); }
+}
+
+function call(name, ...args) {
+  if (!game.running) return 0;
+  try { return game.call(name, ...args); } catch (e) { console.error(e); return 0; }
+}
+
+// ================================================================= the hub
+
+function onHubMessage(msg) {
+  if (msg.type === 'ready') {
+    // the client recognizes "its" spectator by the name: it plays the hub's part
+    setCvar('cl_player_name', String(msg.name));
+    notice('');
+    $('ch-delay').hidden = !msg.delay;
+    $('ch-delay').textContent = `${msg.delay} s delay`;
+    joinedAt = performance.now();
+  } else if (msg.type === 'status') {
+    notice(msg.message);
+  } else if (msg.type === 'follow') {
+    director = msg.slot | 0;
+    if (debug) console.log('[tv] director follows slot', director);
+    if (mode === 'auto') call('soldat_spectator_follow', director);
+  }
+}
+
+function notice(text) {
+  $('notice').textContent = text || '';
+  $('notice').hidden = !text;
+}
+
+// =============================================================== watching
+
+let mode = 'auto';      // auto (the hub's director), player, free, overview
+let director = 0;       // the director's pick
+let zoom = 0;
+let zoomBeforeMap = 0;
+let joinedAt = 0;
+let match = null;       // the last state snapshot
+let pollTimer = 0;
+
+function watch(ch) {
+  watching = ch;
+  setStatus('');
+  $('ch-num').textContent = ch.number ? String(ch.number).padStart(2, '0') : '';
+  $('ch-name').textContent = ch.name;
+  $('ch-delay').hidden = true;
+  $('scorebug').hidden = true;
   director = 0;
-  setAutoCamera(true);
-  showHudStatus('Connecting...');
-  $('app').hidden = true;
-  $('game').hidden = false;
-  game.command('cl_player_team 5');  // join as a spectator, no team menu
-  if (!game.join('live', 1, '')) {
-    leaveUi();
+  zoom = 0;
+  match = null;
+  setMode('auto', true);
+  notice('Tuning in...');
+  $('guide').hidden = true;
+  $('watch').hidden = false;
+  history.replaceState(null, '', '?watch=' + encodeURIComponent(ch.id) + (debug ? '&debug' : ''));
+  document.title = `${ch.name} · Soldat TV`;
+  setCvar('cl_player_team', '5');  // join as a spectator, no team menu
+  setCvar('snd_volume', prefs.muted ? '0' : '60');
+  if (!game.join('tv', 1, '')) {
+    showGuide();
     setStatus('Could not start watching.', true);
     return;
   }
+  clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 250);
+  wake();
   canvas.focus();
 }
 
-function leaveUi() {
+function showGuide() {
   watching = null;
-  showHudStatus('');
-  $('game').hidden = true;
-  $('app').hidden = false;
-  if (!$('status').classList.contains('error')) refresh();
+  clearInterval(pollTimer);
+  notice('');
+  closeRoster();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  $('watch').hidden = true;
+  $('guide').hidden = false;
+  history.replaceState(null, '', location.pathname + (debug ? '?debug' : ''));
+  document.title = 'Soldat TV';
+  refresh();
 }
 
-$('back').addEventListener('click', () => game.leave());
-$('auto-cam').addEventListener('click', () => setAutoCamera(!autoCamera));
-canvas.addEventListener('mousedown', () => {
-  game.al.resume();
-  setAutoCamera(false);  // the game switches players on clicks
-});
-window.addEventListener('pagehide', () => { if (watching) game.leave(); });
+// ---------- camera modes
 
-// ---------- match list ----------
+function setMode(m, quiet) {
+  const was = mode;
+  mode = m;
+  for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-checked', String(b.dataset.mode === m));
+  if (quiet) return;
+  if (m === 'overview') {
+    if (was !== 'overview') zoomBeforeMap = zoom;
+    const z = call('soldat_spectator_overview');
+    setZoom(z, 0.5, 0.5);
+    return;
+  }
+  if (was === 'overview' && m !== 'free') setZoom(zoomBeforeMap, 0.5, 0.5);
+  if (m === 'auto') follow(director || firstPlayer());
+  else if (m === 'player') follow((match && match.follow) || firstPlayer());
+  else if (m === 'free') call('soldat_spectator_follow', 0);
+}
+
+function follow(slot) {
+  if (slot) call('soldat_spectator_follow', slot);
+}
+
+function players() {
+  return match ? match.players : [];
+}
+
+function firstPlayer() {
+  const p = players().find(q => !q.dead) || players()[0];
+  return p ? p.slot : 0;
+}
+
+// next or previous player, in the order of the roster
+function cycle(step) {
+  const list = orderedPlayers();
+  if (!list.length) return;
+  const cur = list.findIndex(p => p.slot === (match && match.follow));
+  const next = list[(cur + step + list.length) % list.length];
+  setMode('player', true);
+  follow(next.slot);
+}
+
+function orderedPlayers() {
+  return players().slice().sort((a, b) => a.team - b.team || b.kills - a.kills || a.slot - b.slot);
+}
+
+// ---------- zoom (the game's spectator zoom; fx, fy: the point that stays put)
+
+function setZoom(z, fx = 0.5, fy = 0.5) {
+  zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+  call('soldat_spectator_zoom', zoom, fx, fy);
+  $('zoom').value = String(-zoom);
+}
+
+// the part of the canvas the picture covers (object-fit: contain)
+function picture() {
+  const r = canvas.getBoundingClientRect();
+  const ar = canvas.width / canvas.height || 16 / 9;
+  let w = r.width, h = r.height;
+  if (w / h > ar) w = h * ar; else h = w / ar;
+  return { x: r.left + (r.width - w) / 2, y: r.top + (r.height - h) / 2, w, h };
+}
+function frac(clientX, clientY) {
+  const p = picture();
+  return [(clientX - p.x) / p.w, (clientY - p.y) / p.h];
+}
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+  // a touchpad pinch arrives as a wheel event with ctrlKey
+  const k = e.ctrlKey ? 0.012 : 0.0016;
+  const [fx, fy] = frac(e.clientX, e.clientY);
+  setZoom(zoom + e.deltaY * unit * k, fx, fy);
+  wake();
+}, { passive: false });
+
+// drag to look around (switches to the free camera), two fingers to zoom
+const pointers = new Map();
+let gesture = null;
+
+canvas.addEventListener('pointerdown', (e) => {
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  gesture = startGesture();
+  game.al.resume();
+});
+$('watch').addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') wake(); });
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  p.x = e.clientX;
+  p.y = e.clientY;
+  moveGesture();
+});
+const endPointer = (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  const g = gesture;
+  gesture = pointers.size ? startGesture() : null;
+  canvas.classList.toggle('dragging', false);
+  // a tap shows or hides the controls on touch screens
+  if (g && !g.moved && !pointers.size && e.pointerType !== 'mouse' && performance.now() - g.t < 300) toggleUi();
+};
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('dblclick', () => { if (mode !== 'overview') setZoom(0); });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+function centroid() {
+  let x = 0, y = 0;
+  for (const p of pointers.values()) { x += p.x; y += p.y; }
+  return { x: x / pointers.size, y: y / pointers.size };
+}
+function spread() {
+  const [a, b] = [...pointers.values()];
+  return b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+}
+function startGesture() {
+  const c = centroid();
+  return { c, c0: c, d: spread(), z: zoom, moved: false, panned: false, t: performance.now() };
+}
+function moveGesture() {
+  if (!gesture || !pointers.size) return;
+  const c = centroid();
+  const pic = picture();
+  const dx = c.x - gesture.c.x, dy = c.y - gesture.c.y;
+  if (!gesture.moved && Math.hypot(dx, dy) < 6 && (pointers.size < 2 || Math.abs(spread() - gesture.d) < 8)) return;
+  gesture.moved = true;
+  canvas.classList.toggle('dragging', true);
+  if (pointers.size >= 2 && gesture.d > 0) {
+    const [fx, fy] = frac(c.x, c.y);
+    setZoom(gesture.z - Math.log(spread() / gesture.d), fx, fy);
+  }
+  // one finger looks around; two only once they move together (a pinch alone keeps following)
+  if (pointers.size === 1 || gesture.panned || Math.hypot(c.x - gesture.c0.x, c.y - gesture.c0.y) > 24) {
+    gesture.panned = true;
+    if (mode !== 'free') setMode('free', true);
+    call('soldat_spectator_pan', -dx / pic.w, -dy / pic.h);
+  }
+  gesture.c = c;
+}
+
+// ---------- controls
+
+for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
+$('prev').addEventListener('click', () => cycle(-1));
+$('next').addEventListener('click', () => cycle(1));
+$('target').addEventListener('click', () => toggleRoster());
+$('zoom').addEventListener('input', () => setZoom(-Number($('zoom').value)));
+$('zoom-in').addEventListener('click', () => setZoom(zoom - 0.25));
+$('zoom-out').addEventListener('click', () => setZoom(zoom + 0.25));
+$('roster-btn').addEventListener('click', () => toggleRoster());
+$('back').addEventListener('click', () => game.leave());
+$('sound').addEventListener('click', () => {
+  prefs.muted = !prefs.muted;
+  savePrefs();
+  showSound();
+  setCvar('snd_volume', prefs.muted ? '0' : '60');
+  game.al.resume();
+});
+$('fullscreen').addEventListener('click', toggleFullscreen);
+
+function showSound() {
+  $('sound').querySelector('use').setAttribute('href', prefs.muted ? '#i-mute' : '#i-sound');
+  $('sound').setAttribute('aria-label', prefs.muted ? 'Unmute' : 'Mute');
+}
+showSound();
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+    await $('watch').requestFullscreen({ navigationUI: 'hide' });
+    // phones: keep the landscape picture (works only in full screen, not everywhere)
+    if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+  } catch (_) {}
+}
+if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
+
+window.addEventListener('keydown', (e) => {
+  if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
+  const keys = {
+    ArrowLeft: () => cycle(-1), ArrowRight: () => cycle(1),
+    KeyA: () => setMode('auto'), KeyP: () => setMode('player'), KeyF: () => setMode('free'),
+    KeyO: () => setMode('overview'), KeyM: () => setMode('overview'),
+    Equal: () => setZoom(zoom - 0.25), NumpadAdd: () => setZoom(zoom - 0.25),
+    Minus: () => setZoom(zoom + 0.25), NumpadSubtract: () => setZoom(zoom + 0.25),
+    Digit0: () => setZoom(0), Tab: () => toggleRoster(), Escape: () => closeRoster(),
+  };
+  const pan = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1] }[e.code];
+  if (pan) {
+    if (mode !== 'free') setMode('free', true);
+    call('soldat_spectator_pan', pan[0] * 0.08, pan[1] * 0.08);
+  } else if (keys[e.code]) {
+    keys[e.code]();
+  } else {
+    return;
+  }
+  e.preventDefault();
+  wake();
+});
+
+// ---------- controls fade out while nothing happens
+
+let idleTimer = 0;
+function wake() {
+  $('watch').classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (!$('dock').matches(':hover') && $('roster').hidden) $('watch').classList.add('idle');
+  }, 3200);
+}
+function toggleUi() {
+  if ($('watch').classList.contains('idle')) wake();
+  else { clearTimeout(idleTimer); $('watch').classList.add('idle'); }
+}
+for (const id of ['dock', 'roster']) $(id).addEventListener('pointerdown', wake);
+
+// ---------- the match state (soldat_spectator_state, Spectator.pas)
+
+const stateBuf = { ptr: 0, size: 16384 };
+
+function readState() {
+  if (!stateBuf.ptr) stateBuf.ptr = game.rt.alloc(stateBuf.size);
+  const n = call('soldat_spectator_state', stateBuf.ptr, stateBuf.size);
+  if (!n) return null;
+  const text = new TextDecoder('latin1').decode(game.rt.u8().subarray(stateBuf.ptr, stateBuf.ptr + n));
+  const s = { players: [] };
+  for (const line of text.split('\n')) {
+    const f = line.split('\t');
+    if (f[0] === 'M') {
+      Object.assign(s, { style: +f[1], map: f[2], seconds: +f[3], scores: [0, +f[4], +f[5], +f[6], +f[7]],
+        follow: +f[8], zoom: +f[9] });
+    } else if (f[0] === 'P') {
+      s.players.push({ slot: +f[1], team: +f[2], kills: +f[3], deaths: +f[4], caps: +f[5], dead: f[6] === '1',
+        flag: +f[7], health: +f[8], color: '#' + f[9], weapon: f[10], name: f.slice(11).join('\t') });
+    }
+  }
+  return s;
+}
+
+function poll() {
+  if (!game.running) return;
+  const s = readState();
+  if (!s) return;
+  match = s;
+  // the followed player left: the game shows the free camera
+  if (!s.follow && (mode === 'auto' || mode === 'player') && s.players.length) {
+    follow(mode === 'auto' && director && s.players.some(p => p.slot === director) ? director : firstPlayer());
+  }
+  // joining resets the zoom
+  if (Math.abs(s.zoom - zoom) > 0.01 && performance.now() - joinedAt < 5000) setZoom(zoom);
+  renderScorebug(s);
+  renderTarget(s);
+  if (!$('roster').hidden) renderRoster(s);
+}
+
+function clock(sec) {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+function renderScorebug(s) {
+  const bug = $('scorebug');
+  bug.textContent = '';
+  const teams = TEAM_GAMES.has(s.style)
+    ? [1, 2, 3, 4].filter(t => t <= 2 || s.players.some(p => p.team === t)) : [];
+  if (teams.length) {
+    const side = (t) => {
+      const box = el('span', `team t${t}`);
+      const carrier = s.players.find(p => p.team === t && p.flag);
+      box.append(el('span', '', TEAMS[t].toUpperCase()), el('b', '', String(s.scores[t])));
+      if (carrier) box.title = `${carrier.name} has the flag`;
+      return box;
+    };
+    bug.append(side(teams[0]), el('span', 'clock', clock(s.seconds)), side(teams[1]));
+    for (const t of teams.slice(2)) bug.append(side(t));
+  } else {
+    bug.append(el('span', 'clock', clock(s.seconds)));
+    const lead = s.players.slice().sort((a, b) => b.kills - a.kills)[0];
+    if (lead) {
+      const l = el('span', 'leader');
+      l.append(el('span', '', lead.name), el('b', '', String(lead.kills)));
+      bug.append(l);
+    }
+  }
+  bug.hidden = false;
+}
+
+function renderTarget(s) {
+  const p = s.players.find(q => q.slot === s.follow);
+  const t = $('target');
+  t.querySelector('span').textContent = p ? p.name : mode === 'overview' ? 'Whole map' : 'Free camera';
+  t.querySelector('.swatch').style.background = p ? teamColor(p) : 'transparent';
+  t.title = p ? `${p.name} · ${p.weapon} · ${p.health}%` : '';
+}
+
+function teamColor(p) {
+  return { 1: 'var(--alpha)', 2: 'var(--bravo)', 3: 'var(--charlie)', 4: 'var(--delta)' }[p.team] || p.color;
+}
+
+// ---------- players
+
+function toggleRoster() {
+  if ($('roster').hidden) {
+    $('roster').hidden = false;
+    $('roster-btn').setAttribute('aria-expanded', 'true');
+    if (match) renderRoster(match);
+    wake();
+  } else {
+    closeRoster();
+  }
+}
+function closeRoster() {
+  $('roster').hidden = true;
+  $('roster-btn').setAttribute('aria-expanded', 'false');
+}
+
+function flagIcon(style) {
+  const f = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  f.setAttribute('class', 'flag');
+  f.style.color = style === 1 ? 'var(--alpha)' : style === 2 ? 'var(--bravo)' : 'var(--amber)';
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  u.setAttribute('href', '#i-flag');
+  f.append(u);
+  return f;
+}
+
+function renderRoster(s) {
+  const box = $('roster');
+  const scroll = box.scrollTop;
+  box.textContent = '';
+  const groups = new Map();
+  for (const p of orderedPlayers()) {
+    const key = TEAM_GAMES.has(s.style) ? p.team : 0;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  if (!groups.size) box.append(el('h3', '', 'Nobody is playing'));
+  for (const [team, list] of groups) {
+    const h = el('h3');
+    if (team) {
+      const sw = el('i');
+      sw.style.background = teamColor({ team });
+      h.append(sw, document.createTextNode(TEAMS[team] || 'Players'), el('span', '', String(s.scores[team] ?? '')));
+    } else {
+      h.append(document.createTextNode('Players'));
+    }
+    const cols = el('div', 'cols');
+    cols.append(el('span'), el('span', 'num', 'K'), el('span', 'num', 'D'));
+    box.append(h, cols);
+    for (const p of list) {
+      const row = el('button', 'player' + (p.dead ? ' dead' : '') + (p.slot === s.follow ? ' followed' : ''));
+      row.type = 'button';
+      const who = el('span', 'who');
+      const sw = el('i', 'swatch');
+      sw.style.background = teamColor(p);
+      who.append(sw, el('span', '', p.name));
+      if (p.flag) who.append(flagIcon(p.flag));
+      row.append(who, el('span', 'n', String(p.kills)), el('span', 'n', String(p.deaths)));
+      row.title = `${p.weapon} · ${p.health}%`;
+      row.addEventListener('click', () => { setMode('player', true); follow(p.slot); });
+      box.append(row);
+    }
+  }
+  box.scrollTop = scroll;
+}
+
+// ================================================================== guide
+
+function setStatus(text, error = false) {
+  $('status').textContent = text;
+  $('status').classList.toggle('error', error);
+}
+
+let channels = [];
 
 async function refresh() {
-  let list = [];
   try {
     const res = await fetch(httpBase() + '/api/watch', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    list = (await res.json()).servers || [];
-    setStatus(`${list.length} server${list.length === 1 ? '' : 's'}`);
+    channels = (await res.json()).servers || [];
+    channels.forEach((c, i) => { c.number = i + 1; });
+    if (!$('status').classList.contains('error')) setStatus('');
   } catch (e) {
-    setStatus('The match list is unavailable (' + e.message + ').', true);
+    setStatus('The guide is unavailable right now (' + e.message + ').', true);
   }
-  const ul = $('match-list');
-  ul.textContent = '';
-  for (const m of list) {
-    const li = document.createElement('li');
-    const b = document.createElement('button');
+  renderGuide();
+  return channels;
+}
+
+function renderGuide() {
+  const ol = $('channels');
+  ol.textContent = '';
+  let playing = 0, watchers = 0;
+  for (const c of channels) {
+    playing += Math.max(0, (c.players || 0) - (c.bots || 0));
+    watchers += c.viewers || 0;
+    const li = el('li');
+    const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
     b.type = 'button';
-    b.className = 'match';
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = m.name;
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    const state = document.createElement('span');
-    state.className = 'state ' + m.state;
-    state.textContent = { live: '● live', waiting: 'unavailable', joining: 'connecting' }[m.state] || 'standby';
-    if (m.state === 'waiting' && m.error) state.title = m.error;
-    meta.append(state);
-    if (m.map) meta.append(Object.assign(document.createElement('span'), { textContent: m.map }));
-    if (m.state === 'live') meta.append(Object.assign(document.createElement('span'), { textContent: `${m.players} playing` }));
-    if (m.viewers) meta.append(Object.assign(document.createElement('span'), { textContent: `${m.viewers} watching` }));
-    b.append(name, meta);
-    b.addEventListener('click', () => watch(m));
+    b.append(el('span', 'ch', String(c.number).padStart(2, '0')));
+
+    const main = el('span', 'ch-main');
+    main.append(el('span', 'ch-title', c.name));
+    const sub = el('span', 'ch-sub');
+    if (c.state === 'live') sub.append(el('span', 'on-air', c.viewers ? `ON AIR · ${c.viewers} watching` : 'ON AIR'));
+    else if (c.state === 'waiting') sub.append(el('span', 'unavailable', 'off air'));
+    if (c.mode) {
+      const m = el('span', 'mode-tag', c.mode);
+      m.title = MODES[c.mode] || c.mode;
+      sub.append(m);
+    }
+    if (c.map) sub.append(el('span', 'sub-map', c.map));
+    main.append(sub);
+    if (c.title && c.title !== c.name) main.title = c.title;
+    b.append(main);
+
+    b.append(el('span', 'ch-map', c.map || ''));
+
+    const pl = el('span', 'ch-players num');
+    if (c.players != null) {
+      const humans = Math.max(0, c.players - (c.bots || 0));
+      pl.append(el('b', '', c.maxPlayers ? `${c.players}/${c.maxPlayers}` : String(c.players)));
+      if (c.maxPlayers) {
+        const fill = el('span', 'fill');
+        const i = el('i');
+        i.style.width = `${Math.min(100, (100 * c.players) / c.maxPlayers)}%`;
+        fill.append(i);
+        pl.append(fill);
+      }
+      if (c.bots) pl.append(el('small', '', humans ? `${c.bots} bots` : 'bots only'));
+    } else {
+      pl.append(el('small', '', '—'));
+    }
+    b.append(pl);
+    b.append(el('span', 'ch-region', c.country || ''));
+    b.addEventListener('click', () => watch(c));
     li.append(b);
-    ul.append(li);
+    ol.append(li);
   }
-  $('list-empty').hidden = list.length > 0;
+  $('list-empty').hidden = channels.length > 0;
+  $('list-empty').textContent = 'No channels are set up yet.';
+  const summary = $('summary');
+  summary.textContent = '';
+  if (channels.length) {
+    summary.append(el('b', '', String(channels.length)), ` channel${channels.length === 1 ? '' : 's'} · `,
+      el('b', '', String(playing)), ' playing');
+    if (watchers) summary.append(' · ', el('b', '', String(watchers)), ' watching');
+  }
 }
 
 $('refresh').addEventListener('click', refresh);
 
-// ---------- boot ----------
+// ================================================================== boot
 
 async function boot() {
   const text = $('loading-text');
   const bar = $('loading-bar');
   try {
     if (!('WebAssembly' in window) || !document.createElement('canvas').getContext('webgl2')) {
-      throw new Error('This browser does not support WebAssembly and WebGL 2.');
+      throw new Error('This browser cannot show the matches (it needs WebAssembly and WebGL 2).');
     }
+    const list = refresh();
     await game.load({
       base: '',
       wasm: 'soldat-spectate.wasm',
       onStatus: (s) => {
-        text.textContent = s;
         const m = s.match(/(\d+) \/ (\d+) MB/);
+        text.textContent = m ? `Tuning in... ${m[1]} of ${m[2]} MB` : 'Tuning in...';
         if (m) bar.style.width = `${Math.min(100, (100 * m[1]) / m[2])}%`;
       },
     });
     bar.style.width = '100%';
-    text.textContent = 'Starting...';
     await new Promise(r => setTimeout(r, 30));
     await game.instantiate();
     game.startGame();
     $('loading').hidden = true;
-    $('app').hidden = false;
-    await refresh();
+    $('guide').hidden = false;
+    await list;
     setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
     const direct = params.get('watch');
-    if (direct) {
-      const res = await fetch(httpBase() + '/api/watch', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
-      const m = res && res.servers.find(s => s.id === direct);
-      if (m) watch(m);
-    }
+    const ch = direct && channels.find(c => c.id === direct);
+    if (ch) watch(ch);
   } catch (e) {
     console.error(e);
     $('loading').classList.add('error');
-    text.textContent = 'Failed to start: ' + (e && e.message ? e.message : e);
+    text.textContent = 'Could not start: ' + (e && e.message ? e.message : e);
   }
 }
 
