@@ -574,6 +574,16 @@ const
     'controls.cfg', 'game.cfg', 'graphics.cfg', 'player.cfg', 'sound.cfg');
 {$ENDIF}
 
+{$IFDEF SPECTATOR}
+// a match to watch, not an edge to play with: a phone held sideways (about 2.2 to 1)
+// or an ultrawide screen gets a picture as wide as itself
+const
+  MaxFov = 2.4;
+{$ELSE}
+const
+  MaxFov = MAX_FOV;
+{$ENDIF}
+
 procedure StartGame();
 var
   ini: TMemINIFile;
@@ -767,10 +777,10 @@ begin
 
   // Calculcate FOV to check for too high/low vision
   fov := RenderWidth / RenderHeight;
-  if fov > MAX_FOV then
+  if fov > MaxFov then
   begin
-    RenderWidth := Ceil(RenderHeight * MAX_FOV);
-    fov := MAX_FOV;
+    RenderWidth := Ceil(RenderHeight * MaxFov);
+    fov := MaxFov;
   end
   else if fov < MIN_FOV then
   begin

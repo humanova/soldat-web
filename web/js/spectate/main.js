@@ -134,6 +134,9 @@ function watch(ch) {
   notice('Tuning in...');
   $('guide').hidden = true;
   $('watch').hidden = false;
+  fitPicture();
+  // phones watch on the whole screen, held sideways (not on an iPhone: no full screen for pages)
+  if (phone && document.fullscreenEnabled && !document.fullscreenElement) enterFullscreen();
   history.replaceState(null, '', '?watch=' + encodeURIComponent(ch.id) + (debug ? '&debug' : ''));
   document.title = `${ch.name} · Soldat TV`;
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
@@ -217,12 +220,28 @@ function setZoom(z, fx = 0.5, fy = 0.5) {
   call('soldat_spectator_zoom', zoom, fx, fy);
 }
 
-// the part of the canvas the picture covers (object-fit: contain)
+// phones: the picture fills the screen. The game draws it in the screen's shape; what the
+// browser's own bars take off that is cut from the edges, not shown as black bars.
+const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600;
+const MAX_CROP = 0.15;  // more than this off the picture: black bars after all
+
+function fitPicture() {
+  const r = canvas.getBoundingClientRect();
+  const ar = canvas.width / canvas.height;
+  let cover = false;
+  if (phone && r.width && r.height && ar) {
+    const a = r.width / r.height;
+    cover = 1 - Math.min(a, ar) / Math.max(a, ar) <= MAX_CROP;
+  }
+  canvas.classList.toggle('cover', cover);
+}
+
+// where the picture is on the page (object-fit: contain, or cover on phones)
 function picture() {
   const r = canvas.getBoundingClientRect();
   const ar = canvas.width / canvas.height || 16 / 9;
   let w = r.width, h = r.height;
-  if (w / h > ar) w = h * ar; else h = w / ar;
+  if ((w / h > ar) !== canvas.classList.contains('cover')) w = h * ar; else h = w / ar;
   return { x: r.left + (r.width - w) / 2, y: r.top + (r.height - h) / 2, w, h };
 }
 function frac(clientX, clientY) {
@@ -335,8 +354,11 @@ function showSound() {
 showSound();
 
 async function toggleFullscreen() {
+  if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+  await enterFullscreen();
+}
+async function enterFullscreen() {
   try {
-    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
     await $('watch').requestFullscreen({ navigationUI: 'hide' });
     // phones: keep the landscape picture (works only in full screen, not everywhere)
     if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
@@ -445,8 +467,8 @@ for (const box of movables) {
   // a panel that grows or shrinks keeps its place against the nearest edges
   new ResizeObserver(() => place(box)).observe(box);
 }
-window.addEventListener('resize', () => movables.forEach(place));
-document.addEventListener('fullscreenchange', () => movables.forEach(place));
+window.addEventListener('resize', () => { fitPicture(); movables.forEach(place); });
+document.addEventListener('fullscreenchange', () => { fitPicture(); movables.forEach(place); });
 
 // ---------- the match state (soldat_spectator_state, Spectator.pas)
 

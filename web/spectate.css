@@ -152,6 +152,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 #watch { position: fixed; inset: 0; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; }
 #canvas { width: 100%; height: 100%; display: block; object-fit: contain; outline: none; touch-action: none; cursor: grab; }
 #canvas.dragging { cursor: grabbing; }
+#canvas.cover { object-fit: cover; }
 
 .ui { transition: opacity .25s, transform .25s; }
 #watch.idle .ui { opacity: 0; pointer-events: none; }
