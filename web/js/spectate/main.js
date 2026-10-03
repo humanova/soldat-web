@@ -10,8 +10,8 @@ const debug = params.has('debug');
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
 const TEAM_GAMES = new Set([2, 3, 5, 6]);  // team match, CTF, infiltration, hold the flag
-const MODES = { DM: 'Deathmatch', PM: 'Pointmatch', TM: 'Team match', CTF: 'Capture the flag',
-  RM: 'Rambomatch', INF: 'Infiltration', HTF: 'Hold the flag' };
+const MODES = { DM: 'Deathmatch', PM: 'Pointmatch', TM: 'Teammatch', CTF: 'Capture the Flag',
+  RM: 'Rambomatch', INF: 'Infiltration', HTF: 'Hold the Flag' };
 
 // ?hub=wss://example.org lets a page hosted elsewhere use a hub
 function hubBase() {
@@ -541,6 +541,11 @@ async function refresh() {
     setStatus('The guide is unavailable right now (' + e.message + ').', true);
   }
   renderGuide();
+  // the strip above the list fills up until the next refresh
+  const meter = $('meter');
+  meter.classList.remove('run');
+  void meter.offsetWidth;
+  meter.classList.add('run');
   return channels;
 }
 
@@ -557,21 +562,20 @@ function renderGuide() {
     b.append(el('span', 'ch', String(c.number).padStart(2, '0')));
 
     const main = el('span', 'ch-main');
-    main.append(el('span', 'ch-title', c.name));
+    const title = el('span', 'ch-title');
+    const dot = el('i', 'dot' + (c.state === 'live' ? ' live' : ''));
+    title.append(dot, el('span', '', c.name));
+    main.append(title);
     const sub = el('span', 'ch-sub');
-    if (c.state === 'live') sub.append(el('span', 'on-air', c.viewers ? `ON AIR · ${c.viewers} watching` : 'ON AIR'));
-    else if (c.state === 'waiting') sub.append(el('span', 'unavailable', 'off air'));
-    if (c.mode) {
-      const m = el('span', 'mode-tag', c.mode);
-      m.title = MODES[c.mode] || c.mode;
-      sub.append(m);
-    }
-    if (c.map) sub.append(el('span', 'sub-map', c.map));
+    if (c.state === 'live') sub.append(el('span', 'on-air', c.viewers ? `On air · ${c.viewers} watching` : 'On air'));
+    else if (c.state === 'waiting') sub.append(el('span', 'unavailable', 'Off air'));
+    if (c.map) sub.append(el('span', 'sub-map', [c.map, c.mode].filter(Boolean).join(' · ')));
     main.append(sub);
     if (c.title && c.title !== c.name) main.title = c.title;
     b.append(main);
 
     b.append(el('span', 'ch-map', c.map || ''));
+    b.append(el('span', 'ch-mode', MODES[c.mode] || c.mode || ''));
 
     const pl = el('span', 'ch-players num');
     if (c.players != null) {
@@ -599,9 +603,8 @@ function renderGuide() {
   const summary = $('summary');
   summary.textContent = '';
   if (channels.length) {
-    summary.append(el('b', '', String(channels.length)), ` channel${channels.length === 1 ? '' : 's'} · `,
-      el('b', '', String(playing)), ' playing');
-    if (watchers) summary.append(' · ', el('b', '', String(watchers)), ' watching');
+    summary.append('Channels: ', el('b', '', String(channels.length)), ' - Playing: ', el('b', '', String(playing)));
+    if (watchers) summary.append(' - Watching: ', el('b', '', String(watchers)));
   }
 }
 

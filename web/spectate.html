@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0c0e">
+<meta name="theme-color" content="#313d4f">
 <title>Soldat TV</title>
 <meta name="description" content="Soldat TV: watch Soldat 1.7.1 matches live in your browser. No install, no account.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='14' height='10' rx='2' fill='%23e5483c'/%3E%3Ccircle cx='5.5' cy='8' r='1.6' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='14' height='10' rx='2' fill='%233c8e37'/%3E%3Ccircle cx='5.5' cy='8' r='1.6' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="spectate.css">
 </head>
 <body>
@@ -23,22 +23,25 @@
 
 <!-- the channel guide -->
 <div id="guide" hidden>
-  <header class="masthead">
-    <a class="logo" href="./" aria-label="Soldat TV">
-      <span class="logo-word">SOLDAT</span><span class="logo-tv">TV</span>
-    </a>
-    <p id="summary" class="summary" aria-live="polite"></p>
+  <header class="tabs">
+    <a class="tab active logo" href="./" aria-label="Soldat TV"><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
+    <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a>
+    <a class="tab ext" href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">Source</a>
+    <span class="fill-tab"></span>
+    <span class="tag">Live matches</span>
   </header>
 
   <main class="guide-main">
     <section class="listing" aria-labelledby="listing-title">
       <div class="listing-head">
-        <h1 id="listing-title">On now</h1>
+        <h1 id="listing-title" hidden>Channels</h1>
+        <p id="summary" class="summary" aria-live="polite"></p>
         <span id="status" class="status" role="status"></span>
-        <button id="refresh" type="button" class="text-btn">Refresh</button>
+        <button id="refresh" type="button" class="btn">Refresh</button>
       </div>
+      <div class="meter" aria-hidden="true"><i id="meter"></i></div>
       <div class="columns" aria-hidden="true">
-        <span>Ch</span><span>Server</span><span>Map</span><span class="num">Players</span><span>Region</span>
+        <span>Ch</span><span>Server</span><span>Map</span><span class="c-mode">Game type</span><span class="num">Players</span><span class="c-region">Region</span>
       </div>
       <ol id="channels" class="channels"></ol>
       <p id="list-empty" class="list-empty" hidden></p>
@@ -46,16 +49,20 @@
 
     <aside class="notes">
       <h2>How it works</h2>
-      <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
-        watching. You can't play or chat from here, so the players never notice you.</p>
+      <div class="box">
+        <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
+          watching. You can't play or chat from here, so the players never notice you.</p>
+      </div>
       <h2>Watching</h2>
-      <dl class="keys">
-        <dt>Scroll, pinch</dt><dd>zoom</dd>
-        <dt>Drag</dt><dd>look around</dd>
-        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
-        <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
-        <dt><kbd>Tab</kbd></dt><dd>players</dd>
-      </dl>
+      <div class="box">
+        <dl class="keys">
+          <dt>Scroll, pinch</dt><dd>zoom</dd>
+          <dt>Drag</dt><dd>look around</dd>
+          <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
+          <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
+          <dt><kbd>Tab</kbd></dt><dd>players</dd>
+        </dl>
+      </div>
     </aside>
   </main>
 
