@@ -55,6 +55,14 @@ begin
   ClientRequestPlayer(i);
 end;
 
+// A living player's position of exactly (0, 0) is never a real one, yet one sometimes
+// arrives just before the player dies. Taken, it puts the whole gostek at the map's
+// origin for a tick, and the frames drawn between the two flicker across the screen.
+function NoPosition(const Pos: TVector2): Boolean;
+begin
+  Result := (Pos.X = 0) and (Pos.Y = 0);
+end;
+
 procedure SetAimFromAngle(i: Integer; Angle: Byte; Distance: Single);
 var
   Aim: TVector2;
@@ -107,7 +115,7 @@ begin
 
   if i <> MySprite then
   begin
-    if Sprite[i].Health = SpriteSnap.Health then
+    if (Sprite[i].Health = SpriteSnap.Health) and not NoPosition(SpriteSnap.Pos) then
     begin
       SpriteParts.OldPos[i] := SpriteParts.Pos[i];
       SpriteParts.Pos[i] := SpriteSnap.Pos;
@@ -222,7 +230,7 @@ begin
 
   if i <> MySprite then
   begin
-    if Sprite[i].Health = SpriteSnapMajor.Health then
+    if (Sprite[i].Health = SpriteSnapMajor.Health) and not NoPosition(SpriteSnapMajor.Pos) then
     begin
       SpriteParts.OldPos[i] := SpriteParts.Pos[i];
       SpriteParts.Pos[i] := SpriteSnapMajor.Pos;
@@ -640,8 +648,11 @@ begin
 
   //a := Vec2Subtract(SpriteParts.Pos[i], DeltaMov.Pos);
 
-  SpriteParts.Pos[i] := DeltaMov.Pos;
-  SpriteParts.Velocity[i] := DeltaMov.Velocity;
+  if not NoPosition(DeltaMov.Pos) then
+  begin
+    SpriteParts.Pos[i] := DeltaMov.Pos;
+    SpriteParts.Velocity[i] := DeltaMov.Velocity;
+  end;
 
   SetAimFromAngle(i, DeltaMov.AimAngle, DEFAULT_AIM_DISTANCE);
 
