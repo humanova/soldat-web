@@ -1,7 +1,7 @@
 # Soldat Web
 
 Soldat 1.7.1 in your browser, on the official public servers.
-See the [demo video]().
+See the [demo video](https://youtu.be/rnsfcZrFU7s).
 
 ![A CTF round on ctf_Ash](docs/screenshots/battle.jpg)
 
