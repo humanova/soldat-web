@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node relay/server.mjs"
+    "start": "node relay/play.mjs",
+    "spectator": "node relay/spectator.mjs"
   },
   "engines": {
     "node": ">=18"

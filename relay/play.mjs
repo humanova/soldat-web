@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Soldat Web relay: serves the browser client, proxies the lobby server list and
+// Soldat Web play relay: serves the browser client, proxies the lobby server list and
 // bridges WebSocket <-> UDP so browsers can talk to Soldat 1.7.1 servers.
+// (relay/spectator.mjs is the public spectator hub; it shares only relay/lib.)
 // No dependencies (Node.js 18+).
 //
-//   node relay/server.mjs [--port 8080] [--root ./web] [--allow 127.0.0.1:23073]
+//   node relay/play.mjs [--port 8080] [--root ./web] [--allow 127.0.0.1:23073]
 //
 // Environment: PORT, ROOT, ALLOW (comma separated host:port list), ALLOW_ANY=1,
 // LOBBY_URL, TRUST_PROXY=1, MAX_SESSIONS_PER_IP, ORIGINS (comma separated page
@@ -14,24 +15,22 @@ import https from 'node:https';
 import dgram from 'node:dgram';
 import net from 'node:net';
 import dns from 'node:dns/promises';
-import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { log, makeArg, originChecker, clientIpOf, requestUrl } from './lib/util.mjs';
+import { serveStatic } from './lib/static.mjs';
+import { acceptWebSocket } from './lib/ws.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-function arg(name, def) {
-  const i = args.indexOf('--' + name);
-  return i >= 0 && i + 1 < args.length ? args[i + 1] : def;
-}
+const arg = makeArg(args);
 
 const PORT = parseInt(arg('port', process.env.PORT || '8080'), 10);
 const ROOT = path.resolve(arg('root', process.env.ROOT || path.join(here, '..', 'web')));
 const LOBBY_URL = process.env.LOBBY_URL || 'https://api.soldat.pl/v0/servers';
 const ALLOW_ANY = process.env.ALLOW_ANY === '1' || args.includes('--allow-any');
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+const clientIp = clientIpOf(TRUST_PROXY);
 const MAX_SESSIONS_PER_IP = parseInt(process.env.MAX_SESSIONS_PER_IP || '4', 10);
 const MAX_SESSIONS = 1000;
 const IDLE_TIMEOUT = 60_000;
@@ -45,26 +44,9 @@ const JOIN_MSG_IDS = new Set([14, 15]);
 const JOIN_WINDOW_MS = 17_000;
 const JOIN_MAX_PER_WINDOW = 14;
 
-// Browsers send an Origin header with WebSocket requests. By default only pages served by
-// this relay may use it (other sites cannot borrow it); ORIGINS adds allowed origins.
-const allowedOrigins = new Set((process.env.ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean));
-
-function originAllowed(req) {
-  const origin = req.headers.origin;
-  if (!origin) return true; // not a browser
-  if (allowedOrigins.has('*') || allowedOrigins.has(origin)) return true;
-  try {
-    return new URL(origin).host === req.headers.host;
-  } catch (_) {
-    return false;
-  }
-}
+const originAllowed = originChecker(new Set((process.env.ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)));
 
 const staticAllow = new Set((arg('allow', process.env.ALLOW || '') || '').split(',').map(s => s.trim()).filter(Boolean));
-
-function log(...a) {
-  console.log(new Date().toISOString(), ...a);
-}
 
 // ---------------------------------------------------------------- lobby list
 
@@ -125,176 +107,6 @@ async function targetAllowed(host, ip, port) {
   return l.allowed.has(`${ip}:${port}`);
 }
 
-// ---------------------------------------------------------------- static files
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.wasm': 'application/wasm',
-  '.smod': 'application/zip', '.zip': 'application/zip', '.ttf': 'font/ttf', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.bmp': 'image/bmp', '.gif': 'image/gif', '.svg': 'image/svg+xml',
-  '.pms': 'application/octet-stream', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
-};
-const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.wasm', '.smod', '.ttf', '.bmp', '.pms', '.txt', '.svg']);
-const gzCache = new Map();
-
-function serveStatic(req, res) {
-  let urlPath;
-  try { urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch (_) { res.writeHead(400).end(); return; }
-  if (urlPath.endsWith('/')) urlPath += 'index.html';
-  const file = path.resolve(ROOT, '.' + urlPath);
-  if (!file.startsWith(ROOT + path.sep) && file !== ROOT) { res.writeHead(403).end(); return; }
-  fs.stat(file, (err, st) => {
-    if (err || !st.isFile()) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
-    const ext = path.extname(file).toLowerCase();
-    const headers = {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      // revalidate code and data (ETag); on-demand map graphics never change
-      'Cache-Control': urlPath.startsWith('/assets/') ? 'public, max-age=86400' : 'no-cache',
-      'Cross-Origin-Resource-Policy': 'same-origin',
-      'X-Content-Type-Options': 'nosniff',
-    };
-    const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
-    headers.ETag = etag;
-    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
-    const gzipOk = /\bgzip\b/.test(req.headers['accept-encoding'] || '') && COMPRESSIBLE.has(ext) && st.size > 1024;
-    if (gzipOk) {
-      const key = file + etag;
-      const send = (buf) => {
-        headers['Content-Encoding'] = 'gzip';
-        headers['Content-Length'] = buf.length;
-        headers.Vary = 'Accept-Encoding';
-        res.writeHead(200, headers);
-        res.end(req.method === 'HEAD' ? undefined : buf);
-      };
-      if (gzCache.has(key)) { send(gzCache.get(key)); return; }
-      fs.readFile(file, (e2, data) => {
-        if (e2) { res.writeHead(500).end(); return; }
-        zlib.gzip(data, { level: 6 }, (e3, gz) => {
-          if (e3) { res.writeHead(500).end(); return; }
-          if (gz.length < 256 * 1024 * 1024) gzCache.set(key, gz);
-          send(gz);
-        });
-      });
-      return;
-    }
-    headers['Content-Length'] = st.size;
-    res.writeHead(200, headers);
-    if (req.method === 'HEAD') { res.end(); return; }
-    fs.createReadStream(file).pipe(res);
-  });
-}
-
-// ---------------------------------------------------------------- websocket
-
-const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-
-class WsConn {
-  constructor(socket, head) {
-    this.socket = socket;
-    this.buf = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
-    this.frag = null;
-    this.fragOp = 0;
-    this.closed = false;
-    this.onmessage = null;
-    this.onclose = null;
-    socket.setNoDelay(true);
-    socket.on('data', (d) => { this.buf = Buffer.concat([this.buf, d]); this.parse(); });
-    socket.on('close', () => this.finish());
-    socket.on('error', () => this.finish());
-    if (this.buf.length) setImmediate(() => this.parse());
-  }
-
-  finish() {
-    if (this.closed) return;
-    this.closed = true;
-    this.socket.destroy();
-    if (this.onclose) this.onclose();
-  }
-
-  parse() {
-    while (!this.closed) {
-      const b = this.buf;
-      if (b.length < 2) return;
-      const fin = (b[0] & 0x80) !== 0;
-      const op = b[0] & 0x0f;
-      const masked = (b[1] & 0x80) !== 0;
-      let len = b[1] & 0x7f;
-      let off = 2;
-      if (len === 126) { if (b.length < 4) return; len = b.readUInt16BE(2); off = 4; }
-      else if (len === 127) {
-        if (b.length < 10) return;
-        const hi = b.readUInt32BE(2);
-        if (hi !== 0) { this.close(1009); return; }
-        len = b.readUInt32BE(6); off = 10;
-      }
-      if (!masked) { this.close(1002); return; }
-      if (len > 1 << 20) { this.close(1009); return; }
-      if (b.length < off + 4 + len) return;
-      const mask = b.subarray(off, off + 4);
-      const payload = Buffer.from(b.subarray(off + 4, off + 4 + len));
-      for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
-      this.buf = b.subarray(off + 4 + len);
-      if (op === 0x8) { this.close(1000); return; }
-      if (op === 0x9) { this.sendFrame(0xA, payload); continue; }
-      if (op === 0xA) continue;
-      if (op === 0x0) {
-        if (!this.frag) { this.close(1002); return; }
-        this.frag.push(payload);
-        if (fin) {
-          const data = Buffer.concat(this.frag);
-          const fop = this.fragOp;
-          this.frag = null;
-          this.deliver(fop, data);
-        }
-        continue;
-      }
-      if (op !== 0x1 && op !== 0x2) { this.close(1003); return; }
-      if (!fin) { this.frag = [payload]; this.fragOp = op; continue; }
-      this.deliver(op, payload);
-    }
-  }
-
-  deliver(op, data) {
-    if (this.onmessage) this.onmessage(op === 0x1 ? data.toString('utf8') : data, op === 0x2);
-  }
-
-  sendFrame(op, payload) {
-    if (this.closed) return;
-    const len = payload.length;
-    let header;
-    if (len < 126) header = Buffer.from([0x80 | op, len]);
-    else if (len < 65536) { header = Buffer.alloc(4); header[0] = 0x80 | op; header[1] = 126; header.writeUInt16BE(len, 2); }
-    else { header = Buffer.alloc(10); header[0] = 0x80 | op; header[1] = 127; header.writeUInt32BE(0, 2); header.writeUInt32BE(len, 6); }
-    this.socket.write(Buffer.concat([header, payload]));
-  }
-
-  sendText(obj) { this.sendFrame(0x1, Buffer.from(typeof obj === 'string' ? obj : JSON.stringify(obj))); }
-  sendBinary(buf) { this.sendFrame(0x2, buf); }
-
-  close(code = 1000) {
-    if (this.closed) return;
-    const p = Buffer.alloc(2);
-    p.writeUInt16BE(code, 0);
-    try { this.sendFrame(0x8, p); } catch (_) {}
-    this.socket.end();
-    setTimeout(() => this.finish(), 1000);
-  }
-
-  get buffered() { return this.socket.writableLength; }
-}
-
-function acceptWebSocket(req, socket, head) {
-  const key = req.headers['sec-websocket-key'];
-  if (!key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') {
-    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-    return null;
-  }
-  const accept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
-  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
-    `Sec-WebSocket-Accept: ${accept}\r\n\r\n`);
-  return new WsConn(socket, head);
-}
-
 // ---------------------------------------------------------------- sessions
 
 const sessionsByIp = new Map();
@@ -324,11 +136,6 @@ function paceJoin(target, send, key) {
   if (p.queue.length > 64) return; // drop, far too many joins in flight
   p.queue.push({ at: Date.now(), send, key });
   if (!p.timer) pump();
-}
-
-function clientIp(req) {
-  if (TRUST_PROXY && req.headers['x-forwarded-for']) return req.headers['x-forwarded-for'].split(',')[0].trim();
-  return req.socket.remoteAddress || '?';
 }
 
 function handleRelay(req, socket, head) {
@@ -451,12 +258,6 @@ async function startFiles(ws, clientAddr, m) {
 
 // ---------------------------------------------------------------- http server
 
-// null for a request target that is no valid path (such as "//"): new URL throws on it,
-// which would stop the whole server
-function requestUrl(req) {
-  try { return new URL(req.url, 'http://x'); } catch (_) { return null; }
-}
-
 const server = http.createServer(async (req, res) => {
   const url = requestUrl(req);
   if (!url) { res.writeHead(400).end(); return; }
@@ -467,7 +268,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
-  serveStatic(req, res);
+  serveStatic(ROOT, req, res);
 });
 
 server.on('upgrade', (req, socket, head) => {

@@ -1,6 +1,8 @@
 // Networking for the 1.7.1 protocol. Browsers cannot send UDP, so datagrams travel
-// over a WebSocket to the relay (relay/server.mjs), which forwards them to the game
-// server. Map downloads use the server's TCP file server through the same relay, or
+// over a WebSocket to the relay (relay/play.mjs), which forwards them to the game
+// server. The spectator page instead receives a match from the spectator hub
+// (relay/spectator.mjs): opts.request names what to watch and opts.receiveOnly drops
+// everything the game sends. Map downloads use the server's TCP file server through the same relay, or
 // the static asset mirror when it has the file.
 
 const NET_CONNECTING = 0, NET_OPEN = 1, NET_CLOSED = 2;
@@ -62,7 +64,7 @@ export function createNet(rt, vfs, opts) {
     ws = socket;
     socket.onopen = () => {
       if (gen !== generation) return;
-      socket.send(JSON.stringify({ type: 'udp', host, port }));
+      socket.send(JSON.stringify(opts.request ? opts.request('udp', { host, port }) : { type: 'udp', host, port }));
     };
     socket.onmessage = (ev) => {
       if (gen !== generation) return;
@@ -171,7 +173,8 @@ export function createNet(rt, vfs, opts) {
         for (const c of chunks) { buf.set(c, o); o += c.length; }
         resolve(parseFileStream(buf, job));
       };
-      socket.onopen = () => socket.send(JSON.stringify({ type: 'files', host, port, files }));
+      socket.onopen = () => socket.send(JSON.stringify(opts.request
+        ? opts.request('files', { host, port, files }) : { type: 'files', host, port, files }));
       socket.onmessage = (ev) => {
         if (typeof ev.data === 'string') {
           let msg;
@@ -209,6 +212,7 @@ export function createNet(rt, vfs, opts) {
     connect: (hostPtr, port) => { connect(rt.cstr(hostPtr), port); return 0; },
     state: () => state,
     send: (ptr, size) => {
+      if (opts.receiveOnly) return 0;
       const d = rt.u8().slice(ptr, ptr + size);
       if (state === NET_OPEN && ws && ws.readyState === 1) { ws.send(d); return 0; }
       if (state === NET_CONNECTING) {

@@ -1,4 +1,4 @@
-// Loads soldat.wasm, provides its imports and drives the game loop.
+// Loads the game (soldat.wasm, or soldat-spectate.wasm for the spectator), provides its imports and drives the game loop.
 import { VFS } from './vfs.js';
 import { createWasi, WasiExit } from './wasi.js';
 import { readZip } from './zip.js';
@@ -90,7 +90,7 @@ export class SoldatRuntime {
     return out;
   }
 
-  async load({ base = '', onStatus = () => {} } = {}) {
+  async load({ base = '', wasm: wasmFile = 'soldat.wasm', onStatus = () => {} } = {}) {
     onStatus('Opening local storage...');
     await this.vfs.load();
     this.vfs.mkdirp('/user');
@@ -99,9 +99,9 @@ export class SoldatRuntime {
     onStatus('Downloading game data...');
     const [wasm, pack, font, index] = await Promise.all([
       (WebAssembly.compileStreaming
-        ? WebAssembly.compileStreaming(fetch(base + 'soldat.wasm'))
+        ? WebAssembly.compileStreaming(fetch(base + wasmFile))
         : Promise.reject(new Error('no streaming')))
-        .catch(() => this.fetchBytes(base + 'soldat.wasm', 'soldat.wasm').then(b => WebAssembly.compile(b))),
+        .catch(() => this.fetchBytes(base + wasmFile, wasmFile).then(b => WebAssembly.compile(b))),
       this.fetchBytes(base + 'soldat.smod', 'soldat.smod', (got, total) =>
         onStatus(`Downloading game data... ${Math.round(got / 1048576)}${total ? ' / ' + Math.round(total / 1048576) : ''} MB`)),
       this.fetchBytes(base + 'play-regular.ttf', 'font'),
@@ -143,6 +143,8 @@ export class SoldatRuntime {
     this.physfs = createPhysFS(rt, this.vfs, this.archives);
     this.net = createNet(rt, this.vfs, {
       relayUrl: () => hooks.relayUrl(),
+      request: hooks.relayRequest,
+      receiveOnly: !!hooks.receiveOnly,
       assetBase: () => this.assetBase,
       assetIndex: (p) => this.findAsset(p),
       onError: (msg) => hooks.onNetError && hooks.onNetError(msg),

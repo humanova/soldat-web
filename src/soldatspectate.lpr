@@ -1,12 +1,12 @@
 {*******************************************************}
 {                                                       }
-{       SOLDAT (WebAssembly build)                      }
+{       SOLDAT spectator (WebAssembly)                  }
 {                                                       }
 {       Copyright (c) 2001 Michal Marcinkowski          }
 {                                                       }
 {*******************************************************}
 
-library soldatweb;
+library soldatspectate;
 
 uses
   WebWideString,  // WideString/UnicodeString conversions (no libc iconv in wasm)
@@ -15,10 +15,12 @@ uses
   CLibs,
   SysUtils,
   Client in 'client/Client.pas',
-  WebMain;
+  WebMain,
+  Spectator in 'spectator/Spectator.pas';
 
 {$I WebExports.inc}
 
 begin
   DefaultSystemCodePage := CP_UTF8;
+  SpectatorInit;
 end.

@@ -20,7 +20,7 @@ The built game is part of this repository, so there's nothing to
 compile. Clone the repository and then run:
 
 ```bash
-node relay/server.mjs
+node relay/play.mjs
 ```
 
 Then open <http://localhost:8080>.
@@ -94,7 +94,7 @@ tools/setup-fpc.sh                  # Free Pascal cross-compiler for WebAssembly
 c/build-c.sh                        # FreeType 2.6.1 and stb_image -> c/obj/
 tools/fetch-assets.sh assets-src    # game data: Soldat base + the official 1.7.1 files
 python3 tools/build-assets.py --base assets-src/base --v171 assets-src/app --out web
-./build.sh                          # -> web/soldat.wasm
+./build.sh                          # -> web/soldat.wasm, web/soldat-spectate.wasm
 ```
 
 On Debian Linux:
@@ -106,11 +106,12 @@ tools/setup-fpc.sh                  # Free Pascal cross-compiler for WebAssembly
 LLVM=/usr/bin WASI_SYSROOT=/usr c/build-c.sh  # FreeType 2.6.1 and stb_image -> c/obj/
 tools/fetch-assets.sh assets-src    # game data: Soldat base + the official 1.7.1 files
 python3 tools/build-assets.py --base assets-src/base --v171 assets-src/app --out web
-./build.sh                          # -> web/soldat.wasm
+./build.sh                          # -> web/soldat.wasm, web/soldat-spectate.wasm
 ```
 
 `tools/setup-fpc.sh` builds a pinned Free Pascal trunk commit with one small patch for
 its WebAssembly linker. Set `FPCROOT=...` for `build.sh` if you install it elsewhere.
+`./build.sh play` or `./build.sh spectate` builds one of the two clients.
 
 The pack prefers the files of the official 1.7.1 download (freeware, © Transhuman Design, all rights reserved), because that's what servers run.
 The [base game content](https://github.com/opensoldat/base) is CC BY 4.0. For a pack you
@@ -130,8 +131,9 @@ downloaded from the game server, like for any custom map.
  └───────────────────────────────┘        └──────────────────┘         └──────────────────┘
 ```
 
-- `src/`: the Soldat client in Pascal, built with `-dWEB`. `src/shared/network/` holds the
-  rewritten 1.7.1 network code; [docs/PROTOCOL-1.7.1.md](docs/PROTOCOL-1.7.1.md) describes
+- `src/`: the Soldat client in Pascal, built with `-dWEB` (`soldatweb.lpr`). The spectator
+  (`soldatspectate.lpr`) is the same client built with `-dSPECTATOR` plus `src/spectator/`.
+  `src/shared/network/` holds the rewritten 1.7.1 network code; [docs/PROTOCOL-1.7.1.md](docs/PROTOCOL-1.7.1.md) describes
   the protocol. `src/web/` replaces SDL2, OpenGL, OpenAL, PhysFS and Steam with small
   units implemented in JavaScript.
 - `c/`: FreeType 2.6.1 (patched for WebAssembly, see `c/freetype-wasm.patch`) and
@@ -139,7 +141,7 @@ downloaded from the game server, like for any custom map.
 - `web/js/`: the browser side: a file system with IndexedDB storage, WebGL 2 (the game's
   shaders are translated to GLSL ES), WebAudio, input, the relay client and the menu.
 - `web/soldat.smod`: the game data. Map textures and scenery are in `web/assets/`.
-- `relay/server.mjs`: the relay. No dependencies.
+- `relay/play.mjs`: the relay, with shared code in `relay/lib/`. No dependencies.
 
 ## Credits and license
 
