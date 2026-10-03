@@ -4,6 +4,7 @@ import { GostekPreview, WEAPONS } from './gostek.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
+const appBase = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 
 const SETTINGS_KEY = 'soldat.settings';
 // player colors of the Soldat 1.7.1 default profile ("Major")
@@ -41,13 +42,13 @@ const settings = loadSettings();
 
 function httpBase() {
   const relay = params.get('relay');
-  if (relay) return relay.replace(/^ws/, 'http').replace(/\/relay\/?$/, '');
-  return location.origin;
+  if (relay) return relay.replace(/^ws/, 'http').replace(/\/relay\/?$/, '').replace(/\/?$/, '/');
+  return location.origin + appBase;
 }
 function relayUrl() {
   const relay = params.get('relay');
   if (relay) return relay;
-  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/relay';
+  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + appBase + 'relay';
 }
 
 function setStatus(text, error = false) {
@@ -197,7 +198,7 @@ let selected = null;
 async function refreshServers() {
   try {
     setStatus('Loading server list...');
-    const res = await fetch(httpBase() + '/api/servers', { cache: 'no-store' });
+    const res = await fetch(httpBase() + 'api/servers', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     servers = (data.Servers || []).filter(s => s.Version === '1.7.1');
