@@ -4,10 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#313d4f">
-<title>Soldat TV</title>
-<meta name="description" content="Soldat TV: watch Soldat 1.7.1 matches live in your browser. No install, no account.">
-<link rel="icon" href="favicon.ico">
+<title>Soldat TV · Watch live Soldat matches in your browser</title>
+<meta name="description" content="Watch Soldat matches live from the public servers, right in your browser: every server, map and player, the score, the chat and the kills. No install, no account.">
+<!-- the site's address: change it here when the page is hosted elsewhere -->
+<link rel="canonical" href="https://soldat.live/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Soldat TV">
+<meta property="og:url" content="https://soldat.live/">
+<meta property="og:title" content="Soldat TV · Watch live Soldat matches">
+<meta property="og:description" content="Watch Soldat matches live from the public servers, right in your browser. No install, no account.">
+<meta property="og:image" content="https://soldat.live/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A Soldat match: soldiers fighting on a rocky map">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "WebSite", "name": "Soldat TV", "alternateName": "soldat.live", "url": "https://soldat.live/"}
+</script>
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="stylesheet" href="spectate.css">
+<!-- a link to a match opens on the loading screen, not the guide (js/spectate/main.js: boot) -->
+<script>if (/[?&]watch=/.test(location.search)) document.documentElement.classList.add('direct');</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -23,7 +40,7 @@
 </svg>
 
 <!-- the channel guide -->
-<div id="guide" hidden>
+<div id="guide">
   <header class="tabs">
     <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
     <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
@@ -35,7 +52,7 @@
   <main class="guide-main">
     <section class="listing" aria-labelledby="listing-title">
       <div class="listing-head">
-        <h1 id="listing-title" hidden>Channels</h1>
+        <h1 id="listing-title" class="visually-hidden">Live Soldat matches</h1>
         <p id="summary" class="summary" aria-live="polite"></p>
         <span id="status" class="status" role="status"></span>
         <button id="refresh" type="button" class="btn">Refresh</button>
@@ -46,13 +63,15 @@
       </div>
       <ol id="channels" class="channels"></ol>
       <p id="list-empty" class="list-empty" hidden></p>
+      <noscript><p class="list-empty">Soldat TV needs JavaScript to list and show the matches.</p></noscript>
     </section>
 
     <aside class="notes">
       <h2>Information</h2>
       <div class="box">
-        <p>Soldat TV joins each server once as a spectator and passes the match on to everyone
-          watching. You can't play or chat from here.</p>
+        <p>Watch <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> matches live as
+          they are played on the public servers. Soldat TV joins each server once as a spectator and
+          passes the match on to everyone watching. You can't play or chat from here.</p>
         <p>Contact <b>humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
           if you want your server to be included.</p>
       </div>
@@ -145,7 +164,7 @@
   </div>
 </div>
 
-<div id="loading">
+<div id="loading" hidden>
   <div class="loading-box">
     <span class="logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></span>
     <p id="loading-text">Tuning in...</p>

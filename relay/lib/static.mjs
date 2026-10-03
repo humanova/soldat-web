@@ -9,8 +9,9 @@ const MIME = {
   '.smod': 'application/zip', '.zip': 'application/zip', '.ttf': 'font/ttf', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.bmp': 'image/bmp', '.gif': 'image/gif', '.svg': 'image/svg+xml',
   '.pms': 'application/octet-stream', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8', '.ico': 'image/x-icon',
 };
-const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.wasm', '.smod', '.ttf', '.bmp', '.pms', '.txt', '.svg']);
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.wasm', '.smod', '.ttf', '.bmp', '.pms', '.txt', '.svg', '.xml', '.ico']);
 const gzCache = new Map();
 
 // opts.index: file served for "/" (default index.html); opts.hidden: paths that are not served

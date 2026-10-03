@@ -228,6 +228,8 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
+  // one address for the page (search engines would list both)
+  if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
   serveStatic(ROOT, req, res, { index: 'spectate.html', hidden: HIDDEN });
 });
 

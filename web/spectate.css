@@ -41,6 +41,12 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.45 "Play", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-text-size-adjust: 100%; }
 [hidden] { display: none !important; }
+/* read out and indexed, not shown */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; }
+/* a link to a match: the loading screen until the page script takes over */
+html.direct #guide { display: none !important; }
+html.direct #loading { display: grid !important; }
 a { color: inherit; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -337,7 +343,6 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .bar { height: 10px; background: var(--deep); overflow: hidden; }
 #loading-bar { height: 100%; width: 0; transition: width .2s;
   background: repeating-linear-gradient(90deg, var(--green) 0 11px, transparent 11px 14px); }
-#loading.error p { color: var(--orange); white-space: pre-wrap; }
 
 /* ---------- small screens ---------- */
 @media (max-width: 960px) {
