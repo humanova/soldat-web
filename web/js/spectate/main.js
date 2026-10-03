@@ -494,16 +494,16 @@ function renderRoster(s) {
   if (!groups.size) box.append(el('h3', '', 'Nobody is playing'));
   for (const [team, list] of groups) {
     const h = el('h3');
+    const name = el('span', 'who');
     if (team) {
       const sw = el('i');
       sw.style.background = teamColor({ team });
-      h.append(sw, document.createTextNode(TEAMS[team] || 'Players'), el('span', '', String(s.scores[team] ?? '')));
+      name.append(sw, document.createTextNode(TEAMS[team] || 'Players'), el('b', '', String(s.scores[team] ?? '')));
     } else {
-      h.append(document.createTextNode('Players'));
+      name.append(document.createTextNode('Players'));
     }
-    const cols = el('div', 'cols');
-    cols.append(el('span'), el('span', 'num', 'K'), el('span', 'num', 'D'));
-    box.append(h, cols);
+    h.append(name, el('span', 'num', 'K'), el('span', 'num', 'D'));
+    box.append(h);
     for (const p of list) {
       const row = el('button', 'player' + (p.dead ? ' dead' : '') + (p.slot === s.follow ? ' followed' : ''));
       row.type = 'button';
