@@ -13,7 +13,8 @@
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
 //   maxViewersPerIp, maxViewers, origins (other page origins allowed), trustProxy,
-//   lobbyUrl (the Soldat lobby, for the current map and players of servers not watched)
+//   lobbyUrl (the Soldat lobby's server list, for the current map and players of servers not
+//             watched; their names come from .../server/<ip>/<port>/players next to it)
 // Environment: PORT, ROOT, CONFIG.
 
 import http from 'node:http';
@@ -27,7 +28,7 @@ import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
-import { makeLobby } from './lib/lobby.mjs';
+import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = makeArg(process.argv.slice(2));
@@ -38,7 +39,9 @@ const ROOT = path.resolve(arg('root', process.env.ROOT || path.join(here, '..', 
 const MAX_VIEWERS = config.maxViewers ?? 500;
 const MAX_VIEWERS_PER_IP = config.maxViewersPerIp ?? 3;
 const PLAYER_NAME = String(config.playerName || '[TV] Soldat Web').slice(0, 23);
-const lobby = makeLobby(config.lobbyUrl || 'https://api.soldat.pl/v0/servers', log);
+const LOBBY_URL = config.lobbyUrl || 'https://api.soldat.pl/v0/servers';
+const lobby = makeLobby(LOBBY_URL, log);
+const lobbyPlayers = makeLobbyPlayers(LOBBY_URL, log);
 const originAllowed = originChecker(new Set(config.origins || []));
 const clientIp = clientIpOf(!!config.trustProxy);
 
@@ -179,12 +182,17 @@ async function listServers(fresh) {
     const id = addresses.get(`${e.IP}:${e.Port}`);
     if (id) fromLobby.set(id, e);
   }
-  const list = [...hubs.values()].map((h) => {
+  const list = await Promise.all([...hubs.values()].map(async (h) => {
     const info = h.info();
     const e = fromLobby.get(h.cfg.id);
     const bots = e ? e.NumBots || 0 : 0;
+    // who plays: the hub's own roster while it watches (with teams), else the lobby's names
+    const names = info.names ?? (e && e.NumPlayers > 0
+      ? (await lobbyPlayers(e.IP, e.Port))?.map((name) => ({ name })) ?? null
+      : null);
     return {
       ...info,
+      names,
       title: e ? e.Name : null,
       mode: e ? e.GameStyle : null,
       map: info.state === 'live' ? info.map : (e ? e.CurrentMap : info.map) || null,
@@ -194,7 +202,7 @@ async function listServers(fresh) {
       country: e ? e.Country : null,
       listed: !!e,
     };
-  });
+  }));
   const humans = (s) => (s.players || 0) - (s.bots || 0);
   list.sort((a, b) => humans(b) - humans(a) || (b.players || 0) - (a.players || 0) ||
     b.viewers - a.viewers || a.name.localeCompare(b.name));

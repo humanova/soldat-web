@@ -53,11 +53,14 @@ export class Hub {
   // ------------------------------------------------------------ public
 
   info() {
+    const live = this.state === 'live';
+    const playing = live
+      ? this.match.roster.filter((p, i) => p && i !== this.match.own && p.team !== TEAM_SPECTATOR) : null;
     return {
       id: this.cfg.id, name: this.cfg.name, state: this.state, error: this.error,
       map: this.match.map,
-      players: this.state === 'live'
-        ? this.match.roster.filter((p, i) => p && i !== this.match.own && p.team !== TEAM_SPECTATOR).length : null,
+      players: live ? playing.length : null,
+      names: live ? playing.map((p) => ({ name: p.name, team: p.team })) : null,
       viewers: this.viewers.size, delay: this.delayMs / 1000,
     };
   }

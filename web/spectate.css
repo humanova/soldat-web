@@ -103,25 +103,31 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .channels .channel:hover { background: var(--row-hover); box-shadow: inset 0 0 0 1px var(--orange); }
 .ch-main { min-width: 0; display: flex; flex-direction: column; }
 .ch-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ch-title span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* flags.png: 32x24 cells, 16 to a row (js/spectate/flags.js) */
 .cflag { flex: none; width: 16px; height: 12px; background: url("flags.png") 0 0 / 256px 204px no-repeat;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
 .cflag.none { background: var(--deep); }
-.ch-sub { display: flex; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; padding-left: 24px; }
-.ch-sub:empty { display: none; }
+/* small labels after the server's name, the size of the LIVE tally */
+.chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 17px; padding: 0 6px;
+  background: var(--deep); color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* the green ping dot of the server list: the server is on air */
-.on-air { display: inline-flex; align-items: center; gap: 6px; color: var(--green-text); }
-.on-air::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: inset 0 0 0 1px #2b6a27; }
-.unavailable { color: var(--dim); }
-.sub-map { display: none; }
+.chip.on-air { background: var(--green-lo); color: var(--green-text); }
+.chip.on-air::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #7fdc52; }
+.chip.off-air { color: var(--dim); }
+/* who plays: one line, cut short; every row has it, so the rows are the same height */
+.ch-sub { display: flex; gap: 8px; height: 17px; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 17px;
+  white-space: nowrap; overflow: hidden; padding-left: 24px; }
+.who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nobody { color: var(--dim); }
+.sub-map { display: none; flex: none; }
 .ch-map, .ch-mode { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ch-players { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.ch-players { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ch-players b { font-weight: 400; }
-.ch-players small { color: var(--muted); font-size: 11px; }
+.ch-players .unknown { color: var(--dim); }
 .fill { width: 56px; height: 4px; background: var(--deep); }
 .fill i { display: block; height: 100%; background: var(--green); }
-.channel.quiet .ch-title, .channel.quiet .ch-map { color: var(--muted); }
+.channel.quiet .ch-label, .channel.quiet .ch-map { color: var(--muted); }
 .list-empty { color: var(--muted); padding: 22px 12px; margin: 0; background: var(--row); }
 
 .notes { font-size: 13px; color: var(--muted); }

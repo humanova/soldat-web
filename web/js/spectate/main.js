@@ -11,6 +11,7 @@ const debug = params.has('debug');
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
 const TEAM_GAMES = new Set([2, 3, 5, 6]);  // team match, CTF, infiltration, hold the flag
+const TEAM_TEXT = { 1: 'var(--alpha-text)', 2: 'var(--bravo-text)', 3: 'var(--charlie-text)', 4: 'var(--delta-text)' };
 const MODES = { DM: 'Deathmatch', PM: 'Pointmatch', TM: 'Teammatch', CTF: 'Capture the Flag',
   RM: 'Rambomatch', INF: 'Infiltration', HTF: 'Hold the Flag' };
 
@@ -866,16 +867,34 @@ function renderGuide() {
     const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
     b.type = 'button';
 
+    // the name with its tags, then who plays (every row has both lines, so they are even)
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
-    title.append(flag(c.country) || el('i', 'cflag none'), el('span', '', c.name));
+    title.append(flag(c.country) || el('i', 'cflag none'), el('span', 'ch-label', c.name));
+    if (c.state === 'live') title.append(el('span', 'chip on-air', c.viewers ? `On air · ${c.viewers}` : 'On air'));
+    else if (c.state === 'waiting') title.append(el('span', 'chip off-air', 'Off air'));
+    if (c.bots) {
+      const humans = Math.max(0, (c.players || 0) - c.bots);
+      title.append(el('span', 'chip bots', humans ? `${c.bots} bots` : 'Bots only'));
+    }
     main.append(title);
     const sub = el('span', 'ch-sub');
-    if (c.state === 'live') sub.append(el('span', 'on-air', c.viewers ? `On air · ${c.viewers} watching` : 'On air'));
-    else if (c.state === 'waiting') sub.append(el('span', 'unavailable', 'Off air'));
     if (c.map) sub.append(el('span', 'sub-map', [c.map, c.mode].filter(Boolean).join(' · ')));
+    const who = el('span', 'who');
+    if (c.names && c.names.length) {
+      c.names.forEach((p, i) => {
+        if (i) who.append(', ');
+        const n = el('span', '', p.name);
+        if (p.team >= 1 && p.team <= 4) n.style.color = TEAM_TEXT[p.team];
+        who.append(n);
+      });
+      who.title = c.names.map((p) => p.name).join(', ');
+    } else {
+      who.append(el('span', 'nobody', c.players ? `${c.players} playing` : c.players === 0 ? 'Nobody playing' : ''));
+    }
+    sub.append(who);
     main.append(sub);
-    if (c.title && c.title !== c.name) main.title = c.title;
+    if (c.title && c.title !== c.name) title.title = c.title;
     b.append(main);
 
     b.append(el('span', 'ch-map', c.map || ''));
@@ -885,7 +904,6 @@ function renderGuide() {
 
     const pl = el('span', 'ch-players num');
     if (c.players != null) {
-      const humans = Math.max(0, c.players - (c.bots || 0));
       pl.append(el('b', '', c.maxPlayers ? `${c.players}/${c.maxPlayers}` : String(c.players)));
       if (c.maxPlayers) {
         const fill = el('span', 'fill');
@@ -894,9 +912,8 @@ function renderGuide() {
         fill.append(i);
         pl.append(fill);
       }
-      if (c.bots) pl.append(el('small', '', humans ? `${c.bots} bots` : 'bots only'));
     } else {
-      pl.append(el('small', '', '—'));
+      pl.append(el('b', 'unknown', '—'));
     }
     b.append(pl);
     b.addEventListener('click', () => watch(c));
