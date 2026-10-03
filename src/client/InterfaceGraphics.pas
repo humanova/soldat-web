@@ -1538,9 +1538,12 @@ end;
 procedure RenderSpectatorMarkers(TimeElapsed: Single);
 var
   i, Flag: Integer;
-  x, y, s, w, h, Out, Alpha: Single;
+  x, y, s, w, h, Out, Fade: Single;
   Arrow, FlagIcon: PGfxSprite;
+  Sp: PSprite;
 begin
+  // no "with Sprite[i] do" for the players: the sprite's own fields (its Alpha) would take
+  // the place of locals of the same name, and the gostek would be drawn see-through
   Out := ZoomedOut;
   Arrow := Textures[GFX_INTERFACE_ARROW];
   FlagIcon := Textures[GFX_INTERFACE_FLAG];
@@ -1552,10 +1555,10 @@ begin
         if Active and (HoldingSprite = 0) and
           (Style in [OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG]) then
         begin
-          Alpha := Out;
+          Fade := Out;
           if not InBase then
-            Alpha := Max(Out, 0.75);
-          if Alpha <= 0 then
+            Fade := Max(Out, 0.75);
+          if Fade <= 0 then
             Continue;
           s := 11 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
           w := FlagIcon.Width * FlagIcon.Scale * s;
@@ -1563,47 +1566,47 @@ begin
           x := ((Skeleton.Pos[1].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x - w / 2;
           y := ((Skeleton.Pos[1].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y -
             h - 30 / ViewScale * _rscala.y;
-          GfxDrawSprite(FlagIcon, x, y, s, s, RGBA(SpectatorFlagColor(Style), Round(255 * Alpha)));
+          GfxDrawSprite(FlagIcon, x, y, s, s, RGBA(SpectatorFlagColor(Style), Round(255 * Fade)));
         end;
 
   for i := 1 to MAX_SPRITES do
-    with Sprite[i] do
+  begin
+    Sp := @Sprite[i];
+    if not Sp.Active or Sp.IsSpectator or ((sv_realisticmode.Value) and (Sp.Visible = 0)) then
+      Continue;
+    Flag := CarriesFlag(i);
+    // sizes in interface units (480 high), so the same on any screen
+    if i = CameraFollowSprite then
     begin
-      if not Active or IsSpectator or ((sv_realisticmode.Value) and (Visible = 0)) then
-        Continue;
-      Flag := CarriesFlag(i);
-      // sizes in interface units (480 high), so the same on any screen
-      if i = CameraFollowSprite then
-      begin
-        s := 12 * _rscala.y / (Arrow.Height * Arrow.Scale);
-        Alpha := 1;
-      end
-      else
-      begin
-        s := 9 * _rscala.y / (Arrow.Height * Arrow.Scale);
-        Alpha := Out * iif(DeadMeat, 0.35, 0.9);
-      end;
-      if (Alpha <= 0) and (Flag = 0) then
-        Continue;
-
-      w := Arrow.Width * Arrow.Scale * s;
-      h := Arrow.Height * Arrow.Scale * s;
-      x := ((Skeleton.Pos[12].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
-      y := ((Skeleton.Pos[12].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y -
-        14 / ViewScale * _rscala.y - h;
-      if i = CameraFollowSprite then
-        y := y - 2 * _rscala.y - 2 * _rscala.y * Sin(5.1 * TimeElapsed);
-      if Alpha > 0 then
-        GfxDrawSprite(Arrow, x - w / 2, y, s, s, RGBA(SpectatorTeamColor(i, False), Round(255 * Alpha)));
-
-      if Flag > 0 then
-      begin
-        s := 13 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
-        w := FlagIcon.Width * FlagIcon.Scale * s;
-        h := FlagIcon.Height * FlagIcon.Scale * s;
-        GfxDrawSprite(FlagIcon, x - w / 2, y - h - 1, s, s, RGBA(SpectatorFlagColor(Flag), 255));
-      end;
+      s := 12 * _rscala.y / (Arrow.Height * Arrow.Scale);
+      Fade := 1;
+    end
+    else
+    begin
+      s := 9 * _rscala.y / (Arrow.Height * Arrow.Scale);
+      Fade := Out * iif(Sp.DeadMeat, 0.35, 0.9);
     end;
+    if (Fade <= 0) and (Flag = 0) then
+      Continue;
+
+    w := Arrow.Width * Arrow.Scale * s;
+    h := Arrow.Height * Arrow.Scale * s;
+    x := ((Sp.Skeleton.Pos[12].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+    y := ((Sp.Skeleton.Pos[12].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y -
+      14 / ViewScale * _rscala.y - h;
+    if i = CameraFollowSprite then
+      y := y - 2 * _rscala.y - 2 * _rscala.y * Sin(5.1 * TimeElapsed);
+    if Fade > 0 then
+      GfxDrawSprite(Arrow, x - w / 2, y, s, s, RGBA(SpectatorTeamColor(i, False), Round(255 * Fade)));
+
+    if Flag > 0 then
+    begin
+      s := 13 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
+      w := FlagIcon.Width * FlagIcon.Scale * s;
+      h := FlagIcon.Height * FlagIcon.Scale * s;
+      GfxDrawSprite(FlagIcon, x - w / 2, y - h - 1, s, s, RGBA(SpectatorFlagColor(Flag), 255));
+    end;
+  end;
 end;
 {$ENDIF}
 

@@ -26,7 +26,7 @@ const TICKS_PER_SECOND = 60;
 // PlayersList layout (docs/PROTOCOL-1.7.1.md)
 const PL = {
   mapName: 3, players: 20, name: 108, shirt: 876, pants: 1004, skin: 1132, hair: 1260, jet: 1388,
-  team: 1516, look: 1588, pos: 1620, vel: 1876, sessionId: 2134, timeLimit: 2136, timeLeft: 2140,
+  team: 1516, predDuration: 1548, look: 1588, pos: 1620, vel: 1876, sessionId: 2134, timeLimit: 2136, timeLeft: 2140,
   serverTicks: 2145, flags: 23,
 };
 const NAME_LEN = 24;
@@ -486,6 +486,9 @@ export class Hub {
       p.vel.copy(b, PL.vel + o * 8);
     }
     b[PL.players] = count;
+    // the predator seconds of the list the hub joined with are long out of date (a viewer's
+    // client would draw that slot see-through); the hub does not track the bonus
+    b.fill(0, PL.predDuration, PL.predDuration + MAX_PLAYERS);
     b.writeInt32LE(this.timeLeftNow(), PL.timeLeft);
     b.writeInt32LE(this.serverTicksNow(), PL.serverTicks);
     return setHash(b);
