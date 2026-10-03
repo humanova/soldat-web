@@ -154,9 +154,11 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .unread { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
 
 .topbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 6px max(8px, env(safe-area-inset-right)) 20px max(8px, env(safe-area-inset-left));
-  background: linear-gradient(rgba(36, 43, 56, .82), rgba(36, 43, 56, 0)); pointer-events: none; z-index: 4; }
+  gap: 12px; padding: 6px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
+  background: linear-gradient(rgba(36, 43, 56, .4), rgba(36, 43, 56, 0)); pointer-events: none; z-index: 4; }
 .topbar > * { pointer-events: auto; }
+/* a light shade only: the icons and the name carry their own shadow over a bright sky */
+.topbar .icon-btn svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .8)); }
 .topbar #back { flex: none; }
 .channel-id { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: calc(50vw - 230px); margin-right: auto;
   font-size: 14px; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
@@ -343,7 +345,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 }
 /* phones and small tablets held sideways: tighter bars, bigger touch targets */
 @media (max-height: 520px) {
-  .topbar { padding-top: 4px; padding-bottom: 14px; }
+  .topbar { padding-top: 4px; padding-bottom: 6px; }
   .topbar #back { top: 4px; }
   .sb-row { height: 28px; }
   .side, .leader { gap: 8px; padding: 0 8px; }
