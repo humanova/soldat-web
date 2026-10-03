@@ -10,29 +10,24 @@
 </head>
 <body>
 <div id="app" hidden>
-  <header class="top">
-    <h1 class="brand">
-      <span id="logo" class="logo" hidden><img id="logo-l" alt=""><img id="logo-r" alt=""></span>
-      <span id="wordmark" class="wordmark">SOLDAT</span>
-      <span class="tagline">1.7.1 in your browser</span>
-    </h1>
-    <nav class="links" aria-label="Links">
-      <a href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
-      <a href="https://store.steampowered.com/app/638490/Soldat/" target="_blank" rel="noopener">Steam</a>
-      <a href="https://github.com/humanova" target="_blank" rel="noopener" class="gh">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-        humanova
-      </a>
-    </nav>
+  <header class="tabs">
+    <span class="tab active logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span></span>
+    <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
+    <a class="tab ext" href="https://store.steampowered.com/app/638490/Soldat/" target="_blank" rel="noopener">Steam</a>
+    <a class="tab ext" href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">Source</a>
+    <span class="fill-tab"></span>
+    <span class="tag">1.7.1 in your browser</span>
   </header>
 
   <main>
     <section class="panel" id="servers" aria-labelledby="servers-title">
+      <h2 id="servers-title" hidden>Servers</h2>
       <div class="panel-head">
-        <h2 id="servers-title">Servers</h2>
+        <p id="summary" class="summary"></p>
         <span id="status" class="status" role="status"></span>
-        <button id="refresh" type="button" class="ghost" title="Refresh the list">Refresh</button>
+        <button id="refresh" type="button" title="Refresh the list">Refresh</button>
       </div>
+      <div class="strip" id="strip" aria-hidden="true"><i></i></div>
       <div class="toolbar">
         <input id="filter" type="search" placeholder="Search servers, maps, countries" autocomplete="off" aria-label="Search servers">
         <label class="check"><input id="hide-empty" type="checkbox"> Hide empty</label>
@@ -44,9 +39,8 @@
             <tr>
               <th data-sort="Name">Server</th>
               <th data-sort="CurrentMap">Map</th>
-              <th data-sort="GameStyle">Mode</th>
+              <th data-sort="GameStyle">Game Type</th>
               <th data-sort="NumPlayers" class="num">Players</th>
-              <th data-sort="Country">Region</th>
             </tr>
           </thead>
           <tbody id="server-list"></tbody>
@@ -57,8 +51,8 @@
         <label>Address <input id="address" placeholder="host:port" spellcheck="false"></label>
         <label>Password <input id="password" type="password" placeholder="if the server has one"></label>
         <div class="actions">
-          <button id="quick" type="button" class="ghost" title="Join the busiest server that has room">Quick join</button>
-          <button id="join" type="submit" class="primary">Join</button>
+          <button id="quick" type="button" title="Join the busiest server that has room">Quick Join</button>
+          <button id="join" type="submit" class="primary">Join Game</button>
         </div>
       </form>
       <p class="hint">Double-click a server to join. Esc in the game opens the menu, “Exit to menu” brings you back here.</p>
@@ -124,7 +118,7 @@
         <details>
           <summary>Storage</summary>
           <p>Settings and maps downloaded from servers stay in this browser.</p>
-          <button id="clear-downloads" type="button" class="ghost">Delete downloaded maps</button>
+          <button id="clear-downloads" type="button">Delete downloaded maps</button>
         </details>
       </section>
     </aside>
@@ -144,7 +138,7 @@
 
 <div id="loading">
   <div class="box">
-    <div class="wordmark">SOLDAT</div>
+    <div class="logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span></div>
     <p id="loading-text">Loading...</p>
     <div class="bar"><div id="loading-bar"></div></div>
   </div>

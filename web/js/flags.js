@@ -1,4 +1,4 @@
-// Country flags for the server list: web/flags.png holds the 4x3 flags of flag-icons
+// Country flags for the server lists (play and Soldat TV): web/flags.png holds the 4x3 flags of flag-icons
 // (MIT, (c) 2013 Panayiotis Lipiridis, https://github.com/lipis/flag-icons) in 32x24 cells,
 // 16 to a row, in this order.
 const CODES = (

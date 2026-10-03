@@ -2,7 +2,7 @@
 // spectator hub (relay/spectator.mjs). The game ignores its own keys and mouse in this
 // build; this page drives the camera through the soldat_spectator_* exports.
 import { SoldatRuntime } from '../runtime.js';
-import { flag } from './flags.js';
+import { flag } from '../flags.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);

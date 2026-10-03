@@ -1,5 +1,6 @@
 // Page logic: loading screen, server browser, player settings, entering/leaving the game.
 import { SoldatRuntime } from './runtime.js';
+import { flag } from './flags.js';
 import { GostekPreview, WEAPONS } from './gostek.js';
 
 const $ = (id) => document.getElementById(id);
@@ -196,17 +197,33 @@ let servers = [];
 let selected = null;
 
 async function refreshServers() {
+  // the green strip runs while the list is requested, like Request Servers in the game
+  const strip = $('strip');
+  strip.classList.remove('loading', 'done');
+  void strip.offsetWidth;
+  strip.classList.add('loading');
   try {
-    setStatus('Loading server list...');
     const res = await fetch(httpBase() + 'api/servers', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     servers = (data.Servers || []).filter(s => s.Version === '1.7.1');
-    setStatus(`${servers.length} servers · ${servers.reduce((n, s) => n + (s.NumPlayers || 0), 0)} players online`);
+    if (!$('status').classList.contains('error')) setStatus('');
+    strip.classList.add('done');
   } catch (e) {
     setStatus('Server list unavailable (' + e.message + '). You can still join by address.', true);
   }
+  strip.classList.remove('loading');
+  const summary = $('summary');
+  summary.textContent = '';
+  summary.append('Servers: ', el('b', String(servers.length)),
+    ' - Players: ', el('b', String(servers.reduce((n, s) => n + (s.NumPlayers || 0), 0))));
   renderServers();
+}
+
+function el(tag, text) {
+  const e = document.createElement(tag);
+  e.textContent = text;
+  return e;
 }
 
 function renderServers() {
@@ -235,7 +252,11 @@ function renderServers() {
     if (selected === id) tr.classList.add('sel');
     const name = document.createElement('td');
     name.className = 'name';
-    name.textContent = s.Name;
+    const label = document.createElement('span');
+    label.className = 'server';
+    label.append(flag(s.Country) || el('i', ''), el('span', s.Name));
+    label.firstChild.classList.add('cflag');
+    name.appendChild(label);
     name.title = s.Name + (s.Info ? '\n' + s.Info : '');
     const tags = [];
     if (s.Private) tags.push('password');
@@ -247,14 +268,10 @@ function renderServers() {
       const span = document.createElement('span');
       span.className = 'tag';
       span.textContent = t;
-      name.appendChild(span);
+      label.appendChild(span);
     }
     const map = document.createElement('td'); map.textContent = s.CurrentMap;
-    const mode = document.createElement('td');
-    const badge = document.createElement('span');
-    badge.className = 'mode ' + String(s.GameStyle || '').toLowerCase();
-    badge.textContent = s.GameStyle || '?';
-    mode.appendChild(badge);
+    const mode = document.createElement('td'); mode.textContent = s.GameStyle || '?';
     const pl = document.createElement('td'); pl.className = 'num';
     const count = document.createElement('span'); count.className = 'players';
     const meter = document.createElement('span'); meter.className = 'meter';
@@ -263,9 +280,8 @@ function renderServers() {
     meter.appendChild(fill);
     count.append(`${s.NumPlayers}/${s.MaxPlayers}`, meter);
     pl.appendChild(count);
-    const cc = document.createElement('td'); cc.textContent = s.Country || '';
     if (!s.NumPlayers) tr.classList.add('empty-server');
-    tr.append(name, map, mode, pl, cc);
+    tr.append(name, map, mode, pl);
     tr.addEventListener('click', () => {
       selected = id;
       $('address').value = id;
@@ -420,24 +436,7 @@ function showMapOnStage(name) {
   stage.style.setProperty('--ground-size', `${Math.round((m.repeat * stage.clientHeight) / 33)}px`);
 }
 
-// ---------- logo and gostek preview ----------
-
-function packImageUrl(path) {
-  const pack = game.archives.get('soldat/soldat.smod');
-  const e = pack && pack.get(path);
-  return e && e.data ? URL.createObjectURL(new Blob([e.data], { type: 'image/png' })) : null;
-}
-
-// the title from the game's own interface graphics
-function showLogo() {
-  const l = packImageUrl('interface-gfx/title-l.png');
-  const r = packImageUrl('interface-gfx/title-r.png');
-  if (!l || !r) return;
-  $('logo-l').src = l;
-  $('logo-r').src = r;
-  $('logo').hidden = false;
-  $('wordmark').hidden = true;
-}
+// ---------- gostek preview ----------
 
 async function setupPreview() {
   try {
@@ -499,7 +498,6 @@ async function boot() {
     $('loading').hidden = true;
     $('app').hidden = false;
     bindSettings();
-    showLogo();
     showMapOnStage(null);
     setupPreview();
     refreshServers();
