@@ -23,7 +23,8 @@
 </script>
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
-<link rel="stylesheet" href="spectate.css">
+<!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
+<link rel="stylesheet" href="spectate.css?v=2">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || /\/[\w-]+$/.test(location.pathname)) document.documentElement.classList.add('direct');</script>
@@ -48,7 +49,7 @@
   <header class="tabs">
     <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
     <!-- the hub's server groups (Gather) are put between the logo and Play: js/spectate/main.js renderTabs -->
-    <a class="tab play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg aria-hidden="true"><use href="#i-play"/></svg>Play</a>
+    <a class="tab play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg width="13" height="13" aria-hidden="true"><use href="#i-play"/></svg>Play</a>
     <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
     <span class="fill-tab"></span>
     <span class="tag">Live matches</span>
