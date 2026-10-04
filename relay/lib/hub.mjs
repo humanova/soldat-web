@@ -79,6 +79,7 @@ export class Hub {
     if (this.state === 'idle') this.connect();
     if (this.state === 'waiting') v.sendText({ type: 'status', message: `Reconnecting to the server (${this.error})...` });
     else if (this.ready) this.greet(v);
+    else if (this.state === 'live') v.sendText({ type: 'status', message: this.countdownText() });
     else v.sendText({ type: 'status', message: 'Joining the server as a spectator...' });
   }
 
@@ -359,11 +360,23 @@ export class Hub {
     this.setTimer('flush', 20, () => this.flush(), true);
     this.log(`live in slot ${this.match.own} as "${this.match.ownName}" on ${this.match.map}`);
     // with a delay, viewers start once the delayed stream has caught up with the state
-    // they get at their join
+    // they get at their join; until then they see the seconds left
+    this.readyAt = Date.now() + this.delayMs;
     this.setTimer('ready', this.delayMs, () => {
+      this.clearTimer('countdown');
       this.ready = true;
       for (const v of this.viewers) this.greet(v);
     });
+    if (this.delayMs > 0) {
+      const tell = () => { for (const v of this.viewers) v.sendText({ type: 'status', message: this.countdownText() }); };
+      tell();
+      this.setTimer('countdown', 1000, tell, true);
+    }
+  }
+
+  countdownText() {
+    const left = Math.max(1, Math.ceil((this.readyAt - Date.now()) / 1000));
+    return `Live in ${left} s (${this.delayMs / 1000} s broadcast delay)`;
   }
 
   greet(v) {
