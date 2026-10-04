@@ -116,6 +116,7 @@ class Recording {
     this.players = new Map();  // slot and name -> { name, team }, everyone who played
     this.mostPlaying = 0;
     this.scores = [0, 0, 0, 0];
+    this.ending = false;       // past the map change: the score stays as the match ended
     this.finished = null;
     for (const m of opening) this.add(m, at);
   }
@@ -148,8 +149,10 @@ class Recording {
     if (m.length < 3 || SKIPPED.has(m[0])) return;
     this.advance(at);
     this.record(m);
+    // the server zeroes the scores before the countdown to the next map is over
+    if (m[0] === MSG.MapChange) this.ending = true;
     const n = HEARTBEATS.get(m[0]);
-    if (n && m.length >= 15 + 7 * n) {
+    if (n && !this.ending && m.length >= 15 + 7 * n) {
       for (let i = 0; i < 4; i++) this.scores[i] = m.readUInt16LE(7 + 7 * n + 2 * i);
     }
   }

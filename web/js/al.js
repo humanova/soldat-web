@@ -13,6 +13,7 @@ export function createAL(rt) {
   let master = null;
   const buffers = [null];
   const sources = [null];
+  let held = false;  // a paused replay: every sound stands still where it is
 
   function audio() {
     if (!ctx) {
@@ -181,7 +182,14 @@ export function createAL(rt) {
     alSourceUnqueueBuffers: () => {},
 
     // not part of OpenAL: used by the page
-    resume: () => { const a = audio(); if (a && a.state !== 'running') a.resume().catch(() => {}); },
+    resume: () => { const a = audio(); if (a && !held && a.state !== 'running') a.resume().catch(() => {}); },
+    hold: (on) => {
+      held = !!on;
+      const a = audio();
+      if (!a) return;
+      if (held) a.suspend().catch(() => {});
+      else if (a.state !== 'running') a.resume().catch(() => {});
+    },
     setMasterVolume: (v) => { audio(); if (master) master.gain.value = v; },
   };
 }

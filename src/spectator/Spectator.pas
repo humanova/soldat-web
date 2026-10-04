@@ -13,7 +13,10 @@ unit Spectator;
 interface
 
 procedure SpectatorInit;
-// follow a player (slot 1..32); 0 switches to the free camera
+// follow a player (slot 1..32); 0 switches to the free camera; below 0 lets the game pick
+// (a new match). The page's choice holds: the game's own camera changes (joining, a jump
+// in a replay) are undone each tick, and a player who cannot be followed for a moment
+// (gone from the server) leaves the camera where it is until they are back.
 procedure SpectatorFollow(Slot: LongInt);
 // view scale exp(Z) of the normal view (below 0 zooms in, above 0 out). In the free
 // camera the point at (FX, FY) (fractions of the screen) stays where it is.
@@ -59,6 +62,8 @@ procedure SpectatorSpeed(Speed: Single);
 procedure SpectatorRewind;
 // a tick of a paused replay: the camera follows its player (ClientGame.GameLoop)
 procedure SpectatorCameraTick;
+// each tick, before the game's update: the camera the page chose (ClientGame.GameLoop)
+procedure SpectatorKeepCamera;
 
 const
   MIN_ZOOM = -0.9;
@@ -74,6 +79,9 @@ var
   Events: AnsiString = '';
   LastEvent: AnsiString = '';
   LastEventTick: Integer = 0;
+  Wanted: Integer = -1;        // the page's camera: a slot, 0 the free camera, -1 the game's
+  KeepPlace: Boolean = False;  // a replay jumped: the camera stays where it was while rejoining
+  KeptX, KeptY: Single;
 
 procedure SpectatorInit;
 begin
@@ -163,8 +171,49 @@ begin
     GOALTICKS := EnsureRange(Round(DEFAULT_GOALTICKS * Speed), 1, DEFAULT_GOALTICKS * 32);
 end;
 
+procedure CenterMouse;
+begin
+  // the camera adds the mouse's offset from the screen center; keep it there
+  mx := GameWidthHalf;
+  my := GameHeightHalf;
+end;
+
+function Followable(Slot: Integer): Boolean;
+begin
+  Result := (Slot >= 1) and (Slot <= MAX_SPRITES) and Sprite[Slot].Active and
+    Sprite[Slot].IsNotSpectator();
+end;
+
+procedure SpectatorKeepCamera;
+begin
+  if KeepPlace then
+  begin
+    // joining puts the camera at the map's origin
+    CameraX := KeptX;
+    CameraY := KeptY;
+    CameraPrev.X := KeptX;
+    CameraPrev.Y := KeptY;
+    if (MySprite > 0) and not RequestingGame then
+      KeepPlace := False;
+  end;
+  if Wanted = 0 then
+    CameraFollowSprite := 0
+  else if Wanted > 0 then
+  begin
+    if Followable(Wanted) then
+    begin
+      if CameraFollowSprite <> Wanted then
+        CenterMouse;
+      CameraFollowSprite := Wanted;
+    end
+    else
+      CameraFollowSprite := 0;
+  end;
+end;
+
 procedure SpectatorCameraTick;
 begin
+  SpectatorKeepCamera;
   CameraPrev.X := CameraX;
   CameraPrev.Y := CameraY;
   // as Update_Frame, with the mouse in the middle
@@ -206,25 +255,32 @@ begin
     StopVote;
   Events := '';
   LastEvent := '';
+  KeepPlace := True;
+  KeptX := CameraX;
+  KeptY := CameraY;
   RequestingGame := True;
   RequestGameRetryTicks := 3 * 60;
-end;
-
-procedure CenterMouse;
-begin
-  // the camera adds the mouse's offset from the screen center; keep it there
-  mx := GameWidthHalf;
-  my := GameHeightHalf;
 end;
 
 procedure SpectatorFollow(Slot: LongInt);
 begin
   CenterMouse;
-  if Slot = 0 then
-    CameraFollowSprite := 0
-  else if (Slot >= 1) and (Slot <= MAX_SPRITES) and Sprite[Slot].Active and
-    Sprite[Slot].IsNotSpectator() then
-    CameraFollowSprite := Slot;
+  if Slot < 0 then
+  begin
+    Wanted := -1;
+    KeepPlace := False;
+  end
+  else if Slot = 0 then
+  begin
+    Wanted := 0;
+    CameraFollowSprite := 0;
+  end
+  else if Slot <= MAX_SPRITES then
+  begin
+    Wanted := Slot;
+    if Followable(Slot) then
+      CameraFollowSprite := Slot;
+  end;
 end;
 
 procedure SpectatorZoom(Z, FX, FY: Single);
@@ -245,6 +301,7 @@ end;
 procedure SpectatorPan(DX, DY: Single);
 begin
   CenterMouse;
+  Wanted := 0;
   CameraFollowSprite := 0;
   CameraX := CameraX + DX * exp(r_zoom.Value) * GameWidth;
   CameraY := CameraY + DY * exp(r_zoom.Value) * GameHeight;
@@ -267,6 +324,7 @@ begin
         MinY := Min(MinY, y); MaxY := Max(MaxY, y);
       end;
   CenterMouse;
+  Wanted := 0;
   CameraFollowSprite := 0;
   CameraX := (MinX + MaxX) / 2;
   CameraY := (MinY + MaxY) / 2;

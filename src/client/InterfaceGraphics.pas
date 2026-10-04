@@ -835,13 +835,13 @@ end;
 
 procedure RenderGameMenuTexts(w, h: Single);
 begin
-  if LimboMenu.Active then
+  if LimboMenu.Active {$IFDEF SPECTATOR}and False{$ENDIF} then
     RenderWeaponMenuText;
 
   if EscMenu.Active then
     RenderEscMenuText(w, h);
 
-  if TeamMenu.Active then
+  if TeamMenu.Active {$IFDEF SPECTATOR}and False{$ENDIF} then
     RenderTeamMenuText;
 
   if KickMenu.Active then
@@ -2883,11 +2883,11 @@ begin
     end;
   end;
 
-  if TeamMenu.Active then
+  if TeamMenu.Active {$IFDEF SPECTATOR}and False{$ENDIF} then
     GfxDrawSprite(T^[GFX_INTERFACE_BACK], 45, 140, 262 / BACKGROUND_WIDTH,
       250 / BACKGROUND_WIDTH, RGBA($FFFFFF, Round(ui_status_transparency.Value * 0.56)));
 
-  if LimboMenu.Active then
+  if LimboMenu.Active {$IFDEF SPECTATOR}and False{$ENDIF} then
   begin
     // draw weapon sprites in weapons menu
     _Scala.X := 252 / BACKGROUND_WIDTH;

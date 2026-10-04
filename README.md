@@ -160,6 +160,9 @@ kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or wi
 than two players, and removes the oldest after `keepDays` or once all of them take more
 than `maxGB`. A match is published once it ends (plus the server's broadcast delay).
 
+The Demos tab plays a demo from the viewer's own computer the same way: pick or drop a
+`.sdm` (or a gzipped `.sdm.gz`). The file is read in the browser and never uploaded.
+
 | Setting | Default | What it does |
 |---|---|---|
 | `--port` / `PORT` | 8090 | HTTP port |

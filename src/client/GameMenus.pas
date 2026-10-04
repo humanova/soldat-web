@@ -181,6 +181,14 @@ procedure GameMenuShow(Menu: PGameMenu; Show: Boolean = True);
 var
   i: Integer;
 begin
+  {$IFDEF SPECTATOR}
+  // the spectator joins as a spectator: it never picks a weapon or a team
+  if Show and ((Menu = LimboMenu) or (Menu = TeamMenu)) then
+  begin
+    Menu.Active := False;
+    Exit;
+  end;
+  {$ENDIF}
   if Menu = EscMenu then
   begin
     if Show then

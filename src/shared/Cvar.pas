@@ -779,7 +779,7 @@ begin
   ui_sniperline := TBooleanCvar.Add('ui_sniperline', 'Draws a line between the player and the cursor', False, False, [CVAR_CLIENT], nil);
 
   // Client cvars
-  cl_sensitivity := TSingleCvar.Add('cl_sensitivity', 'Mouse sensitivity', 1.0, 1.0, [CVAR_CLIENT], nil, 0.0, 1.0);
+  cl_sensitivity := TSingleCvar.Add('cl_sensitivity', 'Mouse sensitivity', 1.0, 1.0, [CVAR_CLIENT], nil, 0.0, 3.0); // the page's slider goes up to 3
   cl_endscreenshot := TBooleanCvar.Add('cl_endscreenshot', 'Take screenshot when game ends', False, False, [CVAR_CLIENT], nil);
   cl_actionsnap := TBooleanCvar.Add('cl_actionsnap', 'Enables action snap', False, False, [CVAR_CLIENT], nil);
   cl_screenshake := TBooleanCvar.Add('cl_screenshake', 'Enables screen shake from enemy fire', True, True, [CVAR_CLIENT], nil);

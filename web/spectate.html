@@ -43,6 +43,7 @@
   <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="6.5" r="2.7" fill="currentColor"/><path d="M2 16c.4-3 2.6-4.6 5.5-4.6S12.6 13 13 16z" fill="currentColor"/><circle cx="14" cy="7" r="2.2" fill="currentColor" opacity=".6"/><path d="M14 11.6c2.2 0 3.7 1.4 4 4.4h-3.6" fill="currentColor" opacity=".6"/></symbol>
   <symbol id="i-chat" viewBox="0 0 20 20"><path d="M3 4.5h14v9H8.5L5 16.5v-3H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-talk" viewBox="0 0 20 20"><path d="M2.5 3.5h10v7H7l-3 2.5v-2.5H2.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 7.5h3v7H16V17l-3-2.5H8.5v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-file" viewBox="0 0 20 20"><path d="M5 2.5h6.5L15.5 6.5v11h-10.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 2.5v4.5h4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 9.5v5l4-2.5z" fill="currentColor"/></symbol>
   <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -50,7 +51,8 @@
 <div id="guide">
   <header class="tabs">
     <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
-    <!-- the hub's server groups (Gather) are put between the logo and Play: js/spectate/main.js renderTabs -->
+    <!-- the hub's server groups (Gather) are put between the logo and Demos: js/spectate/main.js renderTabs -->
+    <a class="tab demos-tab" href="#demo" title="Watch a demo file (.sdm) from your computer">Demos</a>
     <a class="tab play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg width="13" height="13" aria-hidden="true"><use href="#i-play"/></svg>Play</a>
     <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
     <span class="fill-tab"></span>
@@ -77,7 +79,7 @@
       <section id="demos" class="demos" aria-labelledby="demos-title" hidden>
         <div class="listing-head">
           <h2 id="demos-title">Recorded matches</h2>
-          <p id="demos-note" class="summary"></p>
+          <p class="summary">Recorded while Soldat TV watches</p>
         </div>
         <div class="columns" aria-hidden="true">
           <span>Match</span><span>Map</span><span class="c-mode num">Score</span><span class="num">Length</span>
@@ -85,6 +87,30 @@
         <ol id="demo-list" class="channels demo-list"></ol>
         <p id="demos-empty" class="list-empty" hidden>No matches recorded yet. A match is recorded while someone watches it here.</p>
         <button id="demos-more" type="button" class="btn quiet more" hidden>Show more</button>
+      </section>
+
+      <!-- the Demos tab: a demo from the viewer's computer, played here (js/spectate/main.js: openFile) -->
+      <section id="viewer" class="viewer" aria-labelledby="viewer-title" hidden>
+        <div class="listing-head">
+          <h1 id="viewer-title">Watch a demo</h1>
+          <p class="summary">Soldat demos (.sdm) play here, in your browser</p>
+          <span id="viewer-status" class="status error" role="status"></span>
+        </div>
+        <label id="drop" class="drop-zone">
+          <input id="demo-file" type="file" accept=".sdm,.gz" class="visually-hidden">
+          <svg aria-hidden="true"><use href="#i-file"/></svg>
+          <b class="drop-mouse">Drop a demo here</b>
+          <span class="drop-mouse">or <u>choose a file</u> on your computer</span>
+          <b class="drop-touch">Choose a demo file</b>
+        </label>
+        <p class="drop-note">The file stays on your computer: it is read and played on this page only.</p>
+        <section id="opened" class="opened" hidden>
+          <h2>Opened before</h2>
+          <div class="columns" aria-hidden="true">
+            <span>Demo</span><span>Map</span><span class="c-mode num">Size</span><span class="num">Length</span>
+          </div>
+          <ol id="opened-list" class="channels demo-list opened-list"></ol>
+        </section>
       </section>
     </section>
 

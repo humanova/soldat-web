@@ -142,6 +142,8 @@ function notice(text) {
 
 let mode = 'auto';      // auto (the hub's director), player, free, overview
 let director = 0;       // the director's pick
+let wanted = 0;         // the player last picked to follow
+let lostAt = 0;         // when the picked player could no longer be followed
 let zoom = 0;
 let zoomBeforeMap = 0;
 let joinedAt = 0;
@@ -150,7 +152,7 @@ let pollTimer = 0;
 
 function watch(ch) {
   watching = ch;
-  tab = ch.group || null;
+  if (!ch.local) { tab = ch.group || null; viewer = false; }
   setStatus('');
   $('ch-name').textContent = ch.name;
   $('ch-delay').hidden = true;
@@ -163,9 +165,12 @@ function watch(ch) {
   $('tvchat-btn').querySelector('.unread').hidden = true;
   toggleTvChat(!!prefs.tvchat);
   director = 0;
+  wanted = 0;
+  lostAt = 0;
   zoom = 0;
   match = null;
   setMode('auto', true);
+  call('soldat_spectator_follow', -1);  // the last match's player is no one here
   notice('Tuning in...');
   $('guide').hidden = true;
   $('loading').hidden = true;  // a link to the match opened on it (boot)
@@ -175,11 +180,13 @@ function watch(ch) {
   if (phone && document.fullscreenEnabled && !document.fullscreenElement) enterFullscreen();
   $('watch').classList.toggle('replaying', !!ch.replay);
   $('replaybar').hidden = !ch.replay;
+  movables.forEach(place);
   document.querySelector('.tally').textContent = ch.replay ? 'REPLAY' : 'LIVE';
   document.querySelector('.tally').classList.toggle('replay', !!ch.replay);
   if (ch.replay) {
     $('ch-name').textContent = `${ch.name} · ${replay.meta.map} · ${when(replay.meta.start)}`;
-    history.replaceState(null, '', './replay?id=' + encodeURIComponent(replay.meta.id) + (debug ? '&debug' : ''));
+    if (ch.local) history.replaceState(null, '', './' + (debug ? '?debug' : '') + '#demo');
+    else history.replaceState(null, '', './replay?id=' + encodeURIComponent(replay.meta.id) + (debug ? '&debug' : ''));
     document.title = `Replay: ${replay.meta.map} on ${ch.name} · Soldat TV`;
     showBar();
   } else {
@@ -189,6 +196,7 @@ function watch(ch) {
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
   // a replay may have held the game's clock
   try { game.call('soldat_spectator_speed', 1); } catch (_) {}
+  game.al.hold(false);
   applyVolume();
   if (!game.join('tv', 1, '')) {
     showGuide();
@@ -216,6 +224,7 @@ function clearNews() {
 function showGuide() {
   watching = null;
   replay = null;
+  game.al.hold(false);
   $('watch').classList.remove('replaying');
   $('replaybar').hidden = true;
   clearInterval(pollTimer);
@@ -253,7 +262,9 @@ function setMode(m, quiet) {
 }
 
 function follow(slot) {
-  if (slot) call('soldat_spectator_follow', slot);
+  if (!slot) return;
+  wanted = slot;
+  call('soldat_spectator_follow', slot);
 }
 
 function players() {
@@ -523,6 +534,14 @@ for (const id of ['dock', 'roster', 'replaybar']) $(id).addEventListener('pointe
 const layout = (prefs.layout && typeof prefs.layout === 'object') ? prefs.layout : (prefs.layout = {});
 const movables = [...document.querySelectorAll('#watch .move')];
 
+// the room the panels have: in a replay the bar along the bottom keeps its strip (a panel
+// put at the bottom of a live match sits above the bar)
+function panelRoom() {
+  const area = $('watch'), bar = $('replaybar');
+  const h = area.classList.contains('replaying') && !bar.hidden ? Math.min(area.clientHeight, bar.offsetTop - 6) : area.clientHeight;
+  return { w: area.clientWidth, h };
+}
+
 function place(box) {
   const pos = layout[box.dataset.move];
   if (!Array.isArray(pos)) {
@@ -531,10 +550,10 @@ function place(box) {
     delete box.dataset.align;
     return;
   }
-  const area = $('watch');
+  const room = panelRoom();
   box.classList.add('placed');
-  box.style.left = `${Math.round(Math.max(0, area.clientWidth - box.offsetWidth) * pos[0])}px`;
-  box.style.top = `${Math.round(Math.max(0, area.clientHeight - box.offsetHeight) * pos[1])}px`;
+  box.style.left = `${Math.round(Math.max(0, room.w - box.offsetWidth) * pos[0])}px`;
+  box.style.top = `${Math.round(Math.max(0, room.h - box.offsetHeight) * pos[1])}px`;
   box.dataset.align = pos[0] < 0.34 ? 'start' : pos[0] > 0.66 ? 'end' : 'center';
 }
 
@@ -543,6 +562,7 @@ function startMove(e, box) {
   e.preventDefault();
   wake();
   const area = $('watch').getBoundingClientRect();
+  const room = panelRoom();
   const r = box.getBoundingClientRect();
   const dx = e.clientX - r.left, dy = e.clientY - r.top;
   let moved = false;
@@ -550,7 +570,7 @@ function startMove(e, box) {
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
     moved = true;
     box.classList.add('moving');
-    const freeX = area.width - box.offsetWidth, freeY = area.height - box.offsetHeight;
+    const freeX = room.w - box.offsetWidth, freeY = room.h - box.offsetHeight;
     const x = Math.min(Math.max(0, ev.clientX - area.left - dx), Math.max(0, freeX));
     const y = Math.min(Math.max(0, ev.clientY - area.top - dy), Math.max(0, freeY));
     layout[box.dataset.move] = [freeX > 0 ? x / freeX : 0.5, freeY > 0 ? y / freeY : 0.5];
@@ -637,9 +657,15 @@ function poll() {
   const s = readState();
   if (!s) return;
   match = s;
-  // the followed player left: the game shows the free camera
+  // the followed player left: the game shows the free camera. A picked player who is still
+  // on the server is followed again as soon as they can be (Spectator.pas); one who is gone
+  // for a few seconds gives way to someone else.
   if (!s.follow && (mode === 'auto' || mode === 'player') && s.players.length) {
-    follow(mode === 'auto' && director && s.players.some(p => p.slot === director) ? director : firstPlayer());
+    const now = performance.now();
+    if (mode === 'auto') follow(director && s.players.some(p => p.slot === director) ? director : firstPlayer());
+    else if (!s.players.some(p => p.slot === wanted) && now - (lostAt ||= now) > 3000) follow(firstPlayer());
+  } else {
+    lostAt = 0;
   }
   // joining resets the zoom
   if (Math.abs(s.zoom - zoom) > 0.01 && performance.now() - joinedAt < 5000) setZoom(zoom);
@@ -1248,14 +1274,7 @@ async function openReplay(id) {
     const buf = new Uint8Array(got);
     let o = 0;
     for (const c of chunks) { buf.set(c, o); o += c.length; }
-    replay = new Replay(parseDemo(buf), meta, {
-      call: (name, ...args) => call(name, ...args),
-      onFollow: (slot) => onHubMessage({ type: 'follow', slot }),
-      onTime: () => { barKey = ''; renderBar(); },
-      onEnd: () => { barKey = ''; renderBar(); wake(); },
-    });
-    $('loading').hidden = true;
-    watch({ id: meta.server, name: meta.serverName, group: meta.group, replay: true });
+    playDemo(parseDemo(buf), meta, { id: meta.server, name: meta.serverName, group: meta.group, replay: true });
   } catch (e) {
     $('loading').hidden = true;
     $('guide').hidden = false;
@@ -1266,6 +1285,18 @@ async function openReplay(id) {
   }
 }
 
+function playDemo(demo, meta, ch) {
+  replay = new Replay(demo, meta, {
+    call: (name, ...args) => call(name, ...args),
+    onFollow: (slot) => onHubMessage({ type: 'follow', slot }),
+    onHold: (held) => game.al.hold(held),
+    onTime: () => { barKey = ''; renderBar(); },
+    onEnd: () => { barKey = ''; renderBar(); wake(); },
+  });
+  $('loading').hidden = true;
+  watch(ch);
+}
+
 function showBar() {
   bar.marks.textContent = '';
   for (const m of replay.markers) {
@@ -1274,9 +1305,13 @@ function showBar() {
     bar.marks.append(i);
   }
   bar.line.setAttribute('aria-valuemax', String(Math.round(replay.length / TICKS)));
-  $('rp-download').href = demoUrl(replay.meta.id);
-  $('rp-download').setAttribute('download', replay.meta.id + '.sdm');
-  $('rp-download').title = `Download the demo (${replay.meta.id}.sdm, ${(replay.meta.bytes / 1048576).toFixed(1)} MB)`;
+  // a demo from the viewer's computer is theirs already
+  $('rp-download').hidden = !replay.meta.id;
+  if (replay.meta.id) {
+    $('rp-download').href = demoUrl(replay.meta.id);
+    $('rp-download').setAttribute('download', replay.meta.id + '.sdm');
+    $('rp-download').title = `Download the demo (${replay.meta.id}.sdm, ${(replay.meta.bytes / 1048576).toFixed(1)} MB)`;
+  }
   barKey = '';
   renderBar();
 }
@@ -1443,7 +1478,6 @@ async function refresh(fresh = false) {
 let demos = [];
 let demosOf;          // the tab they are of
 let demosLimit = 20;
-let keepDays = 14;
 const recordsTab = () => channels.some(c => (c.group || null) === tab && c.record);
 
 async function refreshDemos() {
@@ -1456,7 +1490,6 @@ async function refreshDemos() {
     const data = await res.json();
     if (of !== tab) return;
     demos = data.demos || [];
-    keepDays = data.keepDays || keepDays;
     demosOf = of;
   } catch (_) {}
   renderDemos();
@@ -1510,7 +1543,6 @@ function renderDemos() {
   }
   $('demos-empty').hidden = demos.length > 0;
   $('demos-more').hidden = demos.length <= demosLimit;
-  $('demos-note').textContent = `Recorded while Soldat TV watches · kept ${keepDays} days`;
 }
 
 $('demos-more').addEventListener('click', () => { demosLimit += 40; refreshDemos(); });
@@ -1532,16 +1564,139 @@ function showAge() {
 }
 setInterval(() => { if (!watching) showAge(); }, 1000);
 
+// ---------- the Demos tab: a demo file from the viewer's computer, played on the page
+
+let viewer = false;   // the Demos tab is open
+const opened = [];    // the demos opened since the page loaded: { file, name, map, start, ticks }
+
+const sizeText = (n) => `${(n / 1048576).toFixed(1)} MB`;
+
+// a file as it was saved (Soldat TV's are .sdm; a .sdm.gz from the hub's folder works too)
+async function readDemoFile(file) {
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  if (head[0] === 0x1f && head[1] === 0x8b) {
+    const body = file.stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Uint8Array(await new Response(body).arrayBuffer());
+  }
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+// Soldat TV names its demos <server>-<date>-<time>: such a file plays under the server's name
+function demoName(file) {
+  const base = file.name.replace(/\.gz$/i, '').replace(/\.sdm$/i, '');
+  const m = /^(.+)-\d{8}-\d{6}(-\d)?$/.exec(base);
+  const ch = m && channels.find(c => c.id === m[1]);
+  return ch ? ch.name : base;
+}
+
+async function openFile(file) {
+  if (tuning || !file) return;
+  tuning = true;
+  viewerStatus('');
+  $('guide').hidden = true;
+  $('loading').hidden = false;
+  $('loading-text').textContent = 'Opening the demo...';
+  $('loading-bar').style.width = '0%';
+  try {
+    await started;
+    const demo = parseDemo(await readDemoFile(file));
+    if (!demo.msgs.length) throw new Error('This demo has nothing in it to play.');
+    const name = demoName(file);
+    // the header's start: a Unix time (the file's own date if there is none)
+    const start = demo.start > 0 ? demo.start * 1000 : file.lastModified;
+    const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
+    if (i >= 0) opened.splice(i, 1);
+    opened.unshift({ file, name, map: demo.map, start, ticks: demo.ticks });
+    opened.length = Math.min(opened.length, 8);
+    renderOpened();
+    playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size },
+      { id: null, name, group: null, replay: true, local: true });
+  } catch (e) {
+    $('loading').hidden = true;
+    $('guide').hidden = false;
+    viewerStatus(e instanceof RangeError || e instanceof TypeError ? 'This file could not be read as a Soldat demo.' : e && e.message ? e.message : String(e));
+  } finally {
+    tuning = false;
+  }
+}
+
+function viewerStatus(text) {
+  $('viewer-status').textContent = text;
+}
+
+function renderOpened() {
+  $('opened').hidden = !opened.length;
+  const ol = $('opened-list');
+  ol.textContent = '';
+  for (const o of opened) {
+    const li = el('li');
+    const b = el('button', 'channel demo');
+    b.type = 'button';
+    b.title = 'Watch it again';
+    const main = el('span', 'ch-main');
+    const title = el('span', 'ch-title');
+    title.append(el('span', 'ch-label', o.name), el('span', 'chip', when(o.start)));
+    main.append(title, el('span', 'ch-sub', o.map));
+    b.append(main, el('span', 'ch-map', o.map), el('span', 'ch-mode num', sizeText(o.file.size)),
+      el('span', 'ch-players num', `${Math.max(1, Math.round(o.ticks / TICKS / 60))} min`));
+    b.addEventListener('click', () => openFile(o.file));
+    li.append(b);
+    ol.append(li);
+  }
+}
+
+function setViewer() {
+  viewer = true;
+  viewerStatus('');
+  showTabAddress();
+  renderGuide();
+}
+
+$('demo-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  openFile(file);
+});
+document.querySelector('.tabs .demos-tab').addEventListener('click', (e) => { e.preventDefault(); setViewer(); });
+
+// a file dropped anywhere on the guide opens (on a match: nothing; the browser would leave the page for it)
+const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+let dragDepth = 0;
+document.addEventListener('dragenter', (e) => {
+  if (!dragsFiles(e)) return;
+  e.preventDefault();
+  if (watching || tuning) return;
+  if (!dragDepth++ && !viewer) setViewer();
+  $('drop').classList.add('over');
+});
+document.addEventListener('dragleave', (e) => {
+  if (!dragsFiles(e) || !dragDepth) return;
+  if (!--dragDepth) $('drop').classList.remove('over');
+});
+document.addEventListener('dragover', (e) => {
+  if (!dragsFiles(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = watching || tuning ? 'none' : 'copy';
+});
+document.addEventListener('drop', (e) => {
+  if (!dragsFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $('drop').classList.remove('over');
+  if (!watching) openFile(e.dataTransfer.files[0]);
+});
+
 // ---------- tabs: servers with a group (the hub's config) are listed under its own tab
 
 const slug = (group) => group.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 function showTabAddress() {
-  history.replaceState(null, '', './' + (debug ? '?debug' : '') + (tab ? '#' + slug(tab) : ''));
+  history.replaceState(null, '', './' + (debug ? '?debug' : '') + (viewer ? '#demo' : tab ? '#' + slug(tab) : ''));
 }
 
 function setTab(group) {
   tab = group;
+  viewer = false;
   demosLimit = 20;
   showTabAddress();
   renderGuide();
@@ -1552,11 +1707,14 @@ function renderTabs() {
   const groups = [...new Set(channels.map(c => c.group).filter(Boolean))];
   if (tab && !groups.includes(tab)) tab = null;
   const logo = document.querySelector('.tabs .logo');
-  logo.classList.toggle('active', !tab);
+  logo.classList.toggle('active', !tab && !viewer);
+  document.querySelector('.tabs .demos-tab').classList.toggle('active', viewer);
+  $('guide').classList.toggle('on-viewer', viewer);
+  $('viewer').hidden = !viewer;
   for (const t of document.querySelectorAll('.tabs .group')) t.remove();
   let after = logo;
   for (const g of groups) {
-    const a = el('a', 'tab group' + (g === tab ? ' active' : ''), g);
+    const a = el('a', 'tab group' + (g === tab && !viewer ? ' active' : ''), g);
     a.href = '#' + slug(g);
     a.addEventListener('click', (e) => { e.preventDefault(); setTab(g); });
     after.after(a);
@@ -1759,6 +1917,7 @@ async function boot() {
   setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
   const ch = direct && channels.find(c => c.id === direct);
   tab = ch ? ch.group || null : channels.map(c => c.group).find(g => g && slug(g) === hash) || null;
+  viewer = !ch && !replayId && hash === 'demo';
   if (replayId) {
     const demo = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(replayId)).then(r => r.json()).catch(() => null);
     const g = demo && demo.demos[0] && demo.demos[0].group;

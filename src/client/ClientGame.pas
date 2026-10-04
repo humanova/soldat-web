@@ -294,6 +294,10 @@ begin
     // handshake retransmission and map downloads (1.7.1 runs over plain UDP)
     ClientNetworkTick;
 
+    {$IFDEF SPECTATOR}
+    SpectatorKeepCamera;
+    {$ENDIF}
+
     // General game updating
     Update_Frame;
 
@@ -421,7 +425,8 @@ begin
       FrameTiming.FpsAccum := 0;
     end;
 
-    if GamePaused then
+    // a paused replay: the last tick as it is (no blending into it over and over)
+    if GamePaused {$IFDEF SPECTATOR}or ReplayHeld{$ENDIF} then
       RenderFrame(FrameTiming.Elapsed, FramePercent, True)
     else
       RenderFrame(FrameTiming.Elapsed - dt * (1 - FramePercent), FramePercent, False);
