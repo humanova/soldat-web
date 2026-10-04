@@ -81,7 +81,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .tabs .fill-tab { flex: 1; background: var(--bg); }
 .tag { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px; padding: 4px 12px; }
 
-.guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px;
+.guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px;
   width: 100%; max-width: 1180px; margin: 0 auto; padding: 22px 16px 32px; }
 .listing-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
 .listing-head h1 { margin: 0; font-size: 14px; font-weight: 400; color: var(--text); }
@@ -148,6 +148,14 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .notes .box { background: var(--panel); padding: 12px 14px; margin-bottom: 20px; }
 .notes p { margin: 0; }
 .notes .nick { color: var(--green-hi); }
+/* Soldat TV's chat on the guide: everyone on the site */
+.tv-chat .box { padding: 0; }
+.tv-chat .chat-scroll { height: 260px; overflow: auto; padding: 6px 0; }
+.tv-chat .line { padding: 1px 12px; color: var(--text); overflow-wrap: anywhere; }
+.tv-chat .chat-empty { margin: 0; padding: 2px 12px; text-shadow: none; }
+.tv-chat .say { border-top: 1px solid var(--line); }
+.tv-chat .say-nick, .tv-chat .say-text { height: 32px; }
+.tv-chat .say-text { background: var(--deep); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; align-items: center; }
 .keys dt { color: var(--text); white-space: nowrap; }
 .keys dd { margin: 0; }
@@ -300,7 +308,32 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .chat .line.team { color: var(--teamchat); }
 .chat .line.server { color: var(--server); }
 .chat-empty { margin: 0; padding: 4px 8px; color: var(--muted); text-shadow: 1px 1px 0 #000; }
-.chat.has-lines .chat-empty { display: none; }
+.has-lines .chat-empty { display: none; }
+.chat .line.tv { color: var(--text); }
+.line.note { color: var(--orange); }
+/* Soldat TV's chat over the match: low on the left, clear of the game's chat and the dock */
+.tvchat { top: auto; bottom: 70px; }
+/* the channels shown, and the nickname */
+.chat-filters { display: flex; align-items: center; gap: 12px; padding: 0 0 0 8px; background: rgba(44, 51, 65, .7);
+  font-size: 12px; color: var(--muted); text-shadow: 1px 1px 0 #000; }
+.chat-filters label { display: inline-flex; align-items: center; gap: 4px; height: 24px; white-space: nowrap; cursor: pointer; }
+.chat-filters input { margin: 0; accent-color: var(--green); }
+.chat-filters .say-nick { margin-left: auto; height: 24px; }
+/* the channel of a line, and the one to write to */
+.ch-tag { color: var(--muted); }
+.ch-tag.server { color: var(--green-text); }
+/* what to say, after the nickname or the channel (they change them) */
+.say { display: flex; border-top: 1px solid rgba(74, 90, 114, .7); }
+.say-nick, .say-to { flex: none; max-width: 40%; height: 28px; padding: 0 8px; background: var(--deep); border: 0;
+  color: var(--green-text); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.say-to { color: var(--muted); }
+.say-to.server { color: var(--green-text); }
+.say-nick:hover, .say-to:hover { background: var(--row-hover); }
+.say-text { flex: 1; min-width: 0; height: 28px; padding: 0 8px; background: rgba(30, 36, 47, .7); border: 0; border-radius: 0;
+  outline: none; user-select: text; -webkit-user-select: text; }
+.say-text:focus { box-shadow: inset 0 0 0 1px var(--orange); }
+.say-text::placeholder { color: var(--dim); }
+.say-text:disabled { opacity: .7; }
 
 /* the players: the scoreboard, under its button */
 .roster { position: absolute; right: max(10px, env(safe-area-inset-right)); top: 52px; z-index: 3; width: 240px;
@@ -361,8 +394,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 
 /* ---------- small screens ---------- */
 @media (max-width: 960px) {
-  .guide-main { grid-template-columns: 1fr; gap: 24px; padding: 16px 12px 24px; }
-  .notes { display: none; }
+  .guide-main { grid-template-columns: 1fr; align-content: start; gap: 24px; padding: 16px 12px 24px; }
+  .notes > :not(.tv-chat) { display: none; }
 }
 @media (max-width: 760px) {
   .columns, .channel { grid-template-columns: minmax(0, 1fr) 140px 56px 82px; }
@@ -397,6 +430,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .target-name { min-width: 110px; max-width: 150px; font-size: 13px; height: 40px; }
   .icon-btn { width: 40px; height: 40px; }
   .chat { top: 46px; width: 280px; max-height: 45%; }
+  .tvchat { top: auto; bottom: 60px; }
   .roster { top: 46px; max-height: calc(100% - 110px); width: 220px; }
   .channel-id .ch-delay { display: none; }
 }
@@ -423,6 +457,10 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   #watch .topbar-end { visibility: hidden; }
   #watch .topbar, #watch.idle .topbar { z-index: 6; opacity: 1; transform: none; background: none; }
   #watch.idle .topbar #back { pointer-events: auto; }
+}
+/* touch screens zoom into a text field smaller than 16px */
+@media (pointer: coarse) {
+  .say-text { font-size: 16px; }
 }
 @keyframes turn { 0%, 30% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
 @media (prefers-reduced-motion: reduce) {

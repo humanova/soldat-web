@@ -91,8 +91,8 @@ Watch live matches in the browser without joining them, like at
 [soldat.live](https://soldat.live).
 
 `relay/spectator.mjs` joins each server in its config once, as a spectator, and streams
-that one connection to everyone watching. Viewers can't play or chat, and can only watch
-the servers in the config.
+that one connection to everyone watching. Viewers can't play or talk to the players, and
+can only watch the servers in the config.
 
 ```bash
 cp relay/spectator.example.json relay/spectator.json   # list the servers to watch
@@ -108,6 +108,12 @@ list. With `askPassword`, the server's password comes from a viewer instead of t
 config: a link can carry it, `/<id>?password=...`, or the page asks. Once it works,
 anyone can watch, and the hub keeps it until the server's password changes.
 
+Viewers can chat with each other: everyone on the site (Global), or only the people
+watching the same server. While watching, the Soldat TV chat window (Enter) shows both, each
+line tagged with its channel, and checkboxes pick the channels. One connection per page
+carries them all. Viewers pick a nickname, with no account. The hub keeps the last 10
+minutes in memory and allows one line every 1.5 seconds per address.
+
 | Setting | Default | What it does |
 |---|---|---|
 | `--port` / `PORT` | 8090 | HTTP port |
@@ -117,6 +123,7 @@ anyone can watch, and the hub keeps it until the server's password changes.
 | `lingerSeconds` | 60 | how long it stays on a server after the last viewer leaves |
 | `maxViewers` | 500 | viewers in total |
 | `maxViewersPerIp` | 3 | viewers per visitor |
+| `maxChatPerIp` | 2 | chat connections per visitor (one for each open page) |
 | `origins` | same origin | other sites allowed to use it |
 | `trustProxy` | off | take the client address from `X-Forwarded-For` |
 

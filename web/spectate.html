@@ -37,6 +37,7 @@
   <symbol id="i-mute" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="m13 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="6.5" r="2.7" fill="currentColor"/><path d="M2 16c.4-3 2.6-4.6 5.5-4.6S12.6 13 13 16z" fill="currentColor"/><circle cx="14" cy="7" r="2.2" fill="currentColor" opacity=".6"/><path d="M14 11.6c2.2 0 3.7 1.4 4 4.4h-3.6" fill="currentColor" opacity=".6"/></symbol>
   <symbol id="i-chat" viewBox="0 0 20 20"><path d="M3 4.5h14v9H8.5L5 16.5v-3H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-talk" viewBox="0 0 20 20"><path d="M2.5 3.5h10v7H7l-3 2.5v-2.5H2.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 7.5h3v7H16V17l-3-2.5H8.5v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -72,10 +73,24 @@
       <div class="box">
         <p>Watch <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> matches live as
           they are played on the public servers. Soldat TV joins each server once as a spectator and
-          passes the match on to everyone watching. You can't play or chat from here.</p>
+          passes the match on to everyone watching. You can't play or talk to the players from here,
+          but you can chat with everyone watching.</p>
         <p>Contact <b class="nick">humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
           if you want your server to be included.</p>
       </div>
+      <section class="tv-chat" aria-labelledby="tv-chat-title">
+        <h2 id="tv-chat-title">Chat</h2>
+        <div class="box">
+          <div class="chat-scroll">
+            <ol id="guide-chat-lines" class="chat-lines" aria-live="polite"></ol>
+            <p class="chat-empty"></p>
+          </div>
+          <form class="say" autocomplete="off">
+            <button type="button" class="say-nick"></button>
+            <input class="say-text" maxlength="200" enterkeyhint="send" spellcheck="false" aria-label="Message">
+          </form>
+        </div>
+      </section>
       <h2>Watching</h2>
       <div class="box">
         <dl class="keys">
@@ -83,7 +98,8 @@
           <dt>Drag</dt><dd>look around</dd>
           <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
           <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
-          <dt><kbd>Tab</kbd> <kbd>C</kbd></dt><dd>players, chat</dd>
+          <dt><kbd>Tab</kbd> <kbd>C</kbd></dt><dd>players, game chat</dd>
+          <dt><kbd>Enter</kbd></dt><dd>Soldat TV chat</dd>
           <dt>Drag a bar</dt><dd>move a panel (double-click: back)</dd>
         </dl>
       </div>
@@ -123,7 +139,8 @@
       <span id="ch-delay" class="ch-delay" hidden></span>
     </div>
     <div class="topbar-end">
-      <button id="chat-btn" type="button" class="icon-btn" aria-label="Chat (C)" aria-expanded="false"><svg><use href="#i-chat"/></svg><i class="unread" hidden></i></button>
+      <button id="chat-btn" type="button" class="icon-btn" aria-label="Game chat (C)" aria-expanded="false"><svg><use href="#i-chat"/></svg><i class="unread" hidden></i></button>
+      <button id="tvchat-btn" type="button" class="icon-btn" aria-label="Soldat TV chat (Enter)" aria-expanded="false"><svg><use href="#i-talk"/></svg><i class="unread" hidden></i></button>
       <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
       <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
       <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
@@ -148,11 +165,29 @@
   </div>
 
   <aside id="chat" class="chat win move" data-move="chat" hidden aria-label="Chat">
-    <div class="win-head handle"><span>Chat</span><i class="grip"></i></div>
+    <div class="win-head handle"><span>Game chat</span><i class="grip"></i></div>
     <div class="chat-scroll">
       <ol id="chat-lines" class="chat-lines"></ol>
       <p class="chat-empty">Nothing said yet.</p>
     </div>
+  </aside>
+  <!-- Soldat TV's chat: everyone on the site and who watches this server, each line with its
+       channel; the boxes pick the channels (js/spectate/main.js: Soldat TV's chat) -->
+  <aside id="tvchat" class="chat tvchat win move" data-move="tvchat" hidden aria-label="Soldat TV chat">
+    <div class="win-head handle"><span>Soldat TV chat</span><i class="grip"></i></div>
+    <div class="chat-filters">
+      <label><input type="checkbox" data-channel="global"> Global</label>
+      <label><input type="checkbox" data-channel="server"> This server</label>
+      <button type="button" class="say-nick"></button>
+    </div>
+    <div class="chat-scroll">
+      <ol class="chat-lines"></ol>
+      <p class="chat-empty"></p>
+    </div>
+    <form class="say" autocomplete="off">
+      <button type="button" class="say-to" title="The channel you write to (click to switch)"></button>
+      <input class="say-text" maxlength="200" enterkeyhint="send" spellcheck="false" aria-label="Message">
+    </form>
   </aside>
   <aside id="roster" class="roster win move ui" data-move="players" hidden aria-label="Players">
     <div class="win-head handle"><span>Players</span><i class="grip"></i></div>

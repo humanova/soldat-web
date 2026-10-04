@@ -2,7 +2,8 @@
 // Soldat Web spectator hub: the public counterpart of relay/play.mjs. It serves the
 // spectator page and streams matches of the game servers named in its config. For each
 // watched server it holds a single spectator connection (relay/lib/hub.mjs) that all
-// viewers share; viewers pick a server by its id and never send anything to it.
+// viewers share; viewers pick a server by its id and never send anything to it. Viewers
+// chat with each other (relay/lib/chat.mjs): everyone on the site, or the viewers of a server.
 // No dependencies (Node.js 18+).
 //
 //   node relay/spectator.mjs [--config relay/spectator.json] [--port 8090]
@@ -16,7 +17,8 @@
 //   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
-//   maxViewersPerIp, maxViewers, origins (other page origins allowed), trustProxy,
+//   maxViewersPerIp, maxViewers, maxChatPerIp (chat connections, 2), origins (other page
+//   origins allowed), trustProxy,
 //   lobbyUrl (the Soldat lobby's server list, for the current map and players of servers not
 //             watched; their names come from .../server/<ip>/<port>/players next to it)
 // Environment: PORT, ROOT, CONFIG.
@@ -33,6 +35,7 @@ import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
+import { makeChat } from './lib/chat.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = makeArg(process.argv.slice(2));
@@ -190,6 +193,18 @@ function files(ws, ip, hub, list) {
   return release;
 }
 
+// ---------------------------------------------------------------- chat
+
+const chat = makeChat({ isRoom: (id) => hubs.has(id), perIp: config.maxChatPerIp ?? 2 });
+
+function handleChat(req, socket, head) {
+  const ip = clientIp(req);
+  if (!originAllowed(req)) { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
+  if (!chat.accepts(ip)) { socket.end('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return; }
+  const ws = acceptWebSocket(req, socket, head);
+  if (ws) chat.attach(ws, ip);
+}
+
 // ---------------------------------------------------------------- server list
 
 // addresses of the configured servers, to find them in the lobby's list
@@ -272,6 +287,7 @@ server.on('upgrade', (req, socket, head) => {
   const url = requestUrl(req);
   socket.on('error', () => {});
   if (url && url.pathname === '/watch') handleWatch(req, socket, head);
+  else if (url && url.pathname === '/chat') handleChat(req, socket, head);
   else socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
 });
 

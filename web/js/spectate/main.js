@@ -3,6 +3,7 @@
 // build; this page drives the camera through the soldat_spectator_* exports.
 import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
+import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -148,6 +149,9 @@ function watch(ch) {
   chatLines.length = 0;
   $('chat-lines').textContent = '';
   toggleChat(!!prefs.chat);
+  listen();
+  $('tvchat-btn').querySelector('.unread').hidden = true;
+  toggleTvChat(!!prefs.tvchat);
   director = 0;
   zoom = 0;
   match = null;
@@ -181,6 +185,8 @@ function showGuide() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $('watch').hidden = true;
   $('guide').hidden = false;
+  listen();
+  renderGuideChat();
   showTabAddress();
   document.title = TITLE;
   refresh();
@@ -358,6 +364,7 @@ $('zoom-in').addEventListener('click', () => setZoom(zoom - 0.25));
 $('zoom-out').addEventListener('click', () => setZoom(zoom + 0.25));
 $('roster-btn').addEventListener('click', () => toggleRoster());
 $('chat-btn').addEventListener('click', () => toggleChat());
+$('tvchat-btn').addEventListener('click', () => toggleTvChat());
 $('back').addEventListener('click', () => game.leave());
 $('sound').addEventListener('click', () => {
   prefs.muted = !prefs.muted;
@@ -389,6 +396,8 @@ if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
 
 window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Enter on a button presses it
+  if (e.code === 'Enter' && e.target.closest && e.target.closest('button')) return;
   const keys = {
     ArrowLeft: () => cycle(-1), ArrowRight: () => cycle(1),
     KeyA: () => setMode('auto'), KeyP: () => setMode('player'), KeyF: () => setMode('free'),
@@ -396,7 +405,7 @@ window.addEventListener('keydown', (e) => {
     Equal: () => setZoom(zoom - 0.25), NumpadAdd: () => setZoom(zoom - 0.25),
     Minus: () => setZoom(zoom + 0.25), NumpadSubtract: () => setZoom(zoom + 0.25),
     Digit0: () => setZoom(0), Tab: () => toggleRoster(), KeyC: () => toggleChat(),
-    Escape: () => closeRoster(),
+    Escape: () => closeRoster(), Enter: () => sayKey(),
   };
   const pan = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1] }[e.code];
   if (pan) {
@@ -410,6 +419,12 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   wake();
 });
+
+// Enter: to Soldat TV's chat
+function sayKey() {
+  if ($('tvchat').hidden) toggleTvChat(true);
+  $('tvchat').querySelector('.say-text').focus();
+}
 
 // ---------- controls fade out while nothing happens
 
@@ -671,19 +686,13 @@ function addChat(c) {
 }
 // like the game's console: [Name] text, team chat and radio in its team chat colour
 function appendChat(c) {
-  const ol = $('chat-lines');
   const li = el('li', 'line' + (c.kind === 3 ? ' server' : c.kind === 1 || c.kind === 2 ? ' team' : ''));
   if (c.kind === 1 || c.kind === 2) li.append(c.kind === 1 ? '(TEAM) ' : '(RADIO) ');
   const who = el('b', '', `[${c.kind === 3 ? 'Server' : c.name}]`);
   if (c.kind !== 3) who.style.color = c.team === 5 ? 'var(--muted)' : teamColor({ team: c.team }, true);
   li.append(who, ' ', c.text);
-  ol.append(li);
-  while (ol.children.length > 150) ol.firstElementChild.remove();
-  $('chat').classList.add('has-lines');
-  const box = chatScroll();
-  if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) box.scrollTop = box.scrollHeight;
+  pushLine($('chat'), li, 150);
 }
-const chatScroll = () => $('chat').querySelector('.chat-scroll');
 function toggleChat(open = $('chat').hidden) {
   $('chat').hidden = !open;
   $('chat-btn').setAttribute('aria-expanded', String(open));
@@ -694,9 +703,177 @@ function toggleChat(open = $('chat').hidden) {
     $('chat-lines').textContent = '';
     $('chat').classList.toggle('has-lines', chatLines.length > 0);
     for (const c of chatLines) appendChat(c);
-    chatScroll().scrollTop = chatScroll().scrollHeight;
+    const scroll = $('chat').querySelector('.chat-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
   }
 }
+
+// a chat box: its lines, kept scrolled to the newest unless the viewer scrolled up
+function pushLine(box, li, keep = 300) {
+  const ol = box.querySelector('.chat-lines'), scroll = box.querySelector('.chat-scroll');
+  const stick = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
+  ol.append(li);
+  while (ol.children.length > keep) ol.firstElementChild.remove();
+  box.classList.add('has-lines');
+  if (stick) scroll.scrollTop = scroll.scrollHeight;
+}
+
+// ---------- Soldat TV's chat (js/spectate/chat.js), on one connection: everyone on the site
+// (the guide's box, the Global channel) and who watches the same server (This server). The
+// match's window shows the channels whose boxes are ticked, each line with its channel.
+
+const guideChat = document.querySelector('.tv-chat');
+const tvChannels = { global: prefs.tvGlobal !== false, server: prefs.tvServer !== false };
+let sayTo = prefs.sayTo === 'server' ? 'server' : 'global';
+const roomOf = (channel) => channel === 'global' ? null : watching ? watching.id : undefined;
+
+// the rooms the match's window shows (the guide: the global one)
+function tvRooms() {
+  if (!watching) return [null];
+  return ['global', 'server'].filter(c => tvChannels[c]).map(roomOf);
+}
+
+function tvLine(l) {
+  const li = el('li', 'line tv');
+  if (l.error) { li.classList.add('note'); li.textContent = l.error; return li; }
+  const server = l.room !== null;
+  li.append(el('span', 'ch-tag' + (server ? ' server' : ''), `[${server ? (watching && watching.id === l.room ? watching.name : l.room) : 'Global'}]`), ' ');
+  const who = el('b', '', l.name);
+  let h = 0;
+  for (const ch of l.name) h = (h * 31 + ch.codePointAt(0)) % 360;
+  who.style.color = `hsl(${h} 70% 74%)`;
+  li.append(who, ': ', l.text);
+  li.title = new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return li;
+}
+
+function fillTv(box, rooms) {
+  box.querySelector('.chat-lines').textContent = '';
+  box.querySelector('.chat-empty').textContent = !tv.online ? 'Connecting to the chat...'
+    : rooms.length ? 'Nobody said anything in the last 10 minutes.' : 'Tick a channel to see its chat.';
+  box.classList.remove('has-lines');
+  for (const l of tv.merged(rooms)) pushLine(box, tvLine(l));
+  const scroll = box.querySelector('.chat-scroll');
+  scroll.scrollTop = scroll.scrollHeight;
+}
+const renderTv = () => { if (watching && !$('tvchat').hidden) fillTv($('tvchat'), tvRooms()); };
+const renderGuideChat = () => fillTv(guideChat, [null]);
+
+// the channels the viewer listens to: the ticked ones while watching, the global one on the guide
+function listen() {
+  tv.listen(tvRooms());
+  for (const box of $('tvchat').querySelectorAll('.chat-filters input')) box.checked = tvChannels[box.dataset.channel];
+  if (!tvChannels[sayTo] && tvChannels[sayTo === 'global' ? 'server' : 'global']) sayTo = sayTo === 'global' ? 'server' : 'global';
+  renderTv();
+  showComposers();
+}
+
+for (const box of $('tvchat').querySelectorAll('.chat-filters input')) {
+  box.addEventListener('change', () => {
+    tvChannels[box.dataset.channel] = box.checked;
+    prefs.tvGlobal = tvChannels.global;
+    prefs.tvServer = tvChannels.server;
+    savePrefs();
+    listen();
+  });
+}
+
+function toggleTvChat(open = $('tvchat').hidden) {
+  $('tvchat').hidden = !open;
+  $('tvchat-btn').setAttribute('aria-expanded', String(open));
+  prefs.tvchat = open;
+  savePrefs();
+  if (open) {
+    $('tvchat-btn').querySelector('.unread').hidden = true;
+    renderTv();
+  }
+}
+
+const tv = new TvChat(() => hubBase() + '/chat', (room, line) => {
+  if (line && line.error) {
+    pushLine(lastSaid && lastSaid.closest('#tvchat') ? $('tvchat') : guideChat, tvLine(line));
+    return;
+  }
+  if (!line) {
+    // a room's last 10 minutes, or the chat went off or on line
+    if (watching) renderTv(); else renderGuideChat();
+    showComposers();
+    return;
+  }
+  if (!watching) { pushLine(guideChat, tvLine(line)); return; }
+  if (!tvRooms().includes(room)) return;
+  if ($('tvchat').hidden) $('tvchat-btn').querySelector('.unread').hidden = false;
+  else pushLine($('tvchat'), tvLine(line));
+});
+
+// what to say, and once, the nickname (kept on this device; the nickname button changes it)
+let naming = null;      // the chat box that asks for the nickname
+let lastSaid = null;    // the form that said something last (where a "slow down" goes)
+const composers = [guideChat, $('tvchat')];
+
+function showComposers() {
+  for (const box of composers) {
+    const input = box.querySelector('.say-text'), nick = box.querySelector('.say-nick'), to = box.querySelector('.say-to');
+    const asking = !prefs.nick || naming === box;
+    const channel = box === guideChat ? 'global' : tvChannels[sayTo] ? sayTo : null;
+    nick.textContent = prefs.nick || '';
+    nick.title = 'Change your nickname';
+    nick.hidden = asking;
+    if (to) {
+      to.textContent = channel === 'server' && watching ? watching.name : 'Global';
+      to.classList.toggle('server', channel === 'server');
+      to.hidden = asking || !channel;
+    }
+    input.maxLength = asking ? MAX_NAME : MAX_TEXT;
+    input.disabled = !tv.online || (!asking && !channel);
+    input.placeholder = !tv.online ? 'Connecting...' : asking ? 'Choose a nickname to chat'
+      : !channel ? 'Tick a channel to chat' : 'Say something';
+  }
+}
+
+for (const box of composers) {
+  const form = box.querySelector('form.say'), input = box.querySelector('.say-text');
+  box.querySelector('.say-nick').addEventListener('click', () => {
+    naming = box;
+    showComposers();
+    input.value = prefs.nick || '';
+    input.focus();
+    input.select();
+  });
+  // the channel to write to: the other ticked one
+  box.querySelector('.say-to')?.addEventListener('click', () => {
+    const other = sayTo === 'global' ? 'server' : 'global';
+    if (tvChannels[other]) { sayTo = prefs.sayTo = other; savePrefs(); }
+    showComposers();
+    input.focus();
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.replace(/\s+/g, ' ').trim();
+    if (!prefs.nick || naming === box) {
+      if (!text) return;
+      prefs.nick = [...text].slice(0, MAX_NAME).join('');
+      savePrefs();
+      naming = null;
+      input.value = '';
+      showComposers();
+      return;
+    }
+    const room = box === guideChat ? null : roomOf(sayTo);
+    if (!text || room === undefined) return;
+    lastSaid = form;
+    tv.say(room, prefs.nick, text);
+    input.value = '';
+  });
+  input.addEventListener('keydown', (e) => {
+    // the match's keys stay out of the text
+    e.stopPropagation();
+    if (e.key !== 'Escape') return;
+    if (naming === box) { naming = null; input.value = ''; showComposers(); }
+    else input.blur();
+  });
+}
+listen();
 
 // ---------- the followed player
 
