@@ -9,6 +9,9 @@
 // Environment: PORT, ROOT, ALLOW (comma separated host:port list), ALLOW_ANY=1,
 // LOBBY_URL, TRUST_PROXY=1, MAX_SESSIONS_PER_IP, ORIGINS (comma separated page
 // origins allowed to use the relay besides its own; "*" for any).
+// Discord sign-in (required to play when DISCORD_CLIENT_ID is set): DISCORD_CLIENT_ID,
+// DISCORD_CLIENT_SECRET, AUTH_SECRET, PUBLIC_URL, MIN_ACCOUNT_AGE_DAYS (default 30),
+// DISCORD_URL (default https://discord.com; a stand-in for tests).
 
 import http from 'node:http';
 import dgram from 'node:dgram';
@@ -21,6 +24,10 @@ import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { makeLobby } from './lib/lobby.mjs';
+import { makeAuth } from './lib/auth.mjs';
+import {
+  MSG, PLAYERS_LIST_SIZE, PLAYERS_LIST_SESSION_ID, SessionCipher, splitDatagram, setRequestGameHwid, setPlayerInfoHwid,
+} from './lib/soldat171.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -47,6 +54,32 @@ const JOIN_MAX_PER_WINDOW = 14;
 const originAllowed = originChecker(new Set((process.env.ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)));
 
 const staticAllow = new Set((arg('allow', process.env.ALLOW || '') || '').split(',').map(s => s.trim()).filter(Boolean));
+
+// ---------------------------------------------------------------- Discord sign-in
+
+let auth = null;
+if (process.env.DISCORD_CLIENT_ID) {
+  const secret = process.env.AUTH_SECRET || '';
+  if (!process.env.DISCORD_CLIENT_SECRET || secret.length < 32 || !process.env.PUBLIC_URL) {
+    console.error('Discord sign-in needs DISCORD_CLIENT_SECRET, PUBLIC_URL and AUTH_SECRET (32+ characters).');
+    process.exit(1);
+  }
+  auth = makeAuth({
+    clientId: process.env.DISCORD_CLIENT_ID,
+    clientSecret: process.env.DISCORD_CLIENT_SECRET,
+    secret,
+    publicUrl: process.env.PUBLIC_URL,
+    minAgeDays: Number(process.env.MIN_ACCOUNT_AGE_DAYS ?? 30),
+    discordUrl: (process.env.DISCORD_URL || 'https://discord.com').replace(/\/$/, ''),
+    log,
+  });
+}
+
+function signInError() {
+  const e = new Error('Sign in with Discord to play.');
+  e.reason = 'auth';
+  return e;
+}
 
 // ---------------------------------------------------------------- lobby list
 
@@ -124,6 +157,7 @@ function handleRelay(req, socket, head) {
     socket.end('HTTP/1.1 429 Too Many Requests\r\n\r\n');
     return;
   }
+  const user = auth && auth.user(req);
   const ws = acceptWebSocket(req, socket, head);
   if (!ws) return;
   sessionsByIp.set(ip, count + 1);
@@ -144,17 +178,18 @@ function handleRelay(req, socket, head) {
     started = true;
     clearTimeout(hello);
     try {
-      if (m.type === 'udp') cleanup = await startUdp(ws, ip, m);
+      if (m.type === 'udp') cleanup = await startUdp(ws, ip, m, user);
       else if (m.type === 'files') cleanup = await startFiles(ws, ip, m);
       else throw new Error('unknown request');
     } catch (e) {
-      ws.sendText({ type: 'error', message: e.message });
+      ws.sendText({ type: 'error', message: e.message, ...(e.reason && { reason: e.reason }) });
       ws.close(1008);
     }
   };
 }
 
-async function startUdp(ws, clientAddr, m) {
+async function startUdp(ws, clientAddr, m, user) {
+  if (auth && !user) throw signInError();
   const { ip, port } = await resolveTarget(m.host, m.port);
   if (!(await targetAllowed(m.host, ip, port))) {
     throw new Error('This relay only connects to servers listed in the Soldat lobby.');
@@ -164,9 +199,21 @@ async function startUdp(ws, clientAddr, m) {
   const sock = dgram.createSocket('udp4');
   let last = Date.now();
   let windowStart = Date.now(), windowCount = 0, windowBytes = 0;
+  // Signed-in players join with their account's hardware id, whatever the page sends.
+  // PlayerInfo carries it encrypted with the key from the server's PlayersList, which
+  // follows each RequestGame (also when the client joins again after a map change).
+  const hwid = user ? auth.hwid(user.id) : null;
+  let cipher = null, awaitingList = false;
   sock.on('message', (data, rinfo) => {
     if (rinfo.address !== ip || rinfo.port !== port) return;
     last = Date.now();
+    if (awaitingList && (data[0] === MSG.PlayersList || data[0] === 0xFF)) {
+      for (const msg of splitDatagram(data)) {
+        if (msg[0] !== MSG.PlayersList || msg.length < PLAYERS_LIST_SIZE) continue;
+        cipher = new SessionCipher(msg.readUInt16LE(PLAYERS_LIST_SESSION_ID));
+        awaitingList = false;
+      }
+    }
     if (ws.buffered > 1 << 20) return; // client too slow; drop like UDP would
     ws.sendBinary(data);
   });
@@ -186,12 +233,26 @@ async function startUdp(ws, clientAddr, m) {
     if (now - windowStart > 1000) { windowStart = now; windowCount = 0; windowBytes = 0; }
     if (++windowCount > 300 || (windowBytes += msg.length) > 256 * 1024) return;
     last = now;
+    if (hwid) {
+      // the page sends one message per datagram, never compressed ones
+      if (msg[0] === 0xFF) return;
+      if (msg[0] === MSG.RequestGame) {
+        msg = Buffer.from(msg);
+        if (!setRequestGameHwid(msg, hwid)) return;
+        cipher = null;
+        awaitingList = true;
+      } else if (msg[0] === MSG.PlayerInfo) {
+        // without the key yet it is dropped; the client sends it again
+        msg = Buffer.from(msg);
+        if (!cipher || !setPlayerInfoHwid(msg, hwid, cipher)) return;
+      }
+    }
     if (JOIN_MSG_IDS.has(msg[0])) paceJoin(target, () => send(msg), sessionId + ':' + msg[0]);
     else send(msg);
   };
   const idle = setInterval(() => { if (Date.now() - last > IDLE_TIMEOUT) ws.close(1000); }, 5000);
   ws.sendText({ type: 'ready' });
-  log(`udp session ${clientAddr} -> ${target}`);
+  log(`udp session ${clientAddr}${user ? ` discord=${user.id} (${user.name}) hwid=${hwid}` : ''} -> ${target}`);
   return () => { clearInterval(idle); try { sock.close(); } catch (_) {} };
 }
 
@@ -210,6 +271,14 @@ async function startFiles(ws, clientAddr, m) {
 const server = http.createServer(async (req, res) => {
   const url = requestUrl(req);
   if (!url) { res.writeHead(400).end(); return; }
+  if (url.pathname.startsWith('/auth/')) {
+    if (auth) auth.handle(req, res, url);
+    else if (url.pathname === '/auth/me') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ required: false }));
+    } else res.writeHead(404).end();
+    return;
+  }
   if (url.pathname === '/api/servers') {
     const l = await lobby();
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -230,5 +299,7 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, () => {
   log(`Soldat Web on http://localhost:${PORT}/ (serving ${ROOT})`);
   if (ALLOW_ANY) log('WARNING: relay accepts any destination (ALLOW_ANY)');
+  if (auth) log(`Discord sign-in required to play (accounts at least ${process.env.MIN_ACCOUNT_AGE_DAYS ?? 30} days old)`);
+  else log('WARNING: Discord sign-in is off (no DISCORD_CLIENT_ID): players choose their own hardware ids');
   if (staticAllow.size) log('extra allowed servers:', [...staticAllow].join(', '));
 });

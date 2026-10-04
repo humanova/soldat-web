@@ -82,7 +82,8 @@ const game = new SoldatRuntime(canvas, {
     if (!locked && wasLocked && inGame && !keyboardLocked) pendingEscape = performance.now();
     wasLocked = locked;
   },
-  onNetError(message) {
+  onNetError(message, data) {
+    if (data && data.reason === 'auth') { account.name = null; showAccount(); }
     setStatus(message, true);
     // the relay refused or lost the connection: back to the server list with the reason
     if (inGame) {
@@ -157,6 +158,11 @@ function join(host, port, password) {
   if (!host || !port) return;
   settings.last = `${host}:${port}`;
   saveSettings();
+  if (account.required && !account.name) {
+    setStatus('Sign in with Discord to play.');
+    signIn(`${host}:${port}`);
+    return;
+  }
   setStatus(`Joining ${host}:${port}...`);
   applySettings();
   enterGameUi();
@@ -473,6 +479,59 @@ async function setupPreview() {
   if (!inGame) preview.start();
 }
 
+// ---------- Discord sign-in ----------
+
+// The relay requires it when it is set up for it: servers then know each player by an id
+// made from their Discord account. Another relay (?relay=) is not asked here.
+let account = { required: false, name: null };
+
+const LOGIN_RESULTS = {
+  failed: 'Signing in with Discord did not work. Try again.',
+  cancelled: 'Signing in with Discord was cancelled.',
+  new: 'This Discord account is too new to play here.',
+};
+
+function signIn(joinAddress) {
+  const back = appBase + (joinAddress ? '?join=' + encodeURIComponent(joinAddress) : '');
+  location.href = appBase + 'auth/login?return=' + encodeURIComponent(back);
+}
+
+function showAccount() {
+  const box = $('account');
+  box.replaceChildren();
+  box.hidden = !account.required;
+  if (!account.required) return;
+  if (account.name) {
+    const who = el('span', account.name);
+    who.className = 'tab who';
+    who.title = 'Signed in with Discord' + (account.hwid ? ` · your id on servers: ${account.hwid}` : '');
+    const out = el('button', 'Sign out');
+    out.className = 'tab';
+    out.type = 'button';
+    out.addEventListener('click', async () => {
+      try { await fetch(appBase + 'auth/logout', { method: 'POST' }); } catch (_) {}
+      account.name = account.hwid = null;
+      showAccount();
+    });
+    box.append(who, out);
+  } else {
+    const a = el('a', 'Sign in with Discord');
+    a.className = 'tab';
+    a.href = '#';
+    a.addEventListener('click', (e) => { e.preventDefault(); signIn(); });
+    box.append(a);
+  }
+}
+
+async function loadAccount() {
+  if (params.get('relay')) return;
+  try {
+    const r = await fetch(appBase + 'auth/me', { cache: 'no-store' });
+    if (r.ok) account = await r.json();
+  } catch (_) {}
+  showAccount();
+}
+
 // ---------- boot ----------
 
 async function boot() {
@@ -502,8 +561,16 @@ async function boot() {
     setupPreview();
     refreshServers();
     setInterval(() => { if (!inGame && !document.hidden) refreshServers(); }, 30000);
+    await loadAccount();
     const direct = params.get('join');
     if (direct) setStatus('Press Join to connect to ' + direct);
+    const login = params.get('login');
+    if (login) {
+      if (LOGIN_RESULTS[login]) setStatus(LOGIN_RESULTS[login], true);
+      params.delete('login');
+      const q = params.toString();
+      history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    }
   } catch (e) {
     console.error(e);
     $('loading').classList.add('error');

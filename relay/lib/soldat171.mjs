@@ -1,5 +1,5 @@
-// Soldat 1.7.1 protocol pieces the spectator hub needs (docs/PROTOCOL-1.7.1.md):
-// message check values, the session cipher, message sizes and datagram splitting.
+// Soldat 1.7.1 protocol pieces the relays need (docs/PROTOCOL-1.7.1.md): message check
+// values, the session cipher, message sizes, datagram splitting and hardware ids.
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 
@@ -25,6 +25,9 @@ const SIZES = new Map([
 export const TEAM_SPECTATOR = 5;
 export const MAX_PLAYERS = 32;
 export const PLAYERS_LIST_SIZE = 2150;
+export const PLAYERS_LIST_SESSION_ID = 2134;  // its UInt16 session id, the cipher's key
+// PlayerInfo's [offset, size] fields in the order they are encrypted
+export const PLAYER_INFO_FIELDS = [[33, 4], [37, 4], [41, 4], [45, 4], [49, 4], [32, 1], [31, 1], [27, 4], [53, 12]];
 
 // ---------------------------------------------------------------- check value
 
@@ -212,4 +215,24 @@ export function makeHwid(seed) {
   let h = 5381;
   for (const c of digest) h = (Math.imul(h, 33) + HEX.indexOf(c)) >>> 0;
   return digest + HEX[h & 0xF];
+}
+
+// Puts a hardware id into a player's RequestGame (plain) or PlayerInfo (encrypted with the
+// session's cipher) and renews the check value. False when the message is too short.
+export function setRequestGameHwid(b, hwid) {
+  if (b.length < 46) return false;
+  b[33] = 11;
+  b.write(hwid, 34, 'latin1');
+  setHash(b);
+  return true;
+}
+
+export function setPlayerInfoHwid(b, hwid, cipher) {
+  if (b.length < 65) return false;
+  cipher.fields(b, PLAYER_INFO_FIELDS, true);
+  b[53] = 11;
+  b.write(hwid, 54, 'latin1');
+  cipher.fields(b, PLAYER_INFO_FIELDS);
+  setHash(b);
+  return true;
 }

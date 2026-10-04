@@ -73,17 +73,40 @@ upgrades on `/relay` (pages served over HTTPS must use `wss://`). Each player us
 | `ORIGINS` | same origin | other sites allowed to use the relay (`*` for any) |
 | `TRUST_PROXY=1` | off | take the client address from `X-Forwarded-For` |
 | `MAX_SESSIONS_PER_IP` | 4 | game and download sessions per visitor |
+| `DISCORD_CLIENT_ID` | none | turns on Discord sign-in, which is then required to play (see below) |
+| `DISCORD_CLIENT_SECRET` | none | the Discord app's client secret |
+| `PUBLIC_URL` | none | the page's address, such as `https://play.soldat.live` |
+| `AUTH_SECRET` | none | 32+ random characters; signs sessions and makes the hardware IDs |
+| `MIN_ACCOUNT_AGE_DAYS` | 30 | younger Discord accounts can't play |
 
 Good to know before you open it to the public:
 
 - Everyone on your relay reaches game servers from the relay's IP address, so an IP ban
-  on one of them bans all of them. Each browser still gets its own hardware ID, which
-  servers can ban instead.
+  on one of them bans all of them. Players have their own hardware IDs, which servers
+  can ban instead. Without Discord sign-in, each browser makes up its own.
 - A 1.7.1 server blocks an address that sends more than 18 join requests in about 16
   seconds. The relay spaces out joins per server (at most 14 per 17 seconds), so when
   many players join at once, some wait a few seconds.
 - WebSockets run over TCP. On a lossy connection one lost packet holds up the ones behind
   it, which real UDP wouldn't do. On a good connection you won't notice.
+
+### Discord sign-in
+
+With sign-in on, players sign in with Discord once (30 days) before they can join. The
+relay then gives each account the same hardware ID on every server, whatever the browser
+sends, so a server can ban a player without banning the relay. Nothing is stored: the
+session is a signed cookie, and the relay's log has a line for each game with the
+Discord ID, name and hardware ID.
+
+1. Create an application at https://discord.com/developers/applications and add
+   `<PUBLIC_URL>/auth/callback` under OAuth2 → Redirects.
+2. Start the relay with `DISCORD_CLIENT_ID` (the application ID), `DISCORD_CLIENT_SECRET`,
+   `PUBLIC_URL` and `AUTH_SECRET` (for example `openssl rand -hex 32`). Keep `AUTH_SECRET`:
+   a new one gives every player a new hardware ID, and their bans no longer match.
+
+For server admins: the server's log shows the hardware ID when a player joins
+(`Name joining game (ip:port) HWID:0123456789A`). Ban it with `/banhw 0123456789A`.
+`/ban` bans the address too, which is the relay's: it locks out everyone playing from it.
 
 ## Soldat TV
 
