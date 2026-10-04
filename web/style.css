@@ -173,9 +173,11 @@ details { color: var(--muted); font-size: 13px; background: var(--panel); paddin
 details summary { cursor: pointer; color: var(--text); }
 details summary:hover { color: #fff; }
 details p { margin: 8px 0; }
-.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 10px 0 4px; align-items: center; }
-.keys dt { color: var(--text); white-space: nowrap; }
-.keys dd { margin: 0; }
+.binds { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 10px 0 4px; align-items: center; }
+.binds button { min-width: 96px; min-height: 24px; padding: 2px 8px; background: var(--tab); border: 1px solid var(--line);
+  color: var(--text); }
+.binds button:hover, .binds button:active { background: var(--tab); border-color: var(--muted); }
+.binds button.waiting { border-color: var(--green-hi); color: var(--green-text); }
 kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var(--tab); border: 1px solid var(--line);
   font: 12px/1.6 "Play", monospace; text-align: center; color: var(--text); }
 

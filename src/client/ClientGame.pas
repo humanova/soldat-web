@@ -23,6 +23,9 @@ var
   MapChanged: Boolean = False;
   ChatChanged: Boolean = True;  // used for blinking chat input
   ShouldRenderFrames: Boolean;  // false during game request phase
+  {$IFDEF SPECTATOR}
+  ReplayHeld: Boolean = False;  // a replay is paused: only the camera moves (Spectator.pas)
+  {$ENDIF}
 
   // used for action snap
   ActionSnap: Byte = 1;
@@ -62,6 +65,7 @@ uses
   SysUtils, StrUtils, Math, Classes,
   Client, Game, Sprites, GameStrings, Demo,
   Net, NetworkClientSprite, NetworkClientConnection,
+  {$IFDEF SPECTATOR}Spectator,{$ENDIF}
   {$IFDEF ENABLE_FAE}FaeBase, FaeClient, NetworkClientFae,{$ENDIF}
   {$IFDEF STEAM}Steam, NetworkClientGame,{$ENDIF}
   GameRendering, Gfx, UpdateFrame, GameMenus, Util, InterfaceGraphics, WebDownload;
@@ -263,6 +267,14 @@ begin
 
   for MainControl := 1 to (Ticktime - ticktimeLast) do
   begin  // frame rate independant code
+    {$IFDEF SPECTATOR}
+    // a paused replay: the match stands still, the camera still moves
+    if ReplayHeld then
+    begin
+      SpectatorCameraTick;
+      Continue;
+    end;
+    {$ENDIF}
     if not GamePaused then
       FrameTiming.Elapsed := FrameTiming.Elapsed + (1 / DEFAULT_GOALTICKS);
 

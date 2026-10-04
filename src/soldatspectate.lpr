@@ -55,7 +55,19 @@ begin
   Result := SpectatorEvents(Buf, Size);
 end;
 
+procedure soldat_spectator_speed(Speed: Single); cdecl;
+begin
+  SpectatorSpeed(Speed);
+end;
+
+procedure soldat_spectator_rewind; cdecl;
+begin
+  SpectatorRewind;
+end;
+
 exports
+  soldat_spectator_speed,
+  soldat_spectator_rewind,
   soldat_spectator_events,
   soldat_spectator_follow,
   soldat_spectator_zoom,

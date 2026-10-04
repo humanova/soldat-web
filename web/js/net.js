@@ -2,7 +2,8 @@
 // over a WebSocket to the relay (relay/play.mjs), which forwards them to the game
 // server. The spectator page instead receives a match from the spectator hub
 // (relay/spectator.mjs): opts.request names what to watch, and the hub's other messages
-// (player name, status, camera) go to opts.onMessage. Map downloads use the server's TCP
+// (player name, status, camera) go to opts.onMessage; opts.openSocket can stand in for the
+// hub (a replay, js/spectate/replay.js). Map downloads use the server's TCP
 // file server through the same relay, or the static asset mirror when it has the file.
 
 const NET_CONNECTING = 0, NET_OPEN = 1, NET_CLOSED = 2;
@@ -54,7 +55,7 @@ export function createNet(rt, vfs, opts) {
     state = NET_CONNECTING;
     let socket;
     try {
-      socket = new WebSocket(relayUrl());
+      socket = (opts.openSocket && opts.openSocket()) || new WebSocket(relayUrl());
     } catch (e) {
       state = NET_CLOSED;
       opts.onError && opts.onError('Cannot reach the relay: ' + e.message);

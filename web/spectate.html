@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=3">
+<link rel="stylesheet" href="spectate.css?v=4">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || /\/[\w-]+$/.test(location.pathname)) document.documentElement.classList.add('direct');</script>
@@ -32,6 +32,8 @@
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-play" viewBox="0 0 20 20"><path d="M6 3.8v12.4L16 10z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 20 20"><path d="M5.5 4h3v12h-3zm6 0h3v12h-3z" fill="currentColor"/></symbol>
+  <symbol id="i-download" viewBox="0 0 20 20"><path d="M10 3v9m-4-4 4 4 4-4M4 16h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-back" viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-prev" viewBox="0 0 20 20"><path d="M12 5 7 10l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-next" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -70,6 +72,20 @@
       <ol id="channels" class="channels"></ol>
       <p id="list-empty" class="list-empty" hidden></p>
       <noscript><p class="list-empty">Soldat TV needs JavaScript to list and show the matches.</p></noscript>
+
+      <!-- the matches the hub recorded on this tab's servers (js/spectate/main.js: renderDemos) -->
+      <section id="demos" class="demos" aria-labelledby="demos-title" hidden>
+        <div class="listing-head">
+          <h2 id="demos-title">Recorded matches</h2>
+          <p id="demos-note" class="summary"></p>
+        </div>
+        <div class="columns" aria-hidden="true">
+          <span>Match</span><span>Map</span><span class="c-mode num">Score</span><span class="num">Length</span>
+        </div>
+        <ol id="demo-list" class="channels demo-list"></ol>
+        <p id="demos-empty" class="list-empty" hidden>No matches recorded yet. A match is recorded while someone watches it here.</p>
+        <button id="demos-more" type="button" class="btn quiet more" hidden>Show more</button>
+      </section>
     </section>
 
     <aside class="notes">
@@ -103,6 +119,7 @@
           <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
           <dt><kbd>Tab</kbd> <kbd>C</kbd></dt><dd>players, game chat</dd>
           <dt><kbd>Enter</kbd></dt><dd>Soldat TV chat</dd>
+          <dt><kbd>Space</kbd> <kbd>J</kbd> <kbd>L</kbd></dt><dd>replays: pause, back, forward</dd>
           <dt>Drag a bar</dt><dd>move a panel (double-click: back)</dd>
         </dl>
       </div>
@@ -157,6 +174,21 @@
   </div>
 
   <div id="notice" class="notice" hidden></div>
+
+  <!-- a recorded match: play, the time, the timeline (captures marked), speed, the file
+       (js/spectate/main.js: replays) -->
+  <div id="replaybar" class="replaybar ui" hidden>
+    <button id="rp-play" type="button" class="icon-btn" aria-label="Pause (Space)"><svg><use href="#i-pause"/></svg></button>
+    <span id="rp-time" class="rp-time">0:00 / 0:00</span>
+    <div id="rp-line" class="rp-line" role="slider" tabindex="0" aria-label="Time in the match (J, L: 10 s; comma, period: 1 s)" aria-valuemin="0">
+      <div class="rp-track"><i class="rp-done"></i></div>
+      <div class="rp-marks"></div>
+      <i class="rp-thumb"></i>
+      <span class="rp-tip" hidden></span>
+    </div>
+    <button id="rp-speed" type="button" class="rp-speed" title="Speed">1×</button>
+    <a id="rp-download" class="icon-btn" aria-label="Download the demo"><svg><use href="#i-download"/></svg></a>
+  </div>
 
   <div id="dock" class="dock ui move" data-move="dock">
     <i class="grip handle" title="Drag to move (double-click: back)"></i>

@@ -152,10 +152,18 @@ line tagged with its channel, and checkboxes pick the channels. One connection p
 carries them all. Viewers pick a nickname, with no account. The hub keeps the last 10
 minutes in memory and allows one line every 1.5 seconds per address.
 
+Servers with `record` get their matches recorded while Soldat TV watches them, one demo
+per map. Their tab lists the recorded matches (map, score, length, players): each one plays
+on the site at `/replay?id=<demo>`, with pause, speed (¼× to 4×) and a timeline to drag
+through the match (captures are marked on it), and downloads as a `.sdm` file. Demos are
+kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with fewer
+than two players, and removes the oldest after `keepDays` or once all of them take more
+than `maxGB`. A match is published once it ends (plus the server's broadcast delay).
+
 | Setting | Default | What it does |
 |---|---|---|
 | `--port` / `PORT` | 8090 | HTTP port |
-| `servers` | none | servers to watch: `id`, `name`, `host`, `port`, optional `password`, `delaySeconds`, `group` and `askPassword` |
+| `servers` | none | servers to watch: `id`, `name`, `host`, `port`, optional `password`, `delaySeconds`, `group`, `askPassword` and `record` |
 | `playerName` | `[soldat.live] Soldat TV` | the spectator's name on the servers (at most 23 characters) |
 | `delaySeconds` | 0 | broadcast delay, so players can't use the stream to spy on each other |
 | `lingerSeconds` | 60 | how long it stays on a server after the last viewer leaves |
@@ -164,13 +172,17 @@ minutes in memory and allows one line every 1.5 seconds per address.
 | `maxChatPerIp` | 2 | chat connections per visitor (one for each open page) |
 | `origins` | same origin | other sites allowed to use it |
 | `trustProxy` | off | take the client address from `X-Forwarded-For` |
+| `recordings` | | `dir` (`data/recordings` next to the config), `keepDays` (14), `maxGB` (5), `minSeconds` (60), `minPlayers` (2) |
 
 Good to know:
 
 - Each server needs a free spectator slot (`Max_Spectators`). Ask its admins before you
   add it.
 - A server sends frequent updates only around the player a spectator follows, so players
-  far from the camera (as in the map view) move less smoothly.
+  far from the camera (as in the map view) move less smoothly. Recordings hold the same
+  stream, following the director's camera.
+- A recorded match takes about 2.5 KB a second, gzipped to about two thirds: some 6 MB for an
+  hour of play.
 
 ## Build it yourself
 
@@ -230,7 +242,9 @@ downloaded from the game server, like for any custom map.
   shaders are translated to GLSL ES), WebAudio, input, the relay client and the menu.
 - `web/soldat.smod`: the game data. Map textures and scenery are in `web/assets/`.
 - `relay/play.mjs`: the relay. `relay/spectator.mjs`: the spectator hub
-  (`relay/lib/hub.mjs` does the work). Both share `relay/lib/` and have no dependencies.
+  (`relay/lib/hub.mjs` does the work, `relay/lib/recorder.mjs` writes the demos). Both share
+  `relay/lib/` and have no dependencies. `web/js/spectate/replay.js` plays a demo by standing
+  in for the hub.
 
 ## Credits and license
 

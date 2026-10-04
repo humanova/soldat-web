@@ -6,7 +6,8 @@
 // a fresh PlayersList with the current players, then the hub's own NewPlayer (viewers
 // play the part of the hub's spectator; the page sets the player name to match) and the
 // latest settings, items and scores. From then on viewers get the server's datagrams
-// unchanged, optionally delayed.
+// unchanged, optionally delayed. With `record` it also writes the stream into demos
+// (relay/lib/recorder.mjs), one per map.
 import dgram from 'node:dgram';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -31,6 +32,9 @@ const PL = {
   serverTicks: 2145, flags: 23,
 };
 const NAME_LEN = 24;
+// the PlayersList's encrypted fields, in their order: MapID, GameStyle, Gravity
+const PL_ENCRYPTED = [[1580, 4], [19, 1], [1584, 4]];
+const GAME_STYLES = ['DM', 'PM', 'TM', 'CTF', 'RM', 'INF', 'HTF'];
 const FLAG_STYLES = new Set([1, 2, 3]);  // alpha, bravo and pointmatch flag
 
 export class Hub {
@@ -43,6 +47,8 @@ export class Hub {
     this.hwid = makeHwid(opts.playerName + '@' + cfg.id);
     this.delayMs = Math.max(0, (cfg.delaySeconds ?? opts.delaySeconds ?? 0) * 1000);
     this.lingerMs = opts.lingerMs ?? 60_000;
+    this.recordings = cfg.record ? opts.recordings : null;
+    this.recording = null;
     this.log = (...a) => opts.log(`[${cfg.id}]`, ...a);
     this.viewers = new Set();
     this.state = 'idle';          // idle, joining, live, waiting (to reconnect)
@@ -189,6 +195,12 @@ export class Hub {
       this.sock = null;
     }
     this.clearTimers();
+    // the recording gets what was still held back by the delay
+    if (this.recording) {
+      for (const item of this.queue) this.record(item, item.at - this.delayMs);
+      this.recording.finish(Date.now());
+      this.recording = null;
+    }
     this.queue = [];
     if (this.state !== 'idle') this.log('left:', reason);
     this.state = 'idle';
@@ -289,7 +301,7 @@ export class Hub {
     }
     if (!wasLive || this.state !== 'live') return;
     if (this.delayMs > 0) this.queue.push({ at: Date.now() + this.delayMs, dgram: data, msgs });
-    else this.deliver(data, msgs);
+    else this.deliver(data, msgs, Date.now());
   }
 
   // immediate reactions of our own connection (not delayed)
@@ -359,6 +371,7 @@ export class Hub {
     this.setTimer('camera', CAMERA_MS, () => this.cameraTick(), true);
     this.setTimer('flush', 20, () => this.flush(), true);
     this.log(`live in slot ${this.match.own} as "${this.match.ownName}" on ${this.match.map}`);
+    if (this.recordings) this.startRecording(Date.now());
     // with a delay, viewers start once the delayed stream has caught up with the state
     // they get at their join; until then they see the seconds left
     this.readyAt = Date.now() + this.delayMs;
@@ -394,13 +407,23 @@ export class Hub {
     const now = Date.now();
     while (this.queue.length && this.queue[0].at <= now) {
       const item = this.queue.shift();
-      if (item.json) this.broadcastText(item.json);
-      else this.deliver(item.dgram, item.msgs);
+      if (item.json) {
+        this.broadcastText(item.json);
+        if (this.recording && item.json.type === 'follow') this.recording.camera(item.json.slot, item.at - this.delayMs);
+      } else {
+        this.deliver(item.dgram, item.msgs, item.at - this.delayMs);
+      }
     }
   }
 
-  deliver(dgram, msgs) {
-    for (const m of msgs) this.track(m);
+  // at: when the hub received it
+  deliver(dgram, msgs, at) {
+    for (const m of msgs) {
+      this.trackAt = at;
+      this.track(m);
+      if (this.recording) this.recording.add(m, at);
+    }
+    if (this.recording && this.recording.full(at)) this.startRecording(at);
     for (const v of this.viewers) {
       if (v.joined && v.buffered < 1 << 20) v.send(dgram);  // too slow: dropped like UDP
     }
@@ -444,6 +467,7 @@ export class Hub {
     const s = this.match;
     const id = m[0];
     const num = m[3];
+    this.settleMapChange();
     switch (id) {
       case MSG.NewPlayer: {
         if (num < 1 || num > MAX_PLAYERS) break;
@@ -470,7 +494,10 @@ export class Hub {
       case MSG.ServerVars: s.vars = Buffer.from(m); break;
       case MSG.Gravity: s.gravity = Buffer.from(m); break;
       case MSG.WeaponActive: s.weaponActive.set(m[4], Buffer.from(m)); break;
-      case MSG.HeartBeat: case MSG.HeartBeat16: case MSG.HeartBeat8: s.heartbeat = Buffer.from(m); break;
+      case MSG.HeartBeat: case MSG.HeartBeat16: case MSG.HeartBeat8:
+        s.heartbeat = Buffer.from(m);
+        if (this.recording) this.recording.roster(this.playing());
+        break;
       case MSG.ServerSyncMsg: s.sync = Buffer.from(m); s.syncAt = Date.now(); break;
       case MSG.ThingMustSnapshot:
       case MSG.ThingSnapshot:
@@ -486,17 +513,26 @@ export class Hub {
         s.mapChangeAt = Date.now();
         break;
     }
-    // a map change takes effect when its countdown ends
-    if (s.mapChange) {
-      const ticks = s.mapChange.readInt16LE(3);
-      if (Date.now() - s.mapChangeAt >= (ticks * 1000) / TICKS_PER_SECOND) {
-        s.map = fixedString(s.mapChange, 6, Math.min(16, s.mapChange[5]));
-        s.mapChange = null;
-        s.things.clear();
-        s.sync = null;
-        s.time = { left: s.base.readInt32LE(PL.timeLimit), at: Date.now() };  // the clock starts again
-      }
-    }
+  }
+
+  // a map change takes effect when its countdown ends; a recording goes on in a new demo
+  settleMapChange() {
+    const s = this.match;
+    if (!s.mapChange) return;
+    const ticks = s.mapChange.readInt16LE(3);
+    if (Date.now() - s.mapChangeAt < (ticks * 1000) / TICKS_PER_SECOND) return;
+    s.map = fixedString(s.mapChange, 6, Math.min(16, s.mapChange[5]));
+    s.mapChange = null;
+    s.things.clear();
+    s.sync = null;
+    s.time = { left: s.base.readInt32LE(PL.timeLimit), at: Date.now() };  // the clock starts again
+    if (this.recording) this.startRecording(this.trackAt ?? Date.now());
+  }
+
+  // the players (no spectators): [{ slot, name, team }]
+  playing() {
+    return this.match.roster.map((p, slot) => p && slot !== this.match.own && p.team !== TEAM_SPECTATOR &&
+      { slot, name: p.name, team: p.team }).filter(Boolean);
   }
 
   // ------------------------------------------------------------ answers to viewers
@@ -586,6 +622,52 @@ export class Hub {
     return setHash(b);
   }
 
+  // ------------------------------------------------------------ recording
+
+  // ends the current demo (if any) and starts the next at `at` with what a viewer joining
+  // then would get
+  startRecording(at) {
+    if (this.recording) this.recording.finish(at);
+    const s = this.match;
+    const list = this.buildPlayersList();
+    // the list the hub joined with names the map of then: the current one's id, from the
+    // heartbeat (the client asks for the map again when they differ)
+    const style = this.decryptPlayersList(list, (b) => {
+      const id = s.heartbeat ? s.heartbeat.readUInt32LE(3) : 0;
+      if (id) b.writeUInt32LE(id, 1580);
+    });
+    setHash(list);
+    this.recording = this.recordings.start({
+      server: this.cfg.id, serverName: this.cfg.name, group: this.cfg.group || null, map: s.map,
+      mode: GAME_STYLES[style] ?? null, delay: this.delayMs / 1000,
+    }, at, [list, ...this.joinBundle()]);
+    this.recording.roster(this.playing());
+    this.recording.camera(this.director.target || 0, at);
+  }
+
+  // runs edit(b) on the PlayersList b with its encrypted fields in clear; returns the game style
+  decryptPlayersList(b, edit) {
+    const c = this.match.cipher;
+    c.fields(b, PL_ENCRYPTED, true);
+    const style = b[19];
+    edit(b);
+    c.fields(b, PL_ENCRYPTED);
+    return style;
+  }
+
+  // a delayed item that reaches the recording without being delivered
+  record(item, at) {
+    if (item.json) {
+      if (item.json.type === 'follow') this.recording.camera(item.json.slot, at);
+      return;
+    }
+    for (const m of item.msgs) {
+      this.trackAt = at;
+      this.track(m);
+      this.recording?.add(m, at);
+    }
+  }
+
   // ------------------------------------------------------------ director
 
   // The server sends frequent updates (and bullets) only around a spectator's camera
@@ -617,8 +699,12 @@ export class Hub {
         d.target = want;
         d.since = now;
         const item = { type: 'follow', slot: want };
-        if (this.delayMs > 0) this.queue.push({ at: now + this.delayMs, json: item });
-        else this.broadcastText(item);
+        if (this.delayMs > 0) {
+          this.queue.push({ at: now + this.delayMs, json: item });
+        } else {
+          this.broadcastText(item);
+          if (this.recording) this.recording.camera(want, now);
+        }
       }
     }
   }

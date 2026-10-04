@@ -61,6 +61,15 @@ const SCANCODE_NAMES = (() => {
 // keys the browser must not act upon while playing
 const KEEP_DEFAULT = new Set(['F5', 'F11', 'F12']);
 
+// The game's name for a key (KeyboardEvent.code), as the bind command takes it; null for
+// keys the game does not get or that stay the browser's (Esc releases the mouse first).
+export function bindKeyName(code) {
+  const key = KEYS[code];
+  if (!key || code === 'Escape' || KEEP_DEFAULT.has(code)) return null;
+  for (const [name, sc] of SCANCODE_NAMES) if (sc === key[0]) return name;
+  return null;
+}
+
 export function createSDL(rt, canvas, hooks = {}) {
   const queue = [];
   let textInput = false;

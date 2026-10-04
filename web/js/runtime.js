@@ -145,6 +145,7 @@ export class SoldatRuntime {
     this.net = createNet(rt, this.vfs, {
       relayUrl: () => hooks.relayUrl(),
       request: hooks.relayRequest,
+      openSocket: hooks.openSocket,
       onMessage: hooks.onRelayMessage,
       assetBase: () => this.assetBase,
       assetIndex: (p) => this.findAsset(p),
@@ -248,6 +249,7 @@ export class SoldatRuntime {
     const run = (frameTime) => {
       this.lastFrame = performance.now();
       this.sdl.setFrameClock(frameTime || this.lastFrame);
+      if (this.hooks.beforeFrame) this.hooks.beforeFrame(this.lastFrame);
       this.frame();
     };
     const tick = (frameTime) => {

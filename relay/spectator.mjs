@@ -4,16 +4,22 @@
 // watched server it holds a single spectator connection (relay/lib/hub.mjs) that all
 // viewers share; viewers pick a server by its id and never send anything to it. Viewers
 // chat with each other (relay/lib/chat.mjs): everyone on the site, or the viewers of a server.
+// Servers with `record` get their matches recorded while watched (relay/lib/recorder.mjs):
+// the page lists them, replays them and offers the demo files.
 // No dependencies (Node.js 18+).
 //
 //   node relay/spectator.mjs [--config relay/spectator.json] [--port 8090]
 //
 // Config (JSON, see relay/spectator.example.json):
-//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword? }]
+//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword?, record? }]
 //                   the only servers it joins. group: the guide's tab the server is listed
 //                   under (none: the main list); askPassword: viewers give the server's
 //                   password (a link has it, /<id>?password=..., or the page asks), the hub
-//                   keeps the last one that worked and then anyone can watch
+//                   keeps the last one that worked and then anyone can watch; record: demos
+//                   of its matches while Soldat TV watches it
+//   recordings      { dir (default data/recordings next to the config), keepDays (14), maxGB (5),
+//                   minSeconds (60), minPlayers (2) }: shorter demos, or with fewer players, are
+//                   not kept; the oldest go after keepDays or while all take more than maxGB
 //   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
@@ -26,6 +32,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +43,7 @@ import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
 import { makeChat } from './lib/chat.mjs';
+import { makeRecordings, DEMO_ID } from './lib/recorder.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = makeArg(process.argv.slice(2));
@@ -55,6 +63,16 @@ const clientIp = clientIpOf(!!config.trustProxy);
 // the game client is not served here: the public site only spectates
 const HIDDEN = new Set(['/index.html', '/soldat.wasm', '/js/main.js']);
 
+const rec = config.recordings || {};
+const recordings = (config.servers || []).some((s) => s.record) ? makeRecordings({
+  dir: path.resolve(path.dirname(CONFIG), rec.dir || 'data/recordings'),
+  keepDays: rec.keepDays ?? 14,
+  maxBytes: (rec.maxGB ?? 5) * 1024 ** 3,
+  minSeconds: rec.minSeconds ?? 60,
+  minPlayers: rec.minPlayers ?? 2,
+  log,
+}) : null;
+
 const hubs = new Map();
 for (const s of config.servers || []) {
   if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536) ||
@@ -64,7 +82,7 @@ for (const s of config.servers || []) {
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
   hubs.set(s.id, new Hub({ ...s, name: s.name || s.id }, {
     playerName: PLAYER_NAME, delaySeconds: config.delaySeconds ?? 0, log,
-    lingerMs: (config.lingerSeconds ?? 60) * 1000,
+    lingerMs: (config.lingerSeconds ?? 60) * 1000, recordings,
   }));
 }
 
@@ -243,6 +261,7 @@ async function listServers(fresh) {
     return {
       ...info,
       group: h.cfg.group || null,
+      record: !!h.cfg.record,
       locked: h.locked(),
       names,
       title: e ? e.Name : null,
@@ -261,6 +280,51 @@ async function listServers(fresh) {
   return { servers: list, updated: l.time };
 }
 
+// ---------------------------------------------------------------- recordings
+
+// /api/demos: the recorded matches, newest first; ?id=<demo>, ?server=<id>, ?group=<name>
+// (empty: the main list), ?limit=<n> (50)
+function listDemos(url, res) {
+  const q = url.searchParams;
+  const filter = {};
+  if (q.get('id')) filter.id = q.get('id');
+  if (q.get('server')) filter.server = q.get('server');
+  if (q.has('group')) filter.group = q.get('group') || null;
+  const limit = Math.min(500, Math.max(1, parseInt(q.get('limit'), 10) || 50));
+  const demos = recordings ? recordings.list(filter).slice(0, limit).map(({ delay, ...m }) => m) : [];
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));
+}
+
+// /demos/<id>.sdm: the demo, gzipped on the way when the browser takes it (it never changes)
+function serveDemo(req, res, id) {
+  const f = recordings && DEMO_ID.test(id) ? recordings.file(id) : null;
+  if (!f) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
+  const etag = `"${f.meta.bytes.toString(16)}-${f.meta.end.toString(16)}"`;
+  const headers = {
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${id}.sdm"`,
+    'Cache-Control': 'public, max-age=86400',
+    'X-Content-Type-Options': 'nosniff',
+    ETag: etag,
+    Vary: 'Accept-Encoding',
+  };
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
+  const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  if (gzip) {
+    headers['Content-Encoding'] = 'gzip';
+    headers['Content-Length'] = f.meta.bytes;
+  } else {
+    headers['Content-Length'] = f.meta.rawBytes;
+  }
+  res.writeHead(200, headers);
+  if (req.method === 'HEAD') { res.end(); return; }
+  const file = fs.createReadStream(f.path);
+  file.on('error', () => res.destroy());
+  if (gzip) file.pipe(res);
+  else file.pipe(zlib.createGunzip()).on('error', () => res.destroy()).pipe(res);
+}
+
 // ---------------------------------------------------------------- http
 
 const server = http.createServer((req, res) => {
@@ -274,7 +338,14 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/demos') { listDemos(url, res); return; }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
+  if (url.pathname.startsWith('/demos/') && url.pathname.endsWith('.sdm')) {
+    serveDemo(req, res, url.pathname.slice(7, -4));
+    return;
+  }
+  // a recorded match: /replay?id=<demo>
+  if (url.pathname === '/replay') { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
   // one address for the page (search engines would list both)
   if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
   // a server's own address (/<id>): the page, tuned in to it
@@ -299,6 +370,8 @@ server.listen(PORT, () => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     for (const h of hubs.values()) h.disconnect('shutting down');
-    setTimeout(() => process.exit(0), 200);
+    // the demos being recorded are finished first (a few seconds at most)
+    const settled = recordings ? recordings.settle() : Promise.resolve();
+    Promise.race([settled, new Promise((r) => setTimeout(r, 10_000))]).then(() => setTimeout(() => process.exit(0), 200));
   });
 }

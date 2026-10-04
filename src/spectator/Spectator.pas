@@ -52,6 +52,14 @@ procedure SpectatorNextMap(const Name: string);
 // returns their length; keeps them when they do not fit
 function SpectatorEvents(Buf: PAnsiChar; Size: LongInt): LongInt;
 
+// Replays (js/spectate/replay.js plays a recorded match in place of the hub): the game
+// clock's speed (1 normal, 0 holds the match), and a jump in time: the client forgets
+// the world and takes the next PlayersList the page hands it, as on joining.
+procedure SpectatorSpeed(Speed: Single);
+procedure SpectatorRewind;
+// a tick of a paused replay: the camera follows its player (ClientGame.GameLoop)
+procedure SpectatorCameraTick;
+
 const
   MIN_ZOOM = -0.9;
   MAX_ZOOM = 1.6;
@@ -59,7 +67,8 @@ const
 implementation
 
 uses
-  SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Constants, Cvar, Net;
+  SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Bullets, Sparks, Constants, Cvar, Net,
+  InterfaceGraphics;
 
 var
   Events: AnsiString = '';
@@ -143,6 +152,62 @@ begin
   Move(Events[1], Buf^, Result);
   Buf[Result] := #0;
   Events := '';
+end;
+
+procedure SpectatorSpeed(Speed: Single);
+begin
+  ReplayHeld := Speed <= 0;
+  if ReplayHeld then
+    GOALTICKS := DEFAULT_GOALTICKS
+  else
+    GOALTICKS := EnsureRange(Round(DEFAULT_GOALTICKS * Speed), 1, DEFAULT_GOALTICKS * 32);
+end;
+
+procedure SpectatorCameraTick;
+begin
+  CameraPrev.X := CameraX;
+  CameraPrev.Y := CameraY;
+  // as Update_Frame, with the mouse in the middle
+  if (CameraFollowSprite > 0) and (CameraFollowSprite <= MAX_SPRITES) and
+    Sprite[CameraFollowSprite].Active then
+  begin
+    CameraX := CameraX + (SpriteParts.Pos[CameraFollowSprite].X - CameraX) * CAMSPEED;
+    CameraY := CameraY + (SpriteParts.Pos[CameraFollowSprite].Y - CameraY) * CAMSPEED;
+  end;
+end;
+
+procedure SpectatorRewind;
+var
+  i: Integer;
+begin
+  // the PlayersList replaces the players; what else is in the air goes now
+  for i := 1 to MAX_BULLETS do
+    Bullet[i].Kill;
+  for i := 1 to MAX_SPARKS do
+    Spark[i].Kill;
+  for i := 1 to MAX_THINGS do
+    Thing[i].Kill;
+  for i := 0 to MAX_BIG_MESSAGES do
+  begin
+    BigText[i] := '';
+    BigDelay[i] := 0;
+    WorldText[i] := '';
+    WorldDelay[i] := 0;
+  end;
+  for i := 1 to MAX_SPRITES do
+  begin
+    ChatDelay[i] := 0;
+    ChatMessage[i] := '';
+  end;
+  KillConsole.Count := 0;
+  MainConsole.Count := 0;
+  BigConsole.Count := 0;
+  if VoteActive then
+    StopVote;
+  Events := '';
+  LastEvent := '';
+  RequestingGame := True;
+  RequestGameRetryTicks := 3 * 60;
 end;
 
 procedure CenterMouse;

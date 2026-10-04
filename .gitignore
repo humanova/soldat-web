@@ -13,3 +13,4 @@ __pycache__/
 
 # spectator hub config (relay/spectator.example.json)
 /relay/spectator.json
+/relay/data/

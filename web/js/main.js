@@ -2,6 +2,8 @@
 import { SoldatRuntime } from './runtime.js';
 import { flag } from './flags.js';
 import { GostekPreview, WEAPONS } from './gostek.js';
+// ?v: browsers may keep an older sdl.js for a while, one without this export
+import { bindKeyName } from './sdl.js?v=4';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -13,7 +15,7 @@ const DEFAULTS = {
   name: 'Major', shirt: '#304289', pants: '#1f8957', skin: '#e6b478', hair: '#000000',
   jet: '#ffff00', hairstyle: 1, headstyle: 1, chainstyle: 2, sens: 0.8, volume: 50,
   fullscreen: true, hideEmpty: false, hideFull: false, sort: 'NumPlayers', asc: false,
-  last: '', previewWeapon: 2,
+  last: '', previewWeapon: 2, binds: {},
 };
 // names of the look options, by their cl_player_* value
 const STYLES = {
@@ -28,6 +30,7 @@ function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (_) {}
   const s = { ...DEFAULTS, ...saved };
+  s.binds = { ...s.binds };
   if (s.shirt === OLD_GRAY && s.pants === OLD_GRAY && s.jet === OLD_GRAY) {
     s.shirt = DEFAULTS.shirt;
     s.pants = DEFAULTS.pants;
@@ -121,6 +124,116 @@ function applySettings() {
   game.command(`cl_player_chainstyle ${settings.chainstyle | 0}`);
   game.command(`cl_sensitivity ${Number(settings.sens).toFixed(2)}`);
   game.command(`snd_volume ${settings.volume | 0}`);
+  applyBinds();
+}
+
+// ---------- controls: the page binds the keys, like the game's controls.cfg ----------
+
+// [action, what it does, default key]; settings.binds holds the keys a player changed
+const ACTIONS = [
+  ['left', 'Move left', 'A'], ['right', 'Move right', 'D'], ['jump', 'Jump', 'W'],
+  ['crouch', 'Crouch', 'S'], ['prone', 'Prone', 'X'], ['jet', 'Jets', 'Mouse3'],
+  ['fire', 'Shoot', 'Mouse1'], ['throwgrenade', 'Grenade', 'E'], ['changeweapon', 'Switch weapon', 'Q'],
+  ['reload', 'Reload', 'R'], ['dropweapon', 'Drop weapon', 'F'], ['flagthrow', 'Throw the flag', 'Space'],
+  ['chat', 'Chat', 'T'], ['teamchat', 'Team chat', 'Y'], ['radio', 'Radio', 'V'], ['cmd', 'Command', '/'],
+  ['weapons', 'Weapon menu', 'Tab'], ['fragslist', 'Scores', 'F1'], ['statsmenu', 'Stats', 'F2'],
+  ['minimap', 'Minimap', 'F3'],
+];
+// the rest of controls.cfg, which stays as it is
+const OTHER_BINDS = [
+  ['ALT+F3', '+gamestats'], ['F4', 'screenshot'], ['F5', '+recorddemo'],
+  ['CTRL+Q', 'switchcamflag 1'], ['CTRL+W', 'switchcamflag 2'], ['CTRL+E', 'switchcamflag 3'],
+  ['CTRL+1', 'switchcam 1'], ['CTRL+2', 'switchcam 2'], ['CTRL+3', 'switchcam 3'],
+  ['CTRL+4', 'switchcam 4'], ['CTRL+5', 'switchcam 5'],
+];
+const MOUSE_NAMES = ['Left mouse', 'Middle mouse', 'Right mouse', 'Mouse 4', 'Mouse 5'];
+
+const keyOf = (action) => settings.binds[action] || ACTIONS.find(a => a[0] === action)[2];
+
+function keyLabel(key) {
+  const m = /^mouse(\d)$/i.exec(key);
+  if (m) return MOUSE_NAMES[m[1] - 1] || key;
+  return key.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+// the keys the game has: it starts with controls.cfg, which are the defaults
+let boundKeys = '{}';
+
+function applyBinds() {
+  // only when they changed, since the game says "Unbinded all binds" in its console
+  const keys = JSON.stringify(settings.binds);
+  if (keys === boundKeys) return;
+  boundKeys = keys;
+  game.command('unbindall');
+  for (const [action] of ACTIONS) game.command(`bind "${keyOf(action)}" "+${action}"`);
+  for (const [key, command] of OTHER_BINDS) game.command(`bind "${key}" "${command}"`);
+  game.command('exec bindings.cfg');  // the taunts on Alt+key
+}
+
+function setBind(action, key) {
+  // a key does one thing: the action that had it takes this one's old key
+  const old = keyOf(action);
+  const other = ACTIONS.find(a => a[0] !== action && keyOf(a[0]).toLowerCase() === key.toLowerCase());
+  if (other) settings.binds[other[0]] = old;
+  settings.binds[action] = key;
+  for (const [a, , def] of ACTIONS) if (settings.binds[a] && settings.binds[a].toLowerCase() === def.toLowerCase()) delete settings.binds[a];
+  saveSettings();
+  renderBinds();
+}
+
+let stopWaiting = null;
+
+function waitForKey(action, button) {
+  if (stopWaiting) stopWaiting();
+  button.classList.add('waiting');
+  button.textContent = 'Press a key...';
+  const done = (key) => {
+    stopWaiting();
+    if (key) setBind(action, key); else renderBinds();
+  };
+  const onKey = (e) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.code === 'Escape') { done(null); return; }
+    const key = bindKeyName(e.code);
+    if (key) done(key); else setStatus(`${e.code} can't be used in the game.`, true);
+  };
+  const onMouse = (e) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    done('Mouse' + (e.button + 1));
+  };
+  const swallow = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+  window.addEventListener('keydown', onKey, true);
+  window.addEventListener('mousedown', onMouse, true);
+  // the back and forward buttons would leave the page; a right click opens no menu
+  window.addEventListener('mouseup', swallow, true);
+  window.addEventListener('contextmenu', swallow, true);
+  stopWaiting = () => {
+    stopWaiting = null;
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('mousedown', onMouse, true);
+    // the button's own release comes after this
+    setTimeout(() => {
+      window.removeEventListener('mouseup', swallow, true);
+      window.removeEventListener('contextmenu', swallow, true);
+    }, 300);
+  };
+}
+
+function renderBinds() {
+  const box = $('binds');
+  box.replaceChildren();
+  for (const [action, label] of ACTIONS) {
+    const name = document.createElement('span');
+    name.textContent = label;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = keyLabel(keyOf(action));
+    b.setAttribute('aria-label', `${label}: ${b.textContent}. Change the key`);
+    b.addEventListener('click', () => waitForKey(action, b));
+    box.append(name, b);
+  }
 }
 
 async function enterGameUi() {
@@ -356,6 +469,13 @@ function bindSettings() {
     show();
   }
   $('quick').addEventListener('click', quickJoin);
+  renderBinds();
+  $('binds-reset').addEventListener('click', () => {
+    if (stopWaiting) stopWaiting();
+    settings.binds = {};
+    saveSettings();
+    renderBinds();
+  });
   $('s-fullscreen').checked = settings.fullscreen;
   $('s-fullscreen').addEventListener('change', () => { settings.fullscreen = $('s-fullscreen').checked; saveSettings(); });
   $('hide-empty').checked = settings.hideEmpty;

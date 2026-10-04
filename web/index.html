@@ -24,7 +24,7 @@
 </script>
 <link rel="icon" href="favicon.ico">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <div id="app" hidden>
@@ -119,18 +119,9 @@
         <label class="check"><input id="s-fullscreen" type="checkbox"> Full screen while playing</label>
         <details>
           <summary>Controls</summary>
-          <dl class="keys">
-            <dt><kbd>A</kbd> <kbd>D</kbd></dt><dd>move</dd>
-            <dt><kbd>W</kbd></dt><dd>jump</dd>
-            <dt><kbd>S</kbd> <kbd>X</kbd></dt><dd>crouch, prone</dd>
-            <dt>right mouse</dt><dd>jets</dd>
-            <dt>left mouse</dt><dd>shoot</dd>
-            <dt><kbd>E</kbd></dt><dd>grenade</dd>
-            <dt><kbd>Q</kbd> <kbd>R</kbd> <kbd>F</kbd></dt><dd>switch, reload, drop weapon</dd>
-            <dt><kbd>Space</kbd></dt><dd>throw the flag</dd>
-            <dt><kbd>T</kbd> <kbd>Y</kbd> <kbd>V</kbd></dt><dd>chat, team chat, radio</dd>
-            <dt><kbd>F1</kbd> <kbd>Esc</kbd></dt><dd>scores, menu</dd>
-          </dl>
+          <div id="binds" class="binds"></div>
+          <p>Click a key, then press the new key or mouse button (Esc cancels). <kbd>Esc</kbd> opens the menu in the game.</p>
+          <button id="binds-reset" type="button">Default keys</button>
           <p>The browser keeps a few shortcuts (like Ctrl+W) unless the game runs full screen.</p>
         </details>
         <details>
@@ -163,6 +154,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=3"></script>
+<script type="module" src="js/main.js?v=4"></script>
 </body>
 </html>

@@ -147,6 +147,18 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .channel.quiet .ch-label, .channel.quiet .ch-map { color: var(--muted); }
 .list-empty { color: var(--muted); padding: 22px 12px; margin: 0; background: var(--row); }
 
+/* the recorded matches under the servers: the same rows, a download arrow before the names' */
+.demos { margin-top: 26px; }
+.demos h2 { margin: 0; font-size: 14px; font-weight: 400; color: var(--text); }
+.demo-list > li { grid-template-columns: minmax(0, 1fr) 34px 34px; }
+.demo-list .dl { color: var(--muted); }
+.demo-list .dl svg { transform: none; }
+.demo-list .dl:hover { color: var(--text); }
+.score-line { font-variant-numeric: tabular-nums; }
+.score-line b { font-weight: 700; }
+.score-line i { font-style: normal; color: var(--dim); margin: 0 4px; }
+.demos .more { display: block; margin: 8px auto 0; }
+
 .notes { font-size: 13px; color: var(--muted); }
 .notes h2 { margin: 6px 0 6px; font-size: 14px; font-weight: 400; color: var(--text); }
 .notes .box { background: var(--panel); padding: 12px 14px; margin-bottom: 20px; }
@@ -324,6 +336,33 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .swatch { flex: none; width: 10px; height: 10px; background: var(--dim); }
 .zoom { display: flex; align-items: center; gap: 2px; }
 
+/* a recorded match: the bar along the bottom, the dock above it */
+.tally.replay { background: var(--deep); color: var(--orange); }
+#watch.replaying .dock:not(.placed), #watch.replaying .card:not(.placed) { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 48px); }
+.replaybar { position: absolute; left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom)); z-index: 3; display: flex; align-items: center; gap: 6px; height: 40px;
+  padding: 0 4px; background: rgba(49, 61, 79, .9); border: 1px solid var(--line); }
+#watch.idle .replaybar { transform: translateY(8px); }
+.rp-time { flex: none; min-width: 96px; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-speed { flex: none; min-width: 46px; height: 30px; padding: 0 8px; background: var(--tab); border: 0; color: var(--text);
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-speed:hover { background: var(--row-hover); }
+/* the timeline: a tall hit area around a thin track that thickens under the pointer */
+.rp-line { position: relative; flex: 1; align-self: stretch; min-width: 60px; margin: 0 8px; cursor: pointer; touch-action: none; outline: none; }
+.rp-track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; transform: translateY(-50%); background: var(--deep);
+  transition: height .1s; }
+.rp-line:hover .rp-track, .rp-line.scrubbing .rp-track, .rp-line:focus-visible .rp-track { height: 8px; }
+.rp-done { display: block; height: 100%; width: 0; background: var(--green); }
+.rp-thumb { position: absolute; top: 50%; width: 4px; height: 18px; margin-left: -2px; transform: translateY(-50%);
+  background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); pointer-events: none; }
+.rp-marks { position: absolute; left: 0; right: 0; top: 50%; pointer-events: none; }
+.rp-marks .mark { position: absolute; width: 3px; height: 14px; margin-left: -1.5px; transform: translateY(-50%);
+  background: var(--alpha-text); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
+.rp-marks .mark.t2 { background: var(--bravo-text); }
+.rp-tip { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); padding: 3px 7px; background: var(--deep);
+  border: 1px solid var(--line); color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+  pointer-events: none; }
+
 /* the chat: closed until the viewer opens it; see-through, like the game's console */
 .chat { position: absolute; left: max(10px, env(safe-area-inset-left)); top: 52px; z-index: 2; width: 340px; max-height: 40%;
   display: flex; flex-direction: column; background: rgba(44, 51, 65, .55); border-color: rgba(74, 90, 114, .7); font-size: 13px; }
@@ -458,6 +497,9 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .target-name { min-width: 110px; max-width: 150px; font-size: 13px; height: 40px; }
   .icon-btn { width: 40px; height: 40px; }
   .chat { top: 46px; width: 280px; max-height: 45%; }
+  .replaybar { height: 44px; }
+  .rp-time { min-width: 0; font-size: 12px; }
+  #watch.replaying .dock:not(.placed) { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 52px); }
   .tvchat { top: auto; bottom: 60px; }
   .roster { top: 46px; max-height: calc(100% - 110px); width: 220px; }
   .channel-id .ch-delay { display: none; }
@@ -481,7 +523,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .rotate .phone { width: 34px; height: 56px; border: 2px solid var(--green); border-radius: 5px;
     animation: turn 2.4s ease-in-out infinite; }
   .rotate p { margin: 0; }
-  #watch .dock, #watch .roster, #watch .scorebug, #watch .banners, #watch .bigmsg, #watch .card, #watch .chat, #watch .channel-id,
+  #watch .dock, #watch .replaybar, #watch .roster, #watch .scorebug, #watch .banners, #watch .bigmsg, #watch .card, #watch .chat, #watch .channel-id,
   #watch .topbar-end { visibility: hidden; }
   #watch .topbar, #watch.idle .topbar { z-index: 6; opacity: 1; transform: none; background: none; }
   #watch.idle .topbar #back { pointer-events: auto; }
