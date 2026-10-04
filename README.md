@@ -246,8 +246,8 @@ The game data is not covered by that license: `web/soldat.smod` and `web/assets/
 files of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
 [base game content](https://github.com/opensoldat/base) (CC BY 4.0). The screenshots are
 pictures of the game, and so are the link previews (`web/og-2.jpg`, `web/og-play.jpg`). The icon
-(`web/soldat-icon.png`) is Soldat's own; the site icons (`web/favicon.ico`,
-`web/apple-touch-icon.png`) are made from it.
+(`web/soldat-icon.png`) is Soldat's own; Soldat TV's icons (`web/favicon-tv.ico`,
+`web/apple-touch-icon-tv.png`) are made from it, and `web/favicon.ico` is the game's icon.
 
 Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), the country
 flags of [flag-icons](https://github.com/lipis/flag-icons) (MIT, `web/flags.png`), stb_image
