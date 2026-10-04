@@ -3,18 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Soldat Web</title>
-<meta name="description" content="Soldat 1.7.1 in the browser. Join the official servers, no install.">
-<link rel="icon" href="favicon.ico">
+<meta name="theme-color" content="#313d4f">
+<title>Soldat Web · Play Soldat online in your browser</title>
+<meta name="description" content="Play Soldat 1.7.1 online for free, right in your browser: join the public servers from the server list, pick your gostek and fight. No download, no install; sign in with Discord to play.">
+<!-- the site's address: change it here when the page is hosted elsewhere -->
+<link rel="canonical" href="https://play.soldat.live/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Soldat Web">
+<meta property="og:url" content="https://play.soldat.live/">
+<meta property="og:title" content="Soldat Web · Play Soldat in your browser">
+<meta property="og:description" content="Play Soldat 1.7.1 online on the public servers, right in your browser. No download, no install.">
+<meta property="og:image" content="https://play.soldat.live/og-play.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Soldat Web: play Soldat in your browser, next to a fight on ctf_Lanubya with the kill list">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@humanova">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "WebSite", "name": "Soldat Web", "alternateName": "play.soldat.live", "url": "https://play.soldat.live/"}
+</script>
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 64x64">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app" hidden>
   <header class="tabs">
     <span class="tab active logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span></span>
+    <a class="tab" href="https://soldat.live/">Soldat TV</a>
     <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
     <a class="tab ext" href="https://store.steampowered.com/app/638490/Soldat/" target="_blank" rel="noopener">Steam</a>
-    <a class="tab ext" href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">Source</a>
     <span class="fill-tab"></span>
     <span class="tag">1.7.1 in your browser</span>
     <span id="account" class="account" hidden></span>
@@ -56,7 +74,7 @@
           <button id="join" type="submit" class="primary">Join Game</button>
         </div>
       </form>
-      <p class="hint">Double-click a server to join. Esc in the game opens the menu, “Exit to menu” brings you back here.</p>
+      <p class="hint">Server owners: contact <b>humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a> about any issue.</p>
     </section>
 
     <aside class="side">
@@ -128,7 +146,7 @@
   <footer>
     <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> © Transhuman Design ·
     client code rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
-    web port by <a href="https://github.com/humanova" target="_blank" rel="noopener">humanova</a>
+    web port by <a href="https://twitter.com/humanova" target="_blank" rel="noopener">humanova</a>
   </footer>
 </div>
 
@@ -140,6 +158,7 @@
 <div id="loading">
   <div class="box">
     <div class="logo"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span></div>
+    <h1>Play Soldat online in your browser</h1>
     <p id="loading-text">Loading...</p>
     <div class="bar"><div id="loading-bar"></div></div>
   </div>

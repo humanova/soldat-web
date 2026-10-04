@@ -237,12 +237,14 @@ game at [soldat.pl](https://soldat.pl/en/) or on
 
 The code in this repository is MIT licensed, see [LICENSE](LICENSE). It is the Soldat
 client by Transhuman Design and contributors ([Soldat/soldat](https://github.com/Soldat/soldat))
-plus the web port by [humanova](https://github.com/humanova).
+plus the web port by [humanova](https://twitter.com/humanova).
 
 The game data is not covered by that license: `web/soldat.smod` and `web/assets/` hold
 files of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
 [base game content](https://github.com/opensoldat/base) (CC BY 4.0). The screenshots are
-pictures of the game, and the icon (`web/favicon.ico`, `web/soldat-icon.png`) is Soldat's own.
+pictures of the game, and so are the link previews (`web/og-2.jpg`, `web/og-play.jpg`). The icon
+(`web/soldat-icon.png`) is Soldat's own; the site icons (`web/favicon.ico`,
+`web/apple-touch-icon.png`) are made from it.
 
 Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), the country
 flags of [flag-icons](https://github.com/lipis/flag-icons) (MIT, `web/flags.png`), stb_image

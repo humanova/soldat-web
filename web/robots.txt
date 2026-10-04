@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /auth/
 
 Sitemap: https://soldat.live/sitemap.xml
