@@ -23,8 +23,9 @@
 </script>
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="stylesheet" href="spectate.css">
-<!-- a link to a match opens on the loading screen, not the guide (js/spectate/main.js: boot) -->
-<script>if (/[?&]watch=/.test(location.search)) document.documentElement.classList.add('direct');</script>
+<!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
+     (js/spectate/main.js: boot) -->
+<script>if (/[?&]watch=/.test(location.search) || /\/[\w-]+$/.test(location.pathname)) document.documentElement.classList.add('direct');</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -163,6 +164,22 @@
     <p>Turn your phone sideways</p>
   </div>
 </div>
+
+<!-- the password of a server that asks for one (js/spectate/main.js: askPassword) -->
+<dialog id="pw" class="pw" aria-labelledby="pw-title">
+  <form method="dialog">
+    <div class="win-head"><span id="pw-title">Password</span></div>
+    <div class="pw-body">
+      <label for="pw-input"><b id="pw-name"></b> needs a password to watch.</label>
+      <input id="pw-input" type="password" maxlength="64" autocomplete="off" spellcheck="false" required>
+      <p id="pw-error" class="pw-error" role="alert" hidden></p>
+      <div class="pw-buttons">
+        <button id="pw-cancel" type="button" class="btn quiet">Cancel</button>
+        <button type="submit" value="ok" class="btn">Watch</button>
+      </div>
+    </div>
+  </form>
+</dialog>
 
 <div id="loading" hidden>
   <div class="loading-box">

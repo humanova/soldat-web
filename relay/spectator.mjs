@@ -8,7 +8,11 @@
 //   node relay/spectator.mjs [--config relay/spectator.json] [--port 8090]
 //
 // Config (JSON, see relay/spectator.example.json):
-//   servers: [{ id, name, host, port, password?, delaySeconds? }]   the only servers it joins
+//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword? }]
+//                   the only servers it joins. group: the guide's tab the server is listed
+//                   under (none: the main list); askPassword: viewers give the server's
+//                   password (a link has it, /<id>?password=..., or the page asks), the hub
+//                   keeps the last one that worked and then anyone can watch
 //   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left
@@ -50,7 +54,8 @@ const HIDDEN = new Set(['/index.html', '/soldat.wasm', '/js/main.js']);
 
 const hubs = new Map();
 for (const s of config.servers || []) {
-  if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536)) {
+  if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536) ||
+      (s.group != null && !/^[\w .'-]{1,24}$/.test(s.group))) {
     throw new Error('bad server entry in config: ' + JSON.stringify(s));
   }
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
@@ -64,6 +69,19 @@ for (const s of config.servers || []) {
 
 const viewersByIp = new Map();
 let viewerCount = 0;
+
+// wrong passwords (askPassword servers), per address: a few tries, then a pause
+const WRONG_MAX = 5, WRONG_WINDOW_MS = 10 * 60_000;
+const wrongByIp = new Map();
+function wrongTries(ip) {
+  const w = wrongByIp.get(ip);
+  return w && Date.now() - w.since < WRONG_WINDOW_MS ? w.count : 0;
+}
+function addWrong(ip) {
+  const count = wrongTries(ip);
+  wrongByIp.set(ip, { count: count + 1, since: count ? wrongByIp.get(ip).since : Date.now() });
+}
+setInterval(() => { for (const ip of wrongByIp.keys()) if (!wrongTries(ip)) wrongByIp.delete(ip); }, 60_000).unref();
 
 function handleWatch(req, socket, head) {
   const ip = clientIp(req);
@@ -96,18 +114,30 @@ function handleWatch(req, socket, head) {
     if (!m || typeof m !== 'object') { ws.close(1003); return; }
     const hub = typeof m.server === 'string' ? hubs.get(m.server) : null;
     if (!hub) { ws.sendText({ type: 'error', message: 'Unknown server.' }); ws.close(1008); return; }
-    if (m.type === 'watch') cleanup = watch(ws, ip, hub);
+    let password;
+    if (m.type === 'watch' && hub.cfg.askPassword) {
+      const refuse = (message, reason) => { ws.sendText({ type: 'error', message, reason }); ws.close(1008); };
+      const blocked = wrongTries(ip) >= WRONG_MAX;
+      if (!blocked && typeof m.password === 'string') password = m.password.slice(0, 64);
+      const ok = hub.checkPassword(password);
+      if (ok === 'missing' && blocked && m.password) { refuse('Too many wrong passwords. Try again in a few minutes.'); return; }
+      if (ok === 'missing') { refuse('This server needs a password.', 'password'); return; }
+      if (ok === 'wait') { refuse('Someone just tried a wrong password. Try again in a few seconds.'); return; }
+    }
+    if (m.type === 'watch') cleanup = watch(ws, ip, hub, password);
     else if (m.type === 'files') cleanup = files(ws, ip, hub, m.files);
     else ws.close(1003);
   };
 }
 
-function watch(ws, ip, hub) {
+function watch(ws, ip, hub, password) {
   const viewer = {
     send: (buf) => ws.sendBinary(buf),
     sendText: (obj) => ws.sendText(obj),
     close: (code) => ws.close(code),
     get buffered() { return ws.buffered; },
+    password,
+    wrongPassword: () => addWrong(ip),
   };
   let windowStart = Date.now(), windowCount = 0;
   ws.onmessage = (msg, binary) => {
@@ -197,6 +227,8 @@ async function listServers(fresh) {
       : null);
     return {
       ...info,
+      group: h.cfg.group || null,
+      locked: h.locked(),
       names,
       title: e ? e.Name : null,
       mode: e ? e.GameStyle : null,
@@ -230,6 +262,9 @@ const server = http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
   // one address for the page (search engines would list both)
   if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
+  // a server's own address (/<id>): the page, tuned in to it
+  const id = url.pathname.slice(1);
+  if (hubs.has(id)) { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
   serveStatic(ROOT, req, res, { index: 'spectate.html', hidden: HIDDEN });
 });
 

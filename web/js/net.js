@@ -83,7 +83,7 @@ export function createNet(rt, vfs, opts) {
           const sample = performance.now() - msg.t;
           rtt = rtt ? rtt * 0.7 + sample * 0.3 : sample;
         } else if (msg.type === 'error') {
-          opts.onError && opts.onError(msg.message || 'relay error');
+          opts.onError && opts.onError(msg.message || 'relay error', msg);
           closeSocket();
         } else if (opts.onMessage) {
           opts.onMessage(msg);

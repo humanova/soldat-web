@@ -8,6 +8,8 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
 const TITLE = document.title;
+// a server's own address, /<id> (older links: ?watch=<id>)
+const directId = params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
 
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
@@ -31,6 +33,15 @@ function savePrefs() {
   try { localStorage.setItem('soldattv', JSON.stringify(prefs)); } catch (_) {}
 }
 
+// passwords of servers that ask for one, kept while the tab is open (a link's ?password= goes in
+// here and out of the address bar)
+const passwords = (() => {
+  try { return new Map(Object.entries(JSON.parse(sessionStorage.getItem('soldattv.passwords') || '{}'))); } catch (_) { return new Map(); }
+})();
+function savePasswords() {
+  try { sessionStorage.setItem('soldattv.passwords', JSON.stringify(Object.fromEntries(passwords))); } catch (_) {}
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -48,7 +59,7 @@ const game = new SoldatRuntime(canvas, {
   relayUrl: () => hubBase() + '/watch',
   relayRequest(kind, d) {
     if (kind === 'files') return { type: 'files', server: watching && watching.id, files: d.files };
-    return { type: 'watch', server: watching && watching.id };
+    return { type: 'watch', server: watching && watching.id, password: watching ? passwords.get(watching.id) : undefined };
   },
   onRelayMessage: onHubMessage,
   args: debug ? ['-log_level', params.get('debug') || '1'] : [],
@@ -61,9 +72,17 @@ const game = new SoldatRuntime(canvas, {
     if (w * h > max) { const s = Math.sqrt(max / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
     return [w, h];
   },
-  onNetError(message) {
-    setStatus(message, true);
+  onNetError(message, data) {
+    const ch = watching;
+    const password = !!(ch && data && data.reason === 'password');
+    if (!password) setStatus(message, true);
     if (watching) game.leave();
+    // the server's password was wrong or is needed: ask for it
+    if (password) {
+      passwords.delete(ch.id);
+      savePasswords();
+      askPassword(ch, message);
+    }
   },
   onLeave: () => showGuide(),
   onExit: () => showGuide(),
@@ -117,6 +136,7 @@ let pollTimer = 0;
 
 function watch(ch) {
   watching = ch;
+  tab = ch.group || null;
   setStatus('');
   $('ch-name').textContent = ch.name;
   $('ch-delay').hidden = true;
@@ -138,7 +158,7 @@ function watch(ch) {
   fitPicture();
   // phones watch on the whole screen, held sideways (not on an iPhone: no full screen for pages)
   if (phone && document.fullscreenEnabled && !document.fullscreenElement) enterFullscreen();
-  history.replaceState(null, '', '?watch=' + encodeURIComponent(ch.id) + (debug ? '&debug' : ''));
+  history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
   document.title = `${ch.name} · Soldat TV`;
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
   setCvar('snd_volume', prefs.muted ? '0' : '60');
@@ -161,7 +181,7 @@ function showGuide() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $('watch').hidden = true;
   $('guide').hidden = false;
-  history.replaceState(null, '', location.pathname + (debug ? '?debug' : ''));
+  showTabAddress();
   document.title = TITLE;
   refresh();
 }
@@ -836,6 +856,7 @@ function setStatus(text, error = false) {
 }
 
 let channels = [];
+let tab = null;         // the group whose servers the guide lists (null: the main list)
 let listUpdated = null; // when the hub last asked the lobby, in this page's clock (0: never, null: unknown)
 let listError = '';
 
@@ -881,11 +902,44 @@ function showAge() {
 }
 setInterval(() => { if (!watching) showAge(); }, 1000);
 
+// ---------- tabs: servers with a group (the hub's config) are listed under its own tab
+
+const slug = (group) => group.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+function showTabAddress() {
+  history.replaceState(null, '', './' + (debug ? '?debug' : '') + (tab ? '#' + slug(tab) : ''));
+}
+
+function setTab(group) {
+  tab = group;
+  showTabAddress();
+  renderGuide();
+}
+
+function renderTabs() {
+  const groups = [...new Set(channels.map(c => c.group).filter(Boolean))];
+  if (tab && !groups.includes(tab)) tab = null;
+  const logo = document.querySelector('.tabs .logo');
+  logo.classList.toggle('active', !tab);
+  for (const t of document.querySelectorAll('.tabs .group')) t.remove();
+  let after = logo;
+  for (const g of groups) {
+    const a = el('a', 'tab group' + (g === tab ? ' active' : ''), g);
+    a.href = '#' + slug(g);
+    a.addEventListener('click', (e) => { e.preventDefault(); setTab(g); });
+    after.after(a);
+    after = a;
+  }
+}
+document.querySelector('.tabs .logo').addEventListener('click', (e) => { e.preventDefault(); setTab(null); });
+
 function renderGuide() {
+  renderTabs();
   const ol = $('channels');
   ol.textContent = '';
+  const list = channels.filter(c => (c.group || null) === tab);
   let players = 0;
-  for (const c of channels) {
+  for (const c of list) {
     players += c.players || 0;
     const li = el('li');
     const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
@@ -897,6 +951,7 @@ function renderGuide() {
     title.append(flag(c.country) || el('i', 'cflag none'), el('span', 'ch-label', c.name));
     if (c.state === 'live') title.append(el('span', 'chip on-air', c.viewers ? `On air · ${c.viewers}` : 'On air'));
     else if (c.state === 'waiting') title.append(el('span', 'chip off-air', 'Off air'));
+    if (c.locked) title.append(el('span', 'chip', 'Password'));
     if (c.bots) {
       const humans = Math.max(0, (c.players || 0) - c.bots);
       title.append(el('span', 'chip bots', humans ? `${c.bots} bots` : 'Bots only'));
@@ -930,14 +985,43 @@ function renderGuide() {
     appendNames(li, c);
     ol.append(li);
   }
-  $('list-empty').hidden = channels.length > 0;
+  $('list-empty').hidden = list.length > 0;
   $('list-empty').textContent = 'No servers are set up yet.';
   const summary = $('summary');
   summary.textContent = '';
-  if (channels.length) {
-    summary.append('Servers: ', el('b', '', String(channels.length)), ' - Players: ', el('b', '', String(players)));
+  if (list.length) {
+    summary.append('Servers: ', el('b', '', String(list.length)), ' - Players: ', el('b', '', String(players)));
   }
 }
+
+// ---------- the password of a server that asks for one (until the hub is in)
+
+let asking = null;  // the server the dialog asks for
+
+function askPassword(ch, error = '') {
+  asking = ch;
+  $('pw-name').textContent = ch.name;
+  $('pw-error').textContent = error;
+  $('pw-error').hidden = !error;
+  $('pw-input').value = '';
+  $('pw').returnValue = '';
+  if (!$('pw').open) $('pw').showModal();
+  $('pw-input').focus();
+}
+
+$('pw-cancel').addEventListener('click', () => $('pw').close());
+$('pw').addEventListener('close', () => {
+  const ch = asking, pw = $('pw-input').value;
+  asking = null;
+  $('pw-input').value = '';
+  if ($('pw').returnValue !== 'ok' || !ch || !pw) {
+    if (!watching) showTabAddress();
+    return;
+  }
+  passwords.set(ch.id, pw);
+  savePasswords();
+  tuneIn(ch);
+});
 
 // the arrow after the player count opens the names of who plays under the row; open rows
 // stay open when the list refreshes
@@ -1004,6 +1088,11 @@ started.catch((e) => console.error(e));
 
 async function tuneIn(ch) {
   if (tuning) return;
+  if (ch.locked && !passwords.has(ch.id)) {
+    $('loading').hidden = true;
+    askPassword(ch);
+    return;
+  }
   if (!ready) {
     tuning = true;
     $('loading').hidden = false;
@@ -1021,12 +1110,23 @@ async function tuneIn(ch) {
 }
 
 async function boot() {
-  const direct = params.get('watch');
+  const direct = directId;
   if (direct) { $('guide').hidden = true; $('loading').hidden = false; }
   document.documentElement.classList.remove('direct');
+  // a link with the server's password (/<id>?password=...): kept, but not shown
+  if (direct && params.get('password')) {
+    passwords.set(direct, params.get('password'));
+    savePasswords();
+    params.delete('password');
+    const rest = params.toString();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+  }
+  const hash = location.hash.slice(1);
   await refresh();
   setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
   const ch = direct && channels.find(c => c.id === direct);
+  tab = ch ? ch.group || null : channels.map(c => c.group).find(g => g && slug(g) === hash) || null;
+  renderGuide();
   $('guide').hidden = false;
   if (ch) await tuneIn(ch);
   else $('loading').hidden = true;

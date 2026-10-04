@@ -14,11 +14,13 @@ const MIME = {
 const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.wasm', '.smod', '.ttf', '.bmp', '.pms', '.txt', '.svg', '.xml', '.ico']);
 const gzCache = new Map();
 
-// opts.index: file served for "/" (default index.html); opts.hidden: paths that are not served
+// opts.index: file served for "/" (default index.html); opts.hidden: paths that are not served;
+// opts.file: the file to serve instead of the one the address names
 export function serveStatic(ROOT, req, res, opts = {}) {
   let urlPath;
   try { urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch (_) { res.writeHead(400).end(); return; }
-  if (urlPath === '/') urlPath += opts.index || 'index.html';
+  if (opts.file) urlPath = opts.file;
+  else if (urlPath === '/') urlPath += opts.index || 'index.html';
   else if (urlPath.endsWith('/')) urlPath += 'index.html';
   if (opts.hidden && opts.hidden.has(urlPath)) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
   const file = path.resolve(ROOT, '.' + urlPath);

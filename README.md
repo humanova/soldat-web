@@ -103,10 +103,15 @@ Then open <http://localhost:8090> and pick a server. The camera follows the acti
 itself, or you can follow one player, look around, or see the whole map. The score, flag
 news, chat and the followed player's card are on screen. Phones work held sideways.
 
+Every server has its own link, `/<id>`. Servers with a `group` get their own tab in the
+list. With `askPassword`, the server's password comes from a viewer instead of the
+config: a link can carry it, `/<id>?password=...`, or the page asks. Once it works,
+anyone can watch, and the hub keeps it until the server's password changes.
+
 | Setting | Default | What it does |
 |---|---|---|
 | `--port` / `PORT` | 8090 | HTTP port |
-| `servers` | none | servers to watch: `id`, `name`, `host`, `port`, optional `password` and `delaySeconds` |
+| `servers` | none | servers to watch: `id`, `name`, `host`, `port`, optional `password`, `delaySeconds`, `group` and `askPassword` |
 | `playerName` | `[soldat.live] Soldat TV` | the spectator's name on the servers (at most 23 characters) |
 | `delaySeconds` | 0 | broadcast delay, so players can't use the stream to spy on each other |
 | `lingerSeconds` | 60 | how long it stays on a server after the last viewer leaves |

@@ -21,6 +21,7 @@ const SILENCE_MS = 15_000;          // no datagram for this long: the connection
 const CAMERA_MS = 500;              // spectators report their camera twice a second
 const RECONNECT_MS = [5_000, 15_000, 30_000, 60_000];
 const DIRECTOR_HOLD_MS = 8_000;     // keep a camera target at least this long
+const PASSWORD_HOLD_MS = 10_000;    // after a wrong password, no new one for this long
 const TICKS_PER_SECOND = 60;
 
 // PlayersList layout (docs/PROTOCOL-1.7.1.md)
@@ -34,7 +35,10 @@ const FLAG_STYLES = new Set([1, 2, 3]);  // alpha, bravo and pointmatch flag
 
 export class Hub {
   constructor(cfg, opts) {
-    this.cfg = cfg;               // { id, name, host, port, password }
+    this.cfg = cfg;               // { id, name, host, port, password, askPassword }
+    this.password = cfg.password || '';  // the one the hub joins with
+    this.knownPassword = this.password;  // the last one that let it in
+    this.passwordHold = 0;
     this.playerName = opts.playerName;
     this.hwid = makeHwid(opts.playerName + '@' + cfg.id);
     this.delayMs = Math.max(0, (cfg.delaySeconds ?? opts.delaySeconds ?? 0) * 1000);
@@ -76,6 +80,23 @@ export class Hub {
     if (this.state === 'waiting') v.sendText({ type: 'status', message: `Reconnecting to the server (${this.error})...` });
     else if (this.ready) this.greet(v);
     else v.sendText({ type: 'status', message: 'Joining the server as a spectator...' });
+  }
+
+  // A server with askPassword gets its password from viewers (a link has it, or the page
+  // asks). Once one has let the hub in, anyone watches, and the hub keeps it for the next
+  // time. Returns 'ok', 'missing' or 'wait' (a wrong one was just tried).
+  checkPassword(pw) {
+    if (!this.cfg.askPassword || this.state === 'live' || this.state === 'joining') return 'ok';
+    pw = typeof pw === 'string' ? pw.slice(0, 64) : '';
+    // a new one: the server's password may have changed
+    if (pw && pw !== this.knownPassword && Date.now() >= this.passwordHold) { this.password = pw; return 'ok'; }
+    if (this.knownPassword) { this.password = this.knownPassword; return 'ok'; }
+    return pw ? 'wait' : 'missing';
+  }
+
+  // the list shows a lock: watching needs a password first
+  locked() {
+    return !!this.cfg.askPassword && !this.knownPassword && this.state !== 'live' && this.state !== 'joining';
   }
 
   removeViewer(v) {
@@ -149,7 +170,7 @@ export class Hub {
     this.log(`joining ${this.ip}:${this.cfg.port} as "${this.playerName}"`);
   }
 
-  disconnect(reason) {
+  disconnect(reason, message = 'The match feed stopped: ' + reason) {
     if (this.sock) {
       const sock = this.sock;
       const close = () => { try { sock.close(); } catch (_) {} };
@@ -174,7 +195,7 @@ export class Hub {
     // viewers' clients knew this session; they come back with a fresh join (the page retries)
     for (const v of [...this.viewers]) {
       this.viewers.delete(v);
-      v.sendText({ type: 'error', message: 'The match feed stopped: ' + reason });
+      v.sendText({ type: 'error', message, ...(reason === 'wrong password' && { reason: 'password' }) });
       v.close(1011);
     }
   }
@@ -192,12 +213,32 @@ export class Hub {
     });
   }
 
+  // The password was wrong: the viewers who gave it count a wrong try. With an older one
+  // that worked the hub tries that again, else everyone is told and no new one is tried for
+  // a while (the server bans addresses that keep joining).
+  wrongPassword() {
+    const tried = this.password;
+    if (tried === this.knownPassword) this.knownPassword = '';
+    this.passwordHold = Date.now() + PASSWORD_HOLD_MS;
+    for (const v of this.viewers) if (v.password === tried && v.wrongPassword) v.wrongPassword();
+    if (this.knownPassword) {
+      this.log('wrong password, trying the last one that worked');
+      this.password = this.knownPassword;
+      try { this.sock.close(); } catch (_) {}
+      this.sock = null;
+      this.connect();
+      return;
+    }
+    this.password = '';
+    this.disconnect('wrong password', 'Wrong password.');
+  }
+
   sendRaw(buf) {
     if (this.sock) try { this.sock.send(buf, this.cfg.port, this.ip); } catch (_) {}
   }
 
   sendRequestGame() {
-    const pw = Buffer.from(this.cfg.password || '', 'latin1');
+    const pw = Buffer.from(this.password, 'latin1');
     const b = Buffer.alloc(46 + pw.length);
     b[0] = MSG.RequestGame;
     b[3] = 0;
@@ -263,6 +304,7 @@ export class Hub {
       } else if (id === MSG.UnAccepted) {
         const state = m[3];
         const text = fixedString(m, 4, m.length - 4);
+        if (state === 3 && this.cfg.askPassword) { this.wrongPassword(); return; }
         const why = { 2: 'wrong version', 3: 'wrong password', 4: 'banned', 5: 'server or spectator slots full',
           7: 'invalid hardware id' }[state] || 'refused';
         this.fail(`server refused the spectator: ${why}${text ? ' (' + text + ')' : ''}`);
@@ -308,6 +350,7 @@ export class Hub {
     this.state = 'live';
     this.failures = 0;
     this.error = '';
+    this.knownPassword = this.password;
     this.clearTimer('join');
     this.match.own = ownNewPlayer[3];
     this.match.ownName = fixedString(ownNewPlayer, 7, NAME_LEN);

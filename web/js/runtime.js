@@ -148,7 +148,7 @@ export class SoldatRuntime {
       onMessage: hooks.onRelayMessage,
       assetBase: () => this.assetBase,
       assetIndex: (p) => this.findAsset(p),
-      onError: (msg) => hooks.onNetError && hooks.onNetError(msg),
+      onError: (msg, data) => hooks.onNetError && hooks.onNetError(msg, data),
     });
     const wasi = createWasi(rt, this.vfs, {
       args: ['soldat', ...(hooks.args || [])],
