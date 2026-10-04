@@ -4,9 +4,10 @@
 // (relay/spectator.mjs is the public spectator hub; it shares only relay/lib.)
 // No dependencies (Node.js 18+).
 //
-//   node relay/play.mjs [--port 8080] [--root ./web] [--allow 127.0.0.1:23073]
+//   node relay/play.mjs [--port 8080] [--root ./web] [--allow 127.0.0.1:23073] [--servers relay/spectator.json]
 //
 // Environment: PORT, ROOT, ALLOW (comma separated host:port list), ALLOW_ANY=1,
+// SERVER_LIST (a Soldat TV config whose servers are the only ones to join instead of the lobby's),
 // LOBBY_URL, TRUST_PROXY=1, MAX_SESSIONS_PER_IP, ORIGINS (comma separated page
 // origins allowed to use the relay besides its own; "*" for any).
 // Discord sign-in (required to play when DISCORD_CLIENT_ID is set): DISCORD_CLIENT_ID,
@@ -15,6 +16,7 @@
 // (comma separated accounts that may not use the relay).
 
 import http from 'node:http';
+import fs from 'node:fs';
 import dgram from 'node:dgram';
 import net from 'node:net';
 import dns from 'node:dns/promises';
@@ -105,8 +107,9 @@ const lobbyList = makeLobby(LOBBY_URL, log);
 async function lobby() {
   const l = await lobbyList();
   if (l.body === undefined) {
-    l.body = JSON.stringify({ Servers: l.servers });
-    l.allowed = new Set(l.servers.map(s => `${s.IP}:${s.Port}`));
+    const servers = listed ? l.servers.filter(s => listed.has(`${s.IP}:${s.Port}`)) : l.servers;
+    l.body = JSON.stringify({ Servers: servers });
+    l.allowed = new Set(servers.map(s => `${s.IP}:${s.Port}`));
   }
   return l;
 }
@@ -124,9 +127,29 @@ async function resolveTarget(host, port) {
   return { ip, port };
 }
 
+// With a server list, only its servers can be joined (and the page lists only those):
+// every server the relay joins sees the relay's address, so strangers' servers are out.
+const SERVER_LIST = arg('servers', process.env.SERVER_LIST || '');
+let listed = null; // their "ip:port"
+if (SERVER_LIST) {
+  listed = new Set();
+  for (const s of JSON.parse(fs.readFileSync(SERVER_LIST, 'utf8')).servers || []) {
+    try {
+      const t = await resolveTarget(s.host, s.port);
+      listed.add(`${t.ip}:${t.port}`);
+    } catch (e) { log(`server list: ${s.host}:${s.port} left out: ${e.message}`); }
+  }
+}
+
+function notAllowed() {
+  return new Error(listed ? 'This server is not on this site\'s server list.'
+    : 'This relay only connects to servers listed in the Soldat lobby.');
+}
+
 async function targetAllowed(host, ip, port) {
   if (ALLOW_ANY) return true;
   if (staticAllow.has(`${ip}:${port}`) || staticAllow.has(`${host}:${port}`)) return true;
+  if (listed) return listed.has(`${ip}:${port}`);
   const l = await lobby();
   return l.allowed.has(`${ip}:${port}`);
 }
@@ -209,7 +232,7 @@ async function startUdp(ws, clientAddr, m, user) {
   checkAccount(user, clientAddr);
   const { ip, port } = await resolveTarget(m.host, m.port);
   if (!(await targetAllowed(m.host, ip, port))) {
-    throw new Error('This relay only connects to servers listed in the Soldat lobby.');
+    throw notAllowed();
   }
   if (user) {
     const games = gamesByAccount.get(user.id) || 0;
@@ -290,7 +313,7 @@ async function startFiles(ws, clientAddr, m, user) {
   const filePort = Number(m.port);
   const { ip } = await resolveTarget(m.host, filePort - 10);
   if (!(await targetAllowed(m.host, ip, filePort - 10))) {
-    throw new Error('This relay only connects to servers listed in the Soldat lobby.');
+    throw notAllowed();
   }
   log(`file request ${clientAddr} -> ${ip}:${filePort}`);
   return proxyFiles(ws, ip, filePort, m.files);
@@ -332,5 +355,6 @@ server.listen(PORT, () => {
   if (auth) log(`Discord sign-in required to play (accounts at least ${process.env.MIN_ACCOUNT_AGE_DAYS ?? 30} days old)` +
     (blocked.size ? `, ${blocked.size} blocked` : ''));
   else log('WARNING: Discord sign-in is off (no DISCORD_CLIENT_ID): players choose their own hardware ids');
+  if (listed) log(`joins only the ${listed.size} servers of ${SERVER_LIST}`);
   if (staticAllow.size) log('extra allowed servers:', [...staticAllow].join(', '));
 });

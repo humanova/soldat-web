@@ -70,6 +70,7 @@ upgrades on `/relay` (pages served over HTTPS must use `wss://`). Each player us
 | `--root` / `ROOT` | `web/` | folder with the client |
 | `--allow` / `ALLOW` | none | extra `host:port` game servers to allow (by default only servers in the Soldat lobby) |
 | `ALLOW_ANY=1` | off | allow any server (private setups only) |
+| `--servers` / `SERVER_LIST` | none | a Soldat TV config (`relay/spectator.json`): only its servers can be joined and are listed |
 | `ORIGINS` | same origin | other sites allowed to use the relay (`*` for any) |
 | `TRUST_PROXY=1` | off | take the client address from `X-Forwarded-For` |
 | `MAX_SESSIONS_PER_IP` | 4 | game and download sessions per visitor |
@@ -85,6 +86,8 @@ Good to know before you open it to the public:
 - Everyone on your relay reaches game servers from the relay's IP address, so an IP ban
   on one of them bans all of them. Players have their own hardware IDs, which servers
   can ban instead. Without Discord sign-in, each browser makes up its own.
+- Every server the relay joins sees that address, and anyone can put a server in the
+  lobby. With `SERVER_LIST` only servers you chose see it.
 - A 1.7.1 server blocks an address that sends more than 18 join requests in about 16
   seconds. The relay spaces out joins per server (at most 14 per 17 seconds), so when
   many players join at once, some wait a few seconds.

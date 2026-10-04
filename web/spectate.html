@@ -21,8 +21,8 @@
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "WebSite", "name": "Soldat TV", "alternateName": "soldat.live", "url": "https://soldat.live/"}
 </script>
-<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 64x64">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
+<link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <link rel="stylesheet" href="spectate.css">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
@@ -30,6 +30,7 @@
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 20 20"><path d="M6 3.8v12.4L16 10z" fill="currentColor"/></symbol>
   <symbol id="i-back" viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-prev" viewBox="0 0 20 20"><path d="M12 5 7 10l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-next" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -46,8 +47,9 @@
 <div id="guide">
   <header class="tabs">
     <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
+    <!-- the hub's server groups (Gather) are put between the logo and Play: js/spectate/main.js renderTabs -->
+    <a class="tab play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg aria-hidden="true"><use href="#i-play"/></svg>Play</a>
     <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
-    <a class="tab" href="https://play.soldat.live/">Play</a>
     <span class="fill-tab"></span>
     <span class="tag">Live matches</span>
   </header>
@@ -76,7 +78,7 @@
           they are played on the public servers.</p>
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone watching.</p>
         <p>Contact <b class="nick">humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
-          if you want your server to be included.</p>
+          if you want your server to be included. Listed servers can also be played on <a href="https://play.soldat.live">play.soldat.live</a>.</p>
       </div>
       <section class="tv-chat" aria-labelledby="tv-chat-title">
         <h2 id="tv-chat-title">Chat</h2>
