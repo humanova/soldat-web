@@ -17,6 +17,8 @@ export class WsConn {
     this.onclose = null;
     socket.setNoDelay(true);
     socket.on('data', (d) => { this.buf = Buffer.concat([this.buf, d]); this.parse(); });
+    // a client gone without a close frame: the HTTP server keeps half-open sockets
+    socket.on('end', () => this.finish());
     socket.on('close', () => this.finish());
     socket.on('error', () => this.finish());
     if (this.buf.length) setImmediate(() => this.parse());
