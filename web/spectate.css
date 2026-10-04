@@ -212,7 +212,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .win-head { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 3px 0 8px; background: var(--deep);
   color: var(--muted); font-size: 12px; white-space: nowrap; }
 .win-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.handle, .scorebug, .banners { cursor: move; touch-action: none; }
+.handle, .scorebug, .banners, .vote { cursor: move; touch-action: none; }
 .grip { flex: none; width: 10px; height: 14px; opacity: .8;
   background: radial-gradient(circle, var(--dim) 1px, transparent 1.4px) 0 1px / 4px 4px; }
 .move.moving { opacity: .8; transition: none; }
@@ -258,6 +258,23 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .banner .flag { width: 14px; height: 14px; flex: none; }
 .banner.gone { opacity: 0; }
 @keyframes fade-in { from { opacity: 0; } }
+
+/* a vote: one slim line under the score, its time running out along the bottom */
+.vote { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); z-index: 1; display: flex; align-items: center;
+  gap: 6px; height: 20px; max-width: min(460px, calc(100% - 20px)); padding-right: 8px; overflow: hidden;
+  background: rgba(44, 51, 65, .85); font-size: 12px; white-space: nowrap; text-shadow: 1px 1px 0 #000;
+  animation: fade-in .2s ease-out; transition: opacity .4s; }
+.vote .v-kind { flex: none; align-self: stretch; display: flex; align-items: center; padding: 0 6px; background: var(--green-lo);
+  color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-shadow: none; }
+.vote.kick .v-kind { background: #b23a30; }
+.vote b { flex: none; font-weight: 700; }
+.vote .v-by { min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.vote .v-left { flex: none; color: var(--text); font-variant-numeric: tabular-nums; }
+.vote::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p, 0%); background: var(--orange);
+  transition: width .25s linear; }
+.vote.done::after { display: none; }
+.vote.gone { opacity: 0; }
+.chip.vote { height: 15px; padding: 0 5px; background: #b23a30; color: #fff; font-size: 10px; font-weight: 400; }
 
 /* a team scores: the game's big message, in the middle */
 .bigmsg { position: absolute; left: 0; right: 0; top: 24%; z-index: 1; text-align: center; pointer-events: none;
@@ -432,6 +449,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .sb-flags { font-size: 11px; }
   .fstat { max-width: 130px; padding: 1px 7px; }
   .banners { top: 68px; }
+  .vote { top: 52px; }
   .banner { font-size: 12px; }
   .bigmsg .big { font-size: 24px; }
   .bigmsg .by { font-size: 14px; }

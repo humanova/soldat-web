@@ -355,6 +355,10 @@ begin
     end;
   if Text <> '' then
     MainConsole.Console(Text, CLIENT_MESSAGE_COLOR);
+  {$IFDEF SPECTATOR}
+  if PlayerMsg.Why = KICK_VOTED then
+    SpectatorVoteKicked(PlayerMsg.Num);
+  {$ENDIF}
   // shown when the game ends because of it
   if (PlayerMsg.Num = MySprite) and (PlayerMsg.Why <> KICK_CHANGETEAM) and
     (PlayerMsg.Why <> KICK_LEFTGAME) then
@@ -475,6 +479,9 @@ begin
 
   MapChangeName := MapChange.MapName;
   MapChangeCounter := MapChange.Counter;
+  {$IFDEF SPECTATOR}
+  SpectatorNextMap(MapChangeName);
+  {$ENDIF}
   FragsMenuShow := not Reply;
   StatsMenuShow := False;
   GameMenuShow(LimboMenu, False);

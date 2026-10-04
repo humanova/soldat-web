@@ -1875,7 +1875,8 @@ var
   x, y: Single;
   Str: array[0..1] of WideString;
 begin
-  if VoteActive then
+  // the spectator page shows the vote itself (js/spectate/main.js: the vote strip)
+  if VoteActive {$IFDEF SPECTATOR}and False{$ENDIF} then
   begin
     SetFontStyle(FONT_WEAPONS_MENU);
 
@@ -2931,7 +2932,7 @@ begin
   end;
 
   // vote on
-  if VoteActive then
+  if VoteActive {$IFDEF SPECTATOR}and False{$ENDIF} then
   begin
     GfxDrawSprite(T^[GFX_INTERFACE_BACK], 45 * _iscala.x, 400 * _iscala.y,
       252 / BACKGROUND_WIDTH, 40 / BACKGROUND_WIDTH,

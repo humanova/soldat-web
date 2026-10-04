@@ -28,7 +28,7 @@ procedure SpectatorSet(Name, Value: PAnsiChar);
 // its length (0 when it does not fit)
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
 
-// What happened since the page last asked: chat and flag events. The game does not show
+// What happened since the page last asked: chat, flag and vote events. The game does not show
 // these itself in this build (no console, no chat bubbles, no big flag messages); the
 // page does. Shared code calls these through SPECTATOR hooks.
 const
@@ -44,6 +44,10 @@ const
 procedure SpectatorChat(Slot, Kind: Integer; const Text: WideString);
 // Team: the flag's team (1 red, 2 blue, 3 yellow); for FLAG_SCORED the team that scored
 procedure SpectatorFlag(const Kind: AnsiString; Team, Slot: Integer);
+// a player was voted off the server (before the client forgets them)
+procedure SpectatorVoteKicked(Slot: Integer);
+// the server announced the next map (a map vote passed, or the map ended)
+procedure SpectatorNextMap(const Name: string);
 // moves the queued events into Buf (UTF-8 lines, see SpectatorEvents in the .pas) and
 // returns their length; keeps them when they do not fit
 function SpectatorEvents(Buf: PAnsiChar; Size: LongInt): LongInt;
@@ -117,6 +121,18 @@ procedure SpectatorFlag(const Kind: AnsiString; Team, Slot: Integer);
 begin
   QueueEvent(Format('F'#9'%s'#9'%d'#9'%d'#9'%d'#9'%s',
     [Kind, Team, Slot, SlotTeam(Slot), CleanW(SlotName(Slot))]));
+end;
+
+// K  slot  team  name
+procedure SpectatorVoteKicked(Slot: Integer);
+begin
+  QueueEvent(Format('K'#9'%d'#9'%d'#9'%s', [Slot, SlotTeam(Slot), CleanW(SlotName(Slot))]));
+end;
+
+// N  map
+procedure SpectatorNextMap(const Name: string);
+begin
+  QueueEvent('N'#9 + Name);
 end;
 
 function SpectatorEvents(Buf: PAnsiChar; Size: LongInt): LongInt;
@@ -218,10 +234,12 @@ end;
 //      weapon  name
 //   S  slot  name   (the other spectators; the hub's own one is the page)
 //   G  flag (1 red, 2 blue, 3 yellow)  state (0 in base, 1 carried, 2 dropped)  carrier slot
+//   V  type (0 map, 1 kick)  seconds left  target slot (kick)  target team  target (player or
+//      map)  started by  reason   (a vote is on; the game's own vote box is not drawn)
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
 var
-  S: AnsiString;
-  i, Flag, State: Integer;
+  S, Target: AnsiString;
+  i, Flag, State, Slot: Integer;
 begin
   S := Format('M'#9'%d'#9'%s'#9'%d'#9'%d'#9'%d'#9'%d'#9'%d'#9'%d'#9'%.3f'#10,
     [sv_gamemode.Value, Clean(Map.Name), TimeLimitCounter div 60, TeamScore[1], TeamScore[2],
@@ -254,6 +272,22 @@ begin
             State := 2;
           S := S + Format('G'#9'%d'#9'%d'#9'%d'#10, [Style, State, HoldingSprite]);
         end;
+  if VoteActive then
+  begin
+    Slot := 0;
+    Target := VoteTarget;
+    if VoteType = VOTE_KICK then
+    begin
+      Slot := StrToIntDef(VoteTarget, 0);
+      if (Slot < 1) or (Slot > MAX_SPRITES) then
+        Slot := 0
+      else
+        Target := Sprite[Slot].Player.Name;
+    end;
+    S := S + Format('V'#9'%d'#9'%d'#9'%d'#9'%d'#9'%s'#9'%s'#9'%s'#10,
+      [VoteType, Max(0, (VoteTimeRemaining + 59) div 60), Slot, SlotTeam(Slot), Clean(Target),
+       Clean(VoteStarter), Clean(VoteReason)]);
+  end;
   Result := Length(S);
   if Result + 1 > Size then
     Exit(0);

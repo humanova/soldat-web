@@ -145,6 +145,10 @@ function watch(ch) {
   $('card').hidden = true;
   $('banners').textContent = '';
   $('bigmsg').hidden = true;
+  vote = voteEnded = null;
+  voteKey = '';
+  clearTimeout(voteTimer);
+  $('vote').hidden = true;
   scoreKey = cardKey = rosterKey = '';
   chatLines.length = 0;
   $('chat-lines').textContent = '';
@@ -158,6 +162,7 @@ function watch(ch) {
   setMode('auto', true);
   notice('Tuning in...');
   $('guide').hidden = true;
+  $('loading').hidden = true;  // a link to the match opened on it (boot)
   $('watch').hidden = false;
   fitPicture();
   // phones watch on the whole screen, held sideways (not on an iPhone: no full screen for pages)
@@ -561,6 +566,9 @@ function readState() {
       s.spectators.push({ slot: +f[1], name: f.slice(2).join('\t') });
     } else if (f[0] === 'G') {
       s.flags.push({ flag: +f[1], state: +f[2], carrier: +f[3] });  // state: 0 base, 1 carried, 2 dropped
+    } else if (f[0] === 'V') {
+      // type: 0 map, 1 kick; slot and team: the kick's target
+      s.vote = { type: +f[1], left: +f[2], slot: +f[3], team: +f[4], target: f[5], starter: f[6], reason: f.slice(7).join('\t') };
     }
   }
   return s;
@@ -579,6 +587,10 @@ function readEvents() {
       addChat({ slot: +f[1], team: +f[2], kind: +f[3], name: f[4], text: f.slice(5).join('\t') });
     } else if (f[0] === 'F') {
       flagEvent({ kind: f[1], flag: +f[2], slot: +f[3], team: +f[4], name: f.slice(5).join('\t') });
+    } else if (f[0] === 'K') {
+      votedOff.set(+f[1], performance.now());
+    } else if (f[0] === 'N') {
+      nextMap = { name: f.slice(1).join('\t'), at: performance.now() };
     }
   }
 }
@@ -596,6 +608,7 @@ function poll() {
   // joining resets the zoom
   if (Math.abs(s.zoom - zoom) > 0.01 && performance.now() - joinedAt < 5000) setZoom(zoom);
   renderScorebug(s);
+  renderVote(s);
   renderTarget(s);
   renderCard(s);
   if (!$('roster').hidden) renderRoster(s);
@@ -706,6 +719,76 @@ function bigMessage(e) {
     box.classList.add('gone');
     bigTimer = setTimeout(() => { box.hidden = true; }, 600);
   }, 4000);
+}
+
+// ---------- votes: one line under the score while a kick or map vote runs (the game's own
+// box is not drawn in this build), then its result for a moment. The server sends no tally.
+
+const VOTE_SECONDS = 20;  // Constants.pas: DEFAULT_VOTING_TIME
+let vote = null;          // the running vote
+let voteEnded = null;     // a vote that just ended, waiting for its result: { vote, at }
+let voteKey = '';
+let voteTimer = 0;
+const votedOff = new Map();  // slot -> when the server voted the player off
+let nextMap = null;          // the map the server announced: { name, at }
+
+function renderVote(s) {
+  if (s.vote) {
+    vote = s.vote;
+    voteEnded = null;
+    showVote(s.vote);
+  } else if (vote) {
+    voteEnded = { vote, at: performance.now() };
+    vote = null;
+  }
+  if (voteEnded) resolveVote();
+}
+
+// a kick passed: the target left as voted off; a map vote passed: that map comes next
+function resolveVote() {
+  const { vote: v, at } = voteEnded;
+  const near = (t) => t !== undefined && Math.abs(t - at) < 3000;
+  let result = '';
+  if (v.type === 1 && near(votedOff.get(v.slot))) result = 'was kicked';
+  else if (v.type === 0 && nextMap && near(nextMap.at) && nextMap.name.toLowerCase() === v.target.toLowerCase()) result = 'is next';
+  else if (performance.now() - at < 1500) return;  // the result may follow in a moment
+  voteEnded = null;
+  voteKey = '';
+  const box = $('vote');
+  box.textContent = '';
+  box.classList.add('done');
+  box.append(voteKind(v), voteTarget(v));
+  box.append(el('span', 'v-by', result || 'vote failed'));
+  clearTimeout(voteTimer);
+  voteTimer = setTimeout(() => {
+    box.classList.add('gone');
+    voteTimer = setTimeout(() => { box.hidden = true; }, 400);
+  }, 4000);
+}
+
+const voteKind = (v) => el('span', 'v-kind', v.type === 1 ? 'KICK' : 'MAP');
+function voteTarget(v) {
+  const b = el('b', '', v.target);
+  if (v.type === 1) b.style.color = teamColor({ team: v.team }, true);
+  return b;
+}
+
+function showVote(v) {
+  const box = $('vote');
+  const key = JSON.stringify([v.type, v.slot, v.target, v.starter, v.reason]);
+  if (key !== voteKey) {
+    voteKey = key;
+    clearTimeout(voteTimer);
+    box.textContent = '';
+    box.className = 'vote move' + (v.type === 1 ? ' kick' : '') + (box.classList.contains('placed') ? ' placed' : '');
+    const by = [v.starter && `by ${v.starter}`, v.reason.trim()].filter(Boolean).join(' · ');
+    box.append(voteKind(v), voteTarget(v), el('span', 'v-by', by), el('span', 'v-left', ''));
+    box.title = `${v.type === 1 ? 'Vote to kick' : 'Vote for the map'} ${v.target}` +
+      (v.starter ? `, started by ${v.starter}` : '') + (v.reason.trim() ? `: ${v.reason.trim()}` : '');
+    box.hidden = false;
+  }
+  box.querySelector('.v-left').textContent = `${v.left}s`;
+  box.style.setProperty('--p', `${Math.min(100, (100 * v.left) / VOTE_SECONDS)}%`);
 }
 
 // ---------- chat (off unless the viewer opens it)
@@ -999,7 +1082,8 @@ function closeRoster() {
 // rebuilt only when something in it changes, so a click on a player is not lost
 let rosterKey = '';
 function renderRoster(s) {
-  const key = JSON.stringify([s.style, s.scores, s.follow, s.spectators,
+  const kick = s.vote && s.vote.type === 1 ? s.vote.slot : 0;
+  const key = JSON.stringify([s.style, s.scores, s.follow, s.spectators, kick,
     s.players.map(p => [p.slot, p.team, p.kills, p.deaths, p.dead, p.flag, p.name])]);
   if (key === rosterKey) return;
   rosterKey = key;
@@ -1038,6 +1122,7 @@ function renderRoster(s) {
       sw.style.background = teamColor(p);
       who.append(sw, el('span', '', p.name));
       if (p.flag) who.append(flagIcon(p.flag));
+      if (p.slot === kick) who.append(el('span', 'chip vote', 'Vote'));
       row.append(who, el('span', 'n k', String(p.kills)), el('span', 'n d', String(p.deaths)));
       row.addEventListener('click', () => { setMode('player', true); follow(p.slot); });
       box.append(row);
