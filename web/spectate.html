@@ -145,7 +145,11 @@
       <button id="chat-btn" type="button" class="icon-btn" aria-label="Game chat (C)" aria-expanded="false"><svg><use href="#i-chat"/></svg><i class="unread" hidden></i></button>
       <button id="tvchat-btn" type="button" class="icon-btn" aria-label="Soldat TV chat (Enter)" aria-expanded="false"><svg><use href="#i-talk"/></svg><i class="unread" hidden></i></button>
       <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
-      <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
+      <!-- the volume slides out of the sound button (on touch screens: the first tap) -->
+      <div class="volume">
+        <input id="volume" type="range" min="0" max="100" step="5" aria-label="Volume">
+        <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
+      </div>
       <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
     </div>
   </div>

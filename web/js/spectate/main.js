@@ -28,7 +28,7 @@ function hubBase() {
 const httpBase = () => hubBase().replace(/^ws/, 'http');
 
 const prefs = (() => {
-  try { return { muted: false, ...JSON.parse(localStorage.getItem('soldattv') || '{}') }; } catch (_) { return { muted: false }; }
+  try { return { muted: false, volume: 60, ...JSON.parse(localStorage.getItem('soldattv') || '{}') }; } catch (_) { return { muted: false, volume: 60 }; }
 })();
 function savePrefs() {
   try { localStorage.setItem('soldattv', JSON.stringify(prefs)); } catch (_) {}
@@ -165,7 +165,7 @@ function watch(ch) {
   history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
   document.title = `${ch.name} · Soldat TV`;
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
-  setCvar('snd_volume', prefs.muted ? '0' : '60');
+  applyVolume();
   if (!game.join('tv', 1, '')) {
     showGuide();
     setStatus('Could not start watching.', true);
@@ -366,20 +366,49 @@ $('roster-btn').addEventListener('click', () => toggleRoster());
 $('chat-btn').addEventListener('click', () => toggleChat());
 $('tvchat-btn').addEventListener('click', () => toggleTvChat());
 $('back').addEventListener('click', () => game.leave());
-$('sound').addEventListener('click', () => {
-  prefs.muted = !prefs.muted;
-  savePrefs();
-  showSound();
-  setCvar('snd_volume', prefs.muted ? '0' : '60');
-  game.al.resume();
-});
 $('fullscreen').addEventListener('click', toggleFullscreen);
 
+// ---------- sound: the game's volume (snd_volume, 0-100); muting keeps the chosen volume
+
+const volume = () => Math.min(100, Math.max(0, Math.round(+prefs.volume))) || 0;
+
+function applyVolume() {
+  setCvar('snd_volume', String(prefs.muted ? 0 : volume()));
+}
+
 function showSound() {
-  $('sound').querySelector('use').setAttribute('href', prefs.muted ? '#i-mute' : '#i-sound');
-  $('sound').setAttribute('aria-label', prefs.muted ? 'Unmute' : 'Mute');
+  const off = prefs.muted || !volume();
+  $('sound').querySelector('use').setAttribute('href', off ? '#i-mute' : '#i-sound');
+  $('sound').setAttribute('aria-label', off ? 'Unmute' : 'Mute');
+  $('volume').value = String(prefs.muted ? 0 : volume());
+  $('volume').title = `Volume ${prefs.muted ? 0 : volume()}%`;
 }
 showSound();
+
+$('sound').addEventListener('click', () => {
+  // touch screens: the first tap shows the volume, the next one mutes
+  const box = $('sound').parentElement;
+  if (matchMedia('(hover: none)').matches && !box.classList.contains('open')) {
+    box.classList.add('open');
+    wake();
+    return;
+  }
+  // unmuting at volume 0 brings the sound back at the default
+  if (prefs.muted || !volume()) { prefs.muted = false; if (!volume()) prefs.volume = 60; } else prefs.muted = true;
+  savePrefs();
+  showSound();
+  applyVolume();
+  game.al.resume();
+});
+$('volume').addEventListener('input', () => {
+  prefs.volume = +$('volume').value;
+  prefs.muted = prefs.volume === 0;
+  savePrefs();
+  showSound();
+  applyVolume();
+  game.al.resume();
+  wake();
+});
 
 async function toggleFullscreen() {
   if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
@@ -433,12 +462,16 @@ function wake() {
   $('watch').classList.remove('idle');
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
-    if (!$('dock').matches(':hover') && $('roster').hidden) $('watch').classList.add('idle');
+    if (!$('dock').matches(':hover') && !$('volume').parentElement.matches(':hover') && $('roster').hidden) idle();
   }, 3200);
+}
+function idle() {
+  $('watch').classList.add('idle');
+  $('volume').parentElement.classList.remove('open');
 }
 function toggleUi() {
   if ($('watch').classList.contains('idle')) wake();
-  else { clearTimeout(idleTimer); $('watch').classList.add('idle'); }
+  else { clearTimeout(idleTimer); idle(); }
 }
 for (const id of ['dock', 'roster']) $(id).addEventListener('pointerdown', wake);
 

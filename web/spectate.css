@@ -200,6 +200,11 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .ch-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-delay { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .topbar-end { display: flex; gap: 2px; }
+/* the volume: slides out to the left of the sound button on hover (touch screens: .open) */
+.volume { display: flex; align-items: center; }
+.volume input { width: 0; margin: 0; opacity: 0; accent-color: var(--green); cursor: pointer;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .8)); transition: width .15s, opacity .15s, margin .15s; }
+.volume:hover input, .volume input:focus-visible, .volume.open input { width: 90px; margin: 0 6px; opacity: 1; }
 
 /* ---------- the panels over the match: the menus' slate boxes and dark title bars, the
    game's own text shadows. All of them can be dragged (main.js: movable panels). */
