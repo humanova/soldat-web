@@ -147,6 +147,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .notes h2 { margin: 6px 0 6px; font-size: 14px; font-weight: 400; color: var(--text); }
 .notes .box { background: var(--panel); padding: 12px 14px; margin-bottom: 20px; }
 .notes p { margin: 0; }
+.notes p + p { margin-top: 10px; }
 .notes .nick { color: var(--green-hi); }
 /* Soldat TV's chat on the guide: everyone on the site */
 .tv-chat .box { padding: 0; }
