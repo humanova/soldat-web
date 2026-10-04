@@ -81,7 +81,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .tabs .fill-tab { flex: 1; background: var(--bg); }
 .tag { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px; padding: 4px 12px; }
 
-.guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px;
+.guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px;
   width: 100%; max-width: 1180px; margin: 0 auto; padding: 22px 16px 32px; }
 .listing-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
 .listing-head h1 { margin: 0; font-size: 14px; font-weight: 400; color: var(--text); }
@@ -149,6 +149,14 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .notes p { margin: 0; }
 .notes p + p { margin-top: 10px; }
 .notes .nick { color: var(--green-hi); }
+/* Soldat TV's chat on the guide: everyone on the site */
+.tv-chat .box { padding: 0; }
+.tv-chat .chat-scroll { height: 260px; overflow: auto; padding: 6px 0; }
+.tv-chat .line { padding: 1px 12px; color: var(--text); overflow-wrap: anywhere; }
+.tv-chat .chat-empty { margin: 0; padding: 2px 12px; text-shadow: none; }
+.tv-chat .say { border-top: 1px solid var(--line); }
+.tv-chat .say-nick, .tv-chat .say-text { height: 32px; }
+.tv-chat .say-text { background: var(--deep); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; align-items: center; }
 .keys dt { color: var(--text); white-space: nowrap; }
 .keys dd { margin: 0; }
@@ -387,8 +395,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 
 /* ---------- small screens ---------- */
 @media (max-width: 960px) {
-  .guide-main { grid-template-columns: 1fr; gap: 24px; padding: 16px 12px 24px; }
-  .notes { display: none; }
+  .guide-main { grid-template-columns: 1fr; align-content: start; gap: 24px; padding: 16px 12px 24px; }
+  .notes > :not(.tv-chat) { display: none; }
 }
 @media (max-width: 760px) {
   .columns, .channel { grid-template-columns: minmax(0, 1fr) 140px 56px 82px; }

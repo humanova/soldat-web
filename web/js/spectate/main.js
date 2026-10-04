@@ -186,6 +186,7 @@ function showGuide() {
   $('watch').hidden = true;
   $('guide').hidden = false;
   listen();
+  renderGuideChat();
   showTabAddress();
   document.title = TITLE;
   refresh();
@@ -717,18 +718,18 @@ function pushLine(box, li, keep = 300) {
   if (stick) scroll.scrollTop = scroll.scrollHeight;
 }
 
-// ---------- Soldat TV's chat (js/spectate/chat.js), on one connection while watching:
-// everyone on the site (Global) and who watches the same server (This server). The window
-// shows the channels whose boxes are ticked, each line with its channel.
+// ---------- Soldat TV's chat (js/spectate/chat.js), on one connection: everyone on the site
+// (the guide's box, the Global channel) and who watches the same server (This server). The
+// match's window shows the channels whose boxes are ticked, each line with its channel.
 
-const tvBox = $('tvchat');
+const guideChat = document.querySelector('.tv-chat');
 const tvChannels = { global: prefs.tvGlobal !== false, server: prefs.tvServer !== false };
 let sayTo = prefs.sayTo === 'server' ? 'server' : 'global';
 const roomOf = (channel) => channel === 'global' ? null : watching ? watching.id : undefined;
 
-// the rooms the window shows (none on the guide)
+// the rooms the match's window shows (the guide: the global one)
 function tvRooms() {
-  if (!watching) return [];
+  if (!watching) return [null];
   return ['global', 'server'].filter(c => tvChannels[c]).map(roomOf);
 }
 
@@ -746,28 +747,28 @@ function tvLine(l) {
   return li;
 }
 
-function renderTv() {
-  if (!watching || tvBox.hidden) return;
-  const rooms = tvRooms();
-  tvBox.querySelector('.chat-lines').textContent = '';
-  tvBox.querySelector('.chat-empty').textContent = !tv.online ? 'Connecting to the chat...'
+function fillTv(box, rooms) {
+  box.querySelector('.chat-lines').textContent = '';
+  box.querySelector('.chat-empty').textContent = !tv.online ? 'Connecting to the chat...'
     : rooms.length ? 'Nobody said anything in the last 10 minutes.' : 'Tick a channel to see its chat.';
-  tvBox.classList.remove('has-lines');
-  for (const l of tv.merged(rooms)) pushLine(tvBox, tvLine(l));
-  const scroll = tvBox.querySelector('.chat-scroll');
+  box.classList.remove('has-lines');
+  for (const l of tv.merged(rooms)) pushLine(box, tvLine(l));
+  const scroll = box.querySelector('.chat-scroll');
   scroll.scrollTop = scroll.scrollHeight;
 }
+const renderTv = () => { if (watching && !$('tvchat').hidden) fillTv($('tvchat'), tvRooms()); };
+const renderGuideChat = () => fillTv(guideChat, [null]);
 
-// the channels listened to: the ticked ones while watching, none on the guide
+// the channels the viewer listens to: the ticked ones while watching, the global one on the guide
 function listen() {
   tv.listen(tvRooms());
-  for (const box of tvBox.querySelectorAll('.chat-filters input')) box.checked = tvChannels[box.dataset.channel];
+  for (const box of $('tvchat').querySelectorAll('.chat-filters input')) box.checked = tvChannels[box.dataset.channel];
   if (!tvChannels[sayTo] && tvChannels[sayTo === 'global' ? 'server' : 'global']) sayTo = sayTo === 'global' ? 'server' : 'global';
   renderTv();
-  showComposer();
+  showComposers();
 }
 
-for (const box of tvBox.querySelectorAll('.chat-filters input')) {
+for (const box of $('tvchat').querySelectorAll('.chat-filters input')) {
   box.addEventListener('change', () => {
     tvChannels[box.dataset.channel] = box.checked;
     prefs.tvGlobal = tvChannels.global;
@@ -777,8 +778,8 @@ for (const box of tvBox.querySelectorAll('.chat-filters input')) {
   });
 }
 
-function toggleTvChat(open = tvBox.hidden) {
-  tvBox.hidden = !open;
+function toggleTvChat(open = $('tvchat').hidden) {
+  $('tvchat').hidden = !open;
   $('tvchat-btn').setAttribute('aria-expanded', String(open));
   prefs.tvchat = open;
   savePrefs();
@@ -789,76 +790,89 @@ function toggleTvChat(open = tvBox.hidden) {
 }
 
 const tv = new TvChat(() => hubBase() + '/chat', (room, line) => {
-  if (line && line.error) { pushLine(tvBox, tvLine(line)); return; }
-  if (!line) {
-    // a room's last 10 minutes, or the chat went off or on line
-    renderTv();
-    showComposer();
+  if (line && line.error) {
+    pushLine(lastSaid && lastSaid.closest('#tvchat') ? $('tvchat') : guideChat, tvLine(line));
     return;
   }
+  if (!line) {
+    // a room's last 10 minutes, or the chat went off or on line
+    if (watching) renderTv(); else renderGuideChat();
+    showComposers();
+    return;
+  }
+  if (!watching) { pushLine(guideChat, tvLine(line)); return; }
   if (!tvRooms().includes(room)) return;
-  if (tvBox.hidden) $('tvchat-btn').querySelector('.unread').hidden = false;
-  else pushLine(tvBox, tvLine(line));
+  if ($('tvchat').hidden) $('tvchat-btn').querySelector('.unread').hidden = false;
+  else pushLine($('tvchat'), tvLine(line));
 });
 
 // what to say, and once, the nickname (kept on this device; the nickname button changes it)
-let naming = false;
-const sayInput = tvBox.querySelector('.say-text');
+let naming = null;      // the chat box that asks for the nickname
+let lastSaid = null;    // the form that said something last (where a "slow down" goes)
+const composers = [guideChat, $('tvchat')];
 
-function showComposer() {
-  const nick = tvBox.querySelector('.say-nick'), to = tvBox.querySelector('.say-to');
-  const asking = !prefs.nick || naming;
-  const channel = tvChannels[sayTo] ? sayTo : null;
-  nick.textContent = prefs.nick || '';
-  nick.title = 'Change your nickname';
-  nick.hidden = asking;
-  to.textContent = channel === 'server' && watching ? watching.name : 'Global';
-  to.classList.toggle('server', channel === 'server');
-  to.hidden = asking || !channel;
-  sayInput.maxLength = asking ? MAX_NAME : MAX_TEXT;
-  sayInput.disabled = !tv.online || (!asking && !channel);
-  sayInput.placeholder = !tv.online ? 'Connecting...' : asking ? 'Choose a nickname to chat'
-    : !channel ? 'Tick a channel to chat' : 'Say something';
+function showComposers() {
+  for (const box of composers) {
+    const input = box.querySelector('.say-text'), nick = box.querySelector('.say-nick'), to = box.querySelector('.say-to');
+    const asking = !prefs.nick || naming === box;
+    const channel = box === guideChat ? 'global' : tvChannels[sayTo] ? sayTo : null;
+    nick.textContent = prefs.nick || '';
+    nick.title = 'Change your nickname';
+    nick.hidden = asking;
+    if (to) {
+      to.textContent = channel === 'server' && watching ? watching.name : 'Global';
+      to.classList.toggle('server', channel === 'server');
+      to.hidden = asking || !channel;
+    }
+    input.maxLength = asking ? MAX_NAME : MAX_TEXT;
+    input.disabled = !tv.online || (!asking && !channel);
+    input.placeholder = !tv.online ? 'Connecting...' : asking ? 'Choose a nickname to chat'
+      : !channel ? 'Tick a channel to chat' : 'Say something';
+  }
 }
 
-tvBox.querySelector('.say-nick').addEventListener('click', () => {
-  naming = true;
-  showComposer();
-  sayInput.value = prefs.nick || '';
-  sayInput.focus();
-  sayInput.select();
-});
-// the channel to write to: the other ticked one
-tvBox.querySelector('.say-to').addEventListener('click', () => {
-  const other = sayTo === 'global' ? 'server' : 'global';
-  if (tvChannels[other]) { sayTo = prefs.sayTo = other; savePrefs(); }
-  showComposer();
-  sayInput.focus();
-});
-tvBox.querySelector('form.say').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const text = sayInput.value.replace(/\s+/g, ' ').trim();
-  if (!prefs.nick || naming) {
-    if (!text) return;
-    prefs.nick = [...text].slice(0, MAX_NAME).join('');
-    savePrefs();
-    naming = false;
-    sayInput.value = '';
-    showComposer();
-    return;
-  }
-  const room = roomOf(sayTo);
-  if (!text || room === undefined) return;
-  tv.say(room, prefs.nick, text);
-  sayInput.value = '';
-});
-sayInput.addEventListener('keydown', (e) => {
-  // the match's keys stay out of the text
-  e.stopPropagation();
-  if (e.key !== 'Escape') return;
-  if (naming) { naming = false; sayInput.value = ''; showComposer(); }
-  else sayInput.blur();
-});
+for (const box of composers) {
+  const form = box.querySelector('form.say'), input = box.querySelector('.say-text');
+  box.querySelector('.say-nick').addEventListener('click', () => {
+    naming = box;
+    showComposers();
+    input.value = prefs.nick || '';
+    input.focus();
+    input.select();
+  });
+  // the channel to write to: the other ticked one
+  box.querySelector('.say-to')?.addEventListener('click', () => {
+    const other = sayTo === 'global' ? 'server' : 'global';
+    if (tvChannels[other]) { sayTo = prefs.sayTo = other; savePrefs(); }
+    showComposers();
+    input.focus();
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.replace(/\s+/g, ' ').trim();
+    if (!prefs.nick || naming === box) {
+      if (!text) return;
+      prefs.nick = [...text].slice(0, MAX_NAME).join('');
+      savePrefs();
+      naming = null;
+      input.value = '';
+      showComposers();
+      return;
+    }
+    const room = box === guideChat ? null : roomOf(sayTo);
+    if (!text || room === undefined) return;
+    lastSaid = form;
+    tv.say(room, prefs.nick, text);
+    input.value = '';
+  });
+  input.addEventListener('keydown', (e) => {
+    // the match's keys stay out of the text
+    e.stopPropagation();
+    if (e.key !== 'Escape') return;
+    if (naming === box) { naming = null; input.value = ''; showComposers(); }
+    else input.blur();
+  });
+}
 listen();
 
 // ---------- the followed player
