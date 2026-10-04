@@ -131,9 +131,9 @@ list. With `askPassword`, the server's password comes from a viewer instead of t
 config: a link can carry it, `/<id>?password=...`, or the page asks. Once it works,
 anyone can watch, and the hub keeps it until the server's password changes.
 
-Viewers can chat with each other: everyone on the site (Global), or only the people
-watching the same server. While watching, the Soldat TV chat window (Enter) shows both, each
-line tagged with its channel, and checkboxes pick the channels. One connection per page
+While watching, viewers can chat with each other in the Soldat TV chat window (Enter):
+everyone watching any server (Global), or only the people watching the same server. Each
+line is tagged with its channel, and checkboxes pick the channels. One connection per page
 carries them all. Viewers pick a nickname, with no account. The hub keeps the last 10
 minutes in memory and allows one line every 1.5 seconds per address.
 

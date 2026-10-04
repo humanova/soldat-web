@@ -6,7 +6,8 @@ export const MAX_TEXT = 200, MAX_NAME = 16;
 
 export class TvChat {
   // url(): the hub's chat address; onChange(room, line): a line came in (line null: the
-  // room's lines were replaced, or the connection came or went)
+  // room's lines were replaced, or the connection came or went). It connects the first time
+  // it listens to a room.
   constructor(url, onChange) {
     this.url = url;
     this.onChange = onChange;
@@ -14,9 +15,7 @@ export class TvChat {
     this.lines = new Map();  // room -> its lines, of the rooms listened to
     this.online = false;
     this.retry = 1000;
-    this.connect();
-    // idle connections are cut by proxies (Cloudflare: after 100 s)
-    setInterval(() => this.send({ type: 'ping' }), 45_000);
+    this.started = false;
   }
 
   connect() {
@@ -71,6 +70,12 @@ export class TvChat {
     this.rooms = rooms;
     for (const r of this.lines.keys()) if (!rooms.includes(r)) this.lines.delete(r);
     this.send({ type: 'listen', rooms });
+    if (!this.started && rooms.length) {
+      this.started = true;
+      this.connect();
+      // idle connections are cut by proxies (Cloudflare: after 100 s)
+      setInterval(() => this.send({ type: 'ping' }), 45_000);
+    }
   }
 
   // the lines of these rooms, oldest first
