@@ -516,7 +516,7 @@ function showAccount() {
     box.append(who, out);
   } else {
     const a = el('a', 'Sign in with Discord');
-    a.className = 'tab';
+    a.className = 'signin';
     a.href = '#';
     a.addEventListener('click', (e) => { e.preventDefault(); signIn(); });
     box.append(a);

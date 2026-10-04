@@ -63,17 +63,18 @@ input[type=checkbox]:checked::before { visibility: visible; }
 .tab.ext::after { content: "↗"; font-size: 11px; margin-left: 5px; font-weight: 400; }
 .tab.logo { padding-left: 8px; }
 .fill-tab { flex: 1; }
-/* the way to Soldat TV: its TV badge glows */
+/* the way to Soldat TV, with its TV badge */
 .tv-link { gap: 7px; color: var(--muted); }
 .tv-link:hover { color: var(--text); }
-.tv-link .logo-tv { font-size: 12px; letter-spacing: .1em; background: var(--green); color: #fff; padding: 3px 5px 2px 6px;
-  animation: glow 2.4s ease-in-out infinite; }
+.tv-link .logo-tv { font-size: 12px; letter-spacing: .1em; background: var(--green); color: #fff; padding: 3px 5px 2px 6px; }
 .tv-link:hover .logo-tv { background: var(--green-hi); }
-@keyframes glow { 0%, 100% { box-shadow: 0 0 2px rgba(127, 220, 82, .15); } 50% { box-shadow: 0 0 7px rgba(127, 220, 82, .35); } }
-@media (prefers-reduced-motion: reduce) { .tv-link .logo-tv { animation: none; box-shadow: 0 0 5px rgba(127, 220, 82, .3); } }
 .account { display: flex; }
 .account .who { color: var(--muted); }
 .account button.tab { border: 0; font: inherit; cursor: pointer; }
+/* like Soldat TV's "Live matches" box */
+.signin { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px;
+  padding: 4px 12px; text-decoration: none; white-space: nowrap; }
+.signin:hover { background: var(--green); color: #fff; }
 .tag { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px;
   padding: 4px 12px; white-space: nowrap; }
 .logo { display: inline-flex; align-items: center; gap: 8px; line-height: 1; user-select: none; }

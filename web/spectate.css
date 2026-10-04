@@ -79,13 +79,10 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .tab.logo { padding-left: 8px; }
 .tab.ext::after { content: "↗"; font-size: 11px; margin-left: 5px; font-weight: 400; }
 .tabs .fill-tab { flex: 1; background: var(--bg); }
-/* the way to the game: a green tab that glows */
-.play-link { position: relative; z-index: 1; gap: 6px; background: var(--green-lo); color: var(--green-text);
-  animation: glow 2.4s ease-in-out infinite; }
+/* the way to the game: a green tab */
+.play-link { gap: 6px; background: var(--green-lo); color: var(--green-text); }
 .play-link:hover { background: var(--green); color: #fff; }
 .play-link svg { width: 13px; height: 13px; }
-@keyframes glow { 0%, 100% { box-shadow: 0 0 3px rgba(127, 220, 82, .25); } 50% { box-shadow: 0 0 14px 2px rgba(127, 220, 82, .55); } }
-@media (prefers-reduced-motion: reduce) { .play-link { animation: none; box-shadow: 0 0 10px 1px rgba(127, 220, 82, .4); } }
 .tag { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px; padding: 4px 12px; }
 
 .guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px;
