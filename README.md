@@ -78,6 +78,7 @@ upgrades on `/relay` (pages served over HTTPS must use `wss://`). Each player us
 | `PUBLIC_URL` | none | the page's address, such as `https://play.soldat.live` |
 | `AUTH_SECRET` | none | 32+ random characters; signs sessions and makes the hardware IDs |
 | `MIN_ACCOUNT_AGE_DAYS` | 30 | younger Discord accounts can't play |
+| `BLOCKED_DISCORD_IDS` | none | comma separated Discord IDs that may not use the relay |
 
 Good to know before you open it to the public:
 
@@ -103,6 +104,17 @@ Discord ID, name and hardware ID.
 2. Start the relay with `DISCORD_CLIENT_ID` (the application ID), `DISCORD_CLIENT_SECRET`,
    `PUBLIC_URL` and `AUTH_SECRET` (for example `openssl rand -hex 32`). Keep `AUTH_SECRET`:
    a new one gives every player a new hardware ID, and their bans no longer match.
+
+Map downloads need sign-in too. An account can be in two games at a time, and each game
+may send at most 120 messages and 16 KB a second (a busy player sends about 25 and well
+under 1 KB). To lock an account out of the relay, add its Discord ID (from the log) to
+`BLOCKED_DISCORD_IDS` and restart the relay.
+
+Behind Cloudflare, let nginx take the visitor's address from `CF-Connecting-IP` only when
+the request comes from Cloudflare (`set_real_ip_from` with
+[Cloudflare's ranges](https://www.cloudflare.com/ips/), `real_ip_header CF-Connecting-IP`)
+and pass `X-Forwarded-For $remote_addr`. Otherwise anyone who reaches the server directly
+can claim any address and get around the limit per visitor.
 
 For server admins: the server's log shows the hardware ID when a player joins
 (`Name joining game (ip:port) HWID:0123456789A`). Ban it with `/banhw 0123456789A`.

@@ -11,7 +11,8 @@
 // origins allowed to use the relay besides its own; "*" for any).
 // Discord sign-in (required to play when DISCORD_CLIENT_ID is set): DISCORD_CLIENT_ID,
 // DISCORD_CLIENT_SECRET, AUTH_SECRET, PUBLIC_URL, MIN_ACCOUNT_AGE_DAYS (default 30),
-// DISCORD_URL (default https://discord.com; a stand-in for tests).
+// DISCORD_URL (default https://discord.com; a stand-in for tests), BLOCKED_DISCORD_IDS
+// (comma separated accounts that may not use the relay).
 
 import http from 'node:http';
 import dgram from 'node:dgram';
@@ -41,8 +42,12 @@ const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 const clientIp = clientIpOf(TRUST_PROXY);
 const MAX_SESSIONS_PER_IP = parseInt(process.env.MAX_SESSIONS_PER_IP || '4', 10);
 const MAX_SESSIONS = 1000;
+const MAX_GAMES_PER_ACCOUNT = 2;
 const IDLE_TIMEOUT = 60_000;
 const MAX_DATAGRAM = 8192;
+// what a player may send per second; a busy one sends about 25 messages, under 1 KB
+const MAX_PACKETS_PER_SEC = 120;
+const MAX_BYTES_PER_SEC = 16 * 1024;
 
 // The 1.7.1 server firewalls an address that sends more than 18 RequestGame/PlayerInfo
 // messages within 1000 ticks (~16.7 s). All relayed players share our address, so
@@ -75,10 +80,21 @@ if (process.env.DISCORD_CLIENT_ID) {
   });
 }
 
-function signInError() {
-  const e = new Error('Sign in with Discord to play.');
-  e.reason = 'auth';
-  return e;
+const blocked = new Set((process.env.BLOCKED_DISCORD_IDS || '').split(',').map(s => s.trim()).filter(Boolean));
+const gamesByAccount = new Map();
+
+// With sign-in on, games and map downloads need an account that is not blocked.
+function checkAccount(user, clientAddr) {
+  if (!auth) return;
+  if (!user) {
+    const e = new Error('Sign in with Discord to play.');
+    e.reason = 'auth';
+    throw e;
+  }
+  if (blocked.has(user.id)) {
+    log(`blocked account refused: ${clientAddr} discord=${user.id} (${user.name})`);
+    throw new Error('This Discord account may not use this relay.');
+  }
 }
 
 // ---------------------------------------------------------------- lobby list
@@ -179,8 +195,9 @@ function handleRelay(req, socket, head) {
     clearTimeout(hello);
     try {
       if (m.type === 'udp') cleanup = await startUdp(ws, ip, m, user);
-      else if (m.type === 'files') cleanup = await startFiles(ws, ip, m);
+      else if (m.type === 'files') cleanup = await startFiles(ws, ip, m, user);
       else throw new Error('unknown request');
+      if (ws.closed) cleanup(); // gone while the session started
     } catch (e) {
       ws.sendText({ type: 'error', message: e.message, ...(e.reason && { reason: e.reason }) });
       ws.close(1008);
@@ -189,10 +206,15 @@ function handleRelay(req, socket, head) {
 }
 
 async function startUdp(ws, clientAddr, m, user) {
-  if (auth && !user) throw signInError();
+  checkAccount(user, clientAddr);
   const { ip, port } = await resolveTarget(m.host, m.port);
   if (!(await targetAllowed(m.host, ip, port))) {
     throw new Error('This relay only connects to servers listed in the Soldat lobby.');
+  }
+  if (user) {
+    const games = gamesByAccount.get(user.id) || 0;
+    if (games >= MAX_GAMES_PER_ACCOUNT) throw new Error(`This Discord account is already in ${games} games.`);
+    gamesByAccount.set(user.id, games + 1);
   }
   const target = `${ip}:${port}`;
   const sessionId = ++sessionCounter;
@@ -231,7 +253,7 @@ async function startUdp(ws, clientAddr, m, user) {
     if (msg.length === 0 || msg.length > MAX_DATAGRAM) return;
     const now = Date.now();
     if (now - windowStart > 1000) { windowStart = now; windowCount = 0; windowBytes = 0; }
-    if (++windowCount > 300 || (windowBytes += msg.length) > 256 * 1024) return;
+    if (++windowCount > MAX_PACKETS_PER_SEC || (windowBytes += msg.length) > MAX_BYTES_PER_SEC) return;
     last = now;
     if (hwid) {
       // the page sends one message per datagram, never compressed ones
@@ -253,10 +275,18 @@ async function startUdp(ws, clientAddr, m, user) {
   const idle = setInterval(() => { if (Date.now() - last > IDLE_TIMEOUT) ws.close(1000); }, 5000);
   ws.sendText({ type: 'ready' });
   log(`udp session ${clientAddr}${user ? ` discord=${user.id} (${user.name}) hwid=${hwid}` : ''} -> ${target}`);
-  return () => { clearInterval(idle); try { sock.close(); } catch (_) {} };
+  return () => {
+    clearInterval(idle);
+    try { sock.close(); } catch (_) {}
+    if (user) {
+      const games = (gamesByAccount.get(user.id) || 1) - 1;
+      if (games <= 0) gamesByAccount.delete(user.id); else gamesByAccount.set(user.id, games);
+    }
+  };
 }
 
-async function startFiles(ws, clientAddr, m) {
+async function startFiles(ws, clientAddr, m, user) {
+  checkAccount(user, clientAddr);
   const filePort = Number(m.port);
   const { ip } = await resolveTarget(m.host, filePort - 10);
   if (!(await targetAllowed(m.host, ip, filePort - 10))) {
@@ -299,7 +329,8 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, () => {
   log(`Soldat Web on http://localhost:${PORT}/ (serving ${ROOT})`);
   if (ALLOW_ANY) log('WARNING: relay accepts any destination (ALLOW_ANY)');
-  if (auth) log(`Discord sign-in required to play (accounts at least ${process.env.MIN_ACCOUNT_AGE_DAYS ?? 30} days old)`);
+  if (auth) log(`Discord sign-in required to play (accounts at least ${process.env.MIN_ACCOUNT_AGE_DAYS ?? 30} days old)` +
+    (blocked.size ? `, ${blocked.size} blocked` : ''));
   else log('WARNING: Discord sign-in is off (no DISCORD_CLIENT_ID): players choose their own hardware ids');
   if (staticAllow.size) log('extra allowed servers:', [...staticAllow].join(', '));
 });
