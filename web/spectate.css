@@ -147,6 +147,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .notes h2 { margin: 6px 0 6px; font-size: 14px; font-weight: 400; color: var(--text); }
 .notes .box { background: var(--panel); padding: 12px 14px; margin-bottom: 20px; }
 .notes p { margin: 0; }
+.notes .nick { color: var(--green-hi); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; align-items: center; }
 .keys dt { color: var(--text); white-space: nowrap; }
 .keys dd { margin: 0; }
