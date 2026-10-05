@@ -5,8 +5,9 @@
 // same way.
 //
 // A play: { type, tick (the moment), from, to (what to show of it), slot, name and team (who
-// made it), cams (whom the camera follows from when), label, score (how good it is, to rank
-// them) }. A shot across the screen also has shot: { killer, victim, tick, fired (the tick the
+// made it), cams (whom the camera follows from when), label, caption (the label to show:
+// text, and weapons by a kill's weapon number for their pictures), score (how good it is, to
+// rank them) }. A shot across the screen also has shot: { killer, victim, tick, fired (the tick the
 // shot left), back (more kills follow: the camera goes back to the killer, not on to the
 // victim) }, for the camera to show both; a play of several kills has wide (zoom out by that
 // much).
@@ -14,7 +15,7 @@
 // A clip: plays whose times overlap are one, so the reel shows no moment twice. { from, to,
 // parts (its plays in order, each with start and end: the part of the clip that is theirs),
 // wide (the most of its parts), score (theirs added up), and the best part's type, tick,
-// slot, name, team and label }.
+// slot, name, team, label and caption }.
 
 const TICKS = 60;
 const MSG = { MapChange: 8, ThingSnapshot: 9, ThingTaken: 12, SpriteDeath: 13, PlayersList: 16, NewPlayer: 17,
@@ -48,7 +49,7 @@ const KNIFE = 211, LAW = 224;
 // what a kill was made with, as far as switching goes: the two grenades are one, as are
 // the guns (a grenade and a gun need no switch); a combo takes a knife or a LAW
 const weaponKind = (w) => (w === 222 || w === 210 ? 'grenade' : w <= 10 ? 'gun' : String(w));
-const weaponName = (w) => WEAPONS[w] || 'gun';
+export const weaponName = (w) => WEAPONS[w] || 'gun';
 const capital = (s) => s[0].toUpperCase() + s.slice(1);
 
 const dv = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
@@ -164,14 +165,17 @@ export function findHighlights(demo, end = demo.ticks) {
     const kinds = new Set(weapons.map(weaponKind));
     const switched = kinds.size > 1 && weapons.some((w) => w === KNIFE || w === LAW);
     const names = [...new Set(weapons.map(weaponName))];
+    const used = [...new Map(weapons.map((w) => [weaponName(w), w])).values()];
     let h = null;
     if (n >= MULTIKILL_MIN) {
       h = clip({ type: 'multi', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 2 ** (n - 2) * (switched ? 1.5 : 1),
-        label: MULTIKILL_NAMES[Math.min(7, n)] + (switched ? ` · ${names.join(', ')}` : ''), wide: WIDE },
+        label: MULTIKILL_NAMES[Math.min(7, n)] + (switched ? ` · ${names.join(', ')}` : ''),
+        caption: [MULTIKILL_NAMES[Math.min(7, n)], ...(switched ? used : [])], wide: WIDE },
       r.first - BEFORE, r.last + AFTER);
     } else if (n === 2 && switched && r.last - r.first <= COMBO_GAP) {
       h = clip({ type: 'combo', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 1.5,
-        label: capital(names.join(' + ')), wide: WIDE }, r.first - BEFORE, r.last + AFTER);
+        label: capital(names.join(' + ')), caption: used.flatMap((w, i) => (i ? ['+', w] : [w])), wide: WIDE },
+      r.first - BEFORE, r.last + AFTER);
     }
     if (!h) return;
     out.push(h);
@@ -192,10 +196,12 @@ export function findHighlights(demo, end = demo.ticks) {
       r.shot = { ...shot, back: k.tick < r.tick };
       r.score += score;
       r.label += knife ? ` · ${m} m throw` : ` · ${m} m shot`;
+      r.caption.push(knife ? `· ${m} m throw` : `· ${m} m shot`);
       continue;
     }
     out.push(clip({ type: knife ? 'knife' : 'long', tick: k.tick, slot: k.slot, by: k.by, victim: k.victim, distance: m,
-      score, label: knife ? `Knife throw from ${m} m` : `${WEAPONS[k.weapon] ? WEAPONS[k.weapon] + ' kill' : 'Kill'} from ${m} m`, shot },
+      score, label: knife ? `Knife throw from ${m} m` : `${WEAPONS[k.weapon] ? WEAPONS[k.weapon] + ' kill' : 'Kill'} from ${m} m`,
+      caption: WEAPONS[k.weapon] ? [k.weapon, knife ? `throw from ${m} m` : `from ${m} m`] : [`Kill from ${m} m`], shot },
       // where the camera cannot show both: it goes to the victim just before the shot lands
       k.tick - BEFORE, k.tick + AFTER, [{ tick: k.tick - BEFORE, slot: k.slot }, { tick: k.tick - LONG_SHOT_CUT, slot: k.victim }]));
   }
@@ -216,7 +222,7 @@ export function findHighlights(demo, end = demo.ticks) {
       const near = Math.hypot(c.x - b.x, c.y - b.y) / span;
       if (near > SAVE_NEAR) continue;
       out.push(clip({ type: 'save', tick: c.tick, slot: c.slot, by: c.by, victim: c.victim, score: 1 + 2 * (1 - near / SAVE_NEAR),
-        label: `Stopped ${c.of.name} from scoring` }, c.tick - BEFORE - TICKS, c.tick + AFTER));
+        label: `Stopped ${c.of.name} from scoring`, caption: [`Stopped ${c.of.name} from scoring`] }, c.tick - BEFORE - TICKS, c.tick + AFTER));
     }
   }
 
@@ -224,7 +230,8 @@ export function findHighlights(demo, end = demo.ticks) {
     if (c.tick > end) continue;
     // the run from the grab (at least the last few seconds of it)
     const from = Math.min(c.tick - 2 * BEFORE, Math.max(c.tick - CAPTURE_RUN, c.since - TICKS));
-    out.push(clip({ type: 'cap', tick: c.tick, slot: c.slot, by: c.by, score: 1, label: 'Capture' }, from, c.tick + 2 * TICKS));
+    out.push(clip({ type: 'cap', tick: c.tick, slot: c.slot, by: c.by, score: 1, label: 'Capture', caption: ['Capture'] },
+      from, c.tick + 2 * TICKS));
   }
 
   return clips(out.filter((h) => h.tick <= end));
@@ -257,7 +264,7 @@ function clips(plays) {
       return part;
     });
     const best = parts.reduce((a, b) => (b.score > a.score ? b : a));
-    return { type: best.type, tick: best.tick, slot: best.slot, name: best.name, team: best.team, label: best.label,
+    return { type: best.type, tick: best.tick, slot: best.slot, name: best.name, team: best.team, label: best.label, caption: best.caption,
       from, to, parts, wide: Math.max(0, ...parts.map((p) => p.wide || 0)), score: parts.reduce((a, p) => a + p.score, 0) };
   });
 }

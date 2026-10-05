@@ -401,7 +401,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   text-shadow: 1px 1px 0 #000; pointer-events: none; animation: fade-in .2s ease-out; transition: opacity .6s; }
 .clipcap .n { align-self: stretch; display: flex; align-items: center; padding: 0 8px; background: var(--deep); color: var(--muted);
   font-size: 12px; font-variant-numeric: tabular-nums; text-shadow: none; }
-.clipcap b { font-weight: 700; }
+.clipcap b { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.clipcap b img { display: block; width: auto; max-height: 24px; filter: drop-shadow(1px 1px 0 #000); }
 .clipcap .by { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .clipcap.gone { opacity: 0; }
 .ch-sub .hl-count, .ch-map .hl-count { color: var(--orange); }

@@ -6,7 +6,7 @@ import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
-import { countHighlights, rateMatch, ratingText, HIGHLIGHT_TYPES } from './highlights.js';
+import { countHighlights, rateMatch, ratingText, weaponName, HIGHLIGHT_TYPES } from './highlights.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -1175,16 +1175,60 @@ function renderTarget(s) {
 // of the state line (Weapons.pas: *_NUM; 1-10 are the primaries, 255 empty hands)
 const GUN_FILES = { 0: '10', 11: 'knife', 12: 'chainsaw', 13: 'law', 14: 'flamer', 15: 'bow', 16: 'bow', 30: 'm2',
   255: 'fist' };
-const gunUrls = new Map();
 function gunPicture(num) {
   const file = num >= 1 && num <= 10 ? String(num % 10) : GUN_FILES[num];
-  if (file === undefined) return '';
-  if (!gunUrls.has(file)) {
-    const pack = game.archives.get('soldat/soldat.smod');
-    const entry = pack && pack.get(`interface-gfx/guns/${file}.png`);
-    gunUrls.set(file, entry && entry.data ? URL.createObjectURL(new Blob([entry.data], { type: 'image/png' })) : '');
+  return file === undefined ? '' : interfacePicture(`guns/${file}`);
+}
+
+// the same by the weapon number of a kill (NetworkClientSprite.pas: the kill feed's), as the
+// highlights have it
+const KILL_FILES = { 0: 'guns/10', 10: 'guns/0', 205: 'guns/flamer', 206: 'guns/fist', 207: 'guns/bow', 208: 'guns/bow',
+  210: 'cluster-nade', 211: 'guns/knife', 212: 'guns/chainsaw', 222: 'nade', 224: 'guns/law', 225: 'guns/m2' };
+const KILL_SCALE = 0.3;
+const killPictures = new Map();
+// { url, width, height } (null if the picture is not there): cut to what is drawn of it,
+// as the pictures have their own margins, and drawn at one scale, the weapons' sizes as in
+// the game
+function killPicture(num) {
+  const file = num >= 1 && num <= 9 ? `guns/${num}` : KILL_FILES[num];
+  if (file === undefined) return Promise.resolve(null);
+  if (!killPictures.has(file)) killPictures.set(file, trimPicture(interfacePicture(file)).catch(() => null));
+  return killPictures.get(file);
+}
+
+async function trimPicture(url) {
+  if (!url) return null;
+  const pic = await createImageBitmap(await (await fetch(url)).blob());
+  const c = document.createElement('canvas');
+  c.width = pic.width;
+  c.height = pic.height;
+  const g = c.getContext('2d');
+  g.drawImage(pic, 0, 0);
+  const a = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (!a[(y * c.width + x) * 4 + 3]) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
   }
-  return gunUrls.get(file);
+  if (x1 < 0) return null;
+  const out = document.createElement('canvas');
+  out.width = x1 - x0 + 1;
+  out.height = y1 - y0 + 1;
+  out.getContext('2d').drawImage(c, -x0, -y0);
+  const blob = await new Promise((done) => out.toBlob(done));
+  return { url: URL.createObjectURL(blob), width: Math.round(out.width * KILL_SCALE), height: Math.round(out.height * KILL_SCALE) };
+}
+
+const pictureUrls = new Map();
+function interfacePicture(file) {
+  if (!pictureUrls.has(file)) {
+    const pack = game.archives.get('soldat/soldat.smod');
+    const entry = pack && pack.get(`interface-gfx/${file}.png`);
+    pictureUrls.set(file, entry && entry.data ? URL.createObjectURL(new Blob([entry.data], { type: 'image/png' })) : '');
+  }
+  return pictureUrls.get(file);
 }
 
 let cardKey = '';
@@ -1599,7 +1643,20 @@ function showClip(h) {
   const who = el('span', 'by', h.name);
   who.style.color = teamColor({ team: h.team }, true);
   const n = `${replay.reel.i + 1} / ${replay.highlights.length}`;
-  box.append(el('span', 'n', reelSet ? `Match ${reelSet.i + 1}/${reelSet.ids.length} · ${n}` : n), el('b', '', h.label), who);
+  // the weapons as the kill feed shows them (their names where the pictures are not there)
+  const what = el('b');
+  for (const c of h.caption || [h.label]) {
+    const part = what.appendChild(el('span', '', typeof c === 'number' ? weaponName(c) : c));
+    if (typeof c !== 'number') continue;
+    killPicture(c).then((pic) => {
+      if (!pic) return;
+      const img = new Image(pic.width, pic.height);
+      img.src = pic.url;
+      img.alt = img.title = weaponName(c);
+      part.replaceWith(img);
+    });
+  }
+  box.append(el('span', 'n', reelSet ? `Match ${reelSet.i + 1}/${reelSet.ids.length} · ${n}` : n), what, who);
   box.classList.remove('gone');
   box.hidden = false;
   clearTimeout(clipTimer);
