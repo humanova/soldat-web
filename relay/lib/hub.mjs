@@ -109,8 +109,21 @@ export class Hub {
   removeViewer(v) {
     this.viewers.delete(v);
     if (!this.viewers.size && (this.state === 'live' || this.state === 'joining')) {
-      this.setTimer('linger', this.lingerMs, () => { if (!this.viewers.size) this.disconnect('no viewers'); });
+      this.setTimer('linger', this.lingerMs, () => this.leaveWhenDone());
     }
+  }
+
+  // with no viewers left, a match being recorded is still watched to its end (the next map,
+  // or the longest demo), unless its players have gone
+  leaveWhenDone(recording) {
+    if (this.viewers.size) return;
+    const current = this.recording;
+    if (current && (recording ?? current) === current && this.playing().length >= 2) {
+      if (!recording) this.log('no viewers: watching the recorded match to its end');
+      this.setTimer('linger', 1000, () => this.leaveWhenDone(current));
+      return;
+    }
+    this.disconnect('no viewers');
   }
 
   // a datagram from a viewer's client: only the join messages are answered, nothing is
@@ -526,7 +539,7 @@ export class Hub {
     s.things.clear();
     s.sync = null;
     s.time = { left: s.base.readInt32LE(PL.timeLimit), at: Date.now() };  // the clock starts again
-    if (this.recording) this.startRecording(this.trackAt ?? Date.now());
+    if (this.recording) this.startRecording(this.trackAt ?? Date.now(), true);
   }
 
   // the players (no spectators): [{ slot, name, team }]
@@ -625,8 +638,8 @@ export class Hub {
   // ------------------------------------------------------------ recording
 
   // ends the current demo (if any) and starts the next at `at` with what a viewer joining
-  // then would get
-  startRecording(at) {
+  // then would get; newMap: at the start of a map
+  startRecording(at, newMap = false) {
     if (this.recording) this.recording.finish(at);
     const s = this.match;
     const list = this.buildPlayersList();
@@ -639,7 +652,7 @@ export class Hub {
     setHash(list);
     this.recording = this.recordings.start({
       server: this.cfg.id, serverName: this.cfg.name, group: this.cfg.group || null, map: s.map,
-      mode: GAME_STYLES[style] ?? null, delay: this.delayMs / 1000,
+      mode: GAME_STYLES[style] ?? null, delay: this.delayMs / 1000, newMap,
     }, at, [list, ...this.joinBundle()]);
     this.recording.roster(this.playing());
     this.recording.camera(this.director.target || 0, at);

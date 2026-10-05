@@ -169,7 +169,7 @@ The Demos tab plays a demo from the viewer's own computer the same way: pick or 
 | `servers` | none | servers to watch: `id`, `name`, `host`, `port`, optional `password`, `delaySeconds`, `group`, `askPassword` and `record` |
 | `playerName` | `[soldat.live] Soldat TV` | the spectator's name on the servers (at most 23 characters) |
 | `delaySeconds` | 0 | broadcast delay, so players can't use the stream to spy on each other |
-| `lingerSeconds` | 60 | how long it stays on a server after the last viewer leaves |
+| `lingerSeconds` | 60 | how long it stays on a server after the last viewer leaves (a server with `record` stays until the match under way then ends) |
 | `maxViewers` | 500 | viewers in total |
 | `maxViewersPerIp` | 3 | viewers per visitor |
 | `maxChatPerIp` | 2 | chat connections per visitor (one for each open page) |

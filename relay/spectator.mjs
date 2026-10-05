@@ -22,7 +22,8 @@
 //                   not kept; the oldest go after keepDays or while all take more than maxGB
 //   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
-//   lingerSeconds   how long the spectator stays on a server after the last viewer left
+//   lingerSeconds   how long the spectator stays on a server after the last viewer left (with
+//                   record, and a match under way then, until the match ends)
 //   maxViewersPerIp, maxViewers, maxChatPerIp (chat connections, 2), origins (other page
 //   origins allowed), trustProxy,
 //   lobbyUrl (the Soldat lobby's server list, for the current map and players of servers not

@@ -78,7 +78,7 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
   const published = (m) => Date.now() >= m.end + (m.delay || 0) * 1000;
 
   return {
-    // info: { server, serverName, group, map, mode, delay }; opening: the messages of tick 0
+    // info: { server, serverName, group, map, mode, delay, newMap }; opening: the messages of tick 0
     start(info, at, opening) {
       return new Recording({ dir, log, minSeconds, minPlayers, newId, pending, taken,
         done: (meta) => { demos.set(meta.id, meta); return prune(); } }, info, at, opening);
@@ -116,9 +116,11 @@ class Recording {
     this.players = new Map();  // slot and name -> { name, team }, everyone who played
     this.mostPlaying = 0;
     this.scores = [0, 0, 0, 0];
-    this.ending = false;       // past the map change: the score stays as the match ended
+    this.lastScores = null;    // of the last heartbeat
     this.finished = null;
     for (const m of opening) this.add(m, at);
+    // a new map's opening may still have the scores the last one ended with
+    if (info.newMap) this.scores = [0, 0, 0, 0];
   }
 
   // moves the clock to `at`: one size-1 record per tick
@@ -149,11 +151,15 @@ class Recording {
     if (m.length < 3 || SKIPPED.has(m[0])) return;
     this.advance(at);
     this.record(m);
-    // the server zeroes the scores before the countdown to the next map is over
-    if (m[0] === MSG.MapChange) this.ending = true;
+    // Scores that only went down keep the ones before until the next cap: the server zeroes
+    // them (team by team) before the countdown to the next map is over, and gathers zero
+    // them mid-map after an !ffr, with the clock still running.
     const n = HEARTBEATS.get(m[0]);
-    if (n && !this.ending && m.length >= 15 + 7 * n) {
-      for (let i = 0; i < 4; i++) this.scores[i] = m.readUInt16LE(7 + 7 * n + 2 * i);
+    if (n && m.length >= 15 + 7 * n) {
+      const scores = [0, 1, 2, 3].map((i) => m.readUInt16LE(7 + 7 * n + 2 * i));
+      const last = this.lastScores;
+      this.lastScores = scores;
+      if (!last || scores.some((v, i) => v > last[i])) this.scores = scores;
     }
   }
 
