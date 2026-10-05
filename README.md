@@ -158,22 +158,23 @@ each one plays on the site at `/replay?id=<demo>`, with pause, speed (¼× to 4�
 timeline to drag through the match (captures and highlights are marked on it), and
 downloads as a `.sdm` file. Highlights (H, or the ★ button) plays only the highlights, one
 clip after another with the camera on whoever made each: runs of three kills or more (the
-game's own multi-kill count), two kills within 2 s with a weapon switch (a knife or a LAW and
+game's own multi-kill count), two kills within 1.5 s with a weapon switch (a knife or a LAW and
 something else), kills from 55 m or more, knife throws from 20 m or more, flag carriers
-killed close to scoring, and the captures. For a shot from off the screen the camera zooms
-out to show the shooter and the victim while it flies, then in on the victim (the viewer's
-own zoom ends that for the clip). Plays whose clips overlap are one clip, so no moment is
+killed close to scoring, carriers who killed two or more on the way home to score, and the
+captures. For a shot from off the screen the camera zooms out to show the shooter and the
+victim while it flies, then in on the victim (the viewer's own zoom ends that for the clip). Plays whose clips overlap are one clip, so no moment is
 shown twice. `[` and `]` go to the previous and next one.
 
 Each match also has a rating from 0 to 100, how good it is to watch (hover it for how it adds
 up). Action, up to 60, is the plays' scores in 10 minutes. Contest, up to 40, is how close the
 match was: the final margin, changes of the lead, a comeback and the captures
-(`rateMatch` in `web/js/spectate/highlights.js`).
+(`rateMatch` in `web/js/spectate/highlights.js`). A match under 3 minutes (a map left early)
+or without a play is not rated.
 
 `/replay?reel=<demo>,<demo>...` plays the highlights of several matches one after another
 (the stats page links there with the matches picked on it). `only=<types>` keeps some kinds
-of plays (`multi`, `combo`, `long`, `knife`, `save`, `cap`), and `player=<name>` keeps one
-player's.
+of plays (`multi`, `combo`, `long`, `knife`, `save`, `carry`, `cap`), and `player=<name>`
+keeps one player's.
 
 Demos are kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with
 fewer than two players, and removes the oldest after `keepDays` or once all of them take

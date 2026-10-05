@@ -1,6 +1,7 @@
 // The highlights of a recorded match, found in its messages (a demo as parseDemo in replay.js
 // reads it): runs of kills, two quick kills with a weapon switch, very long shots, long knife
-// throws, flag carriers stopped just short of scoring, and the captures. The page plays them
+// throws, flag carriers stopped just short of scoring, carriers who killed their way home to
+// score, and the captures. The page plays them
 // as a reel of clips; the hub lists how many a demo has (relay/lib/recorder.mjs), counted the
 // same way.
 //
@@ -29,15 +30,17 @@ const MULTIKILL_MIN = 3;
 const LONG_SHOT = 55;                               // m (the game's 14 px): about 1 kill in 300
 const LONG_SHOT_CUT = 20;                           // ticks before the kill
 const KNIFE_THROW = 20;                             // m: about 1 knife kill in 10, a lobbed throw
-const COMBO_GAP = 120;                              // two kills with a weapon switch, at most this apart
+const COMBO_GAP = 90;                               // two kills with a weapon switch, at most this apart: about 1 in 9 minutes
 const WIDE = 0.26;                                  // a clip of several kills: 1.3 times the view
 const SAVE_NEAR = 0.25;                             // of the way between the bases
 const BEFORE = 3 * TICKS, AFTER = 1.5 * TICKS;
 const CAPTURE_RUN = 12 * TICKS;                     // at most this much of the run before a capture
+const CARRY_KILLS = 2;                              // a carrier who kills this many on the way home: about 1 capture in 12
 const MERGE_GAP = TICKS / 2;                        // clips closer than this are one
 const SHOWN = 0.75 * TICKS, LEAD = 1.5 * TICKS;     // in a clip: of one play after it, of the next before it
+const RATED = 180;                                  // s: a shorter match (a map left early, a recording's end) is not rated
 
-export const HIGHLIGHT_TYPES = ['multi', 'combo', 'long', 'knife', 'save', 'cap'];
+export const HIGHLIGHT_TYPES = ['multi', 'combo', 'long', 'knife', 'save', 'carry', 'cap'];
 
 const MULTIKILL_NAMES = { 3: 'Triple kill', 4: 'Multi kill', 5: 'Multi kill ×2', 6: 'Serial kill', 7: 'Insane kills' };
 const WEAPONS = {
@@ -229,7 +232,16 @@ export function findHighlights(demo, end = demo.ticks) {
   for (const c of caps) {
     if (c.tick > end) continue;
     // the run from the grab (at least the last few seconds of it)
-    const from = Math.min(c.tick - 2 * BEFORE, Math.max(c.tick - CAPTURE_RUN, c.since - TICKS));
+    let from = Math.min(c.tick - 2 * BEFORE, Math.max(c.tick - CAPTURE_RUN, c.since - TICKS));
+    // a carrier who fought their way home: the run from their first kill on it
+    const fought = kills.filter((k) => k.slot === c.slot && k.tick >= c.since && k.tick <= c.tick);
+    if (fought.length >= CARRY_KILLS) {
+      from = Math.min(from, fought[0].tick - BEFORE);
+      const label = `Capture with ${fought.length} kills on the way`;
+      out.push(clip({ type: 'carry', tick: c.tick, slot: c.slot, by: c.by, kills: fought.length, score: 0.5 + fought.length,
+        label, caption: [label], wide: WIDE }, from, c.tick + 2 * TICKS));
+      continue;
+    }
     out.push(clip({ type: 'cap', tick: c.tick, slot: c.slot, by: c.by, score: 1, label: 'Capture', caption: ['Capture'] },
       from, c.tick + 2 * TICKS));
   }
@@ -269,7 +281,8 @@ function clips(plays) {
   });
 }
 
-// How good a match is to watch, 0 to 100: { rating, action, contest, and what they are of }.
+// How good a match is to watch, 0 to 100: { rating, action, contest, and what they are of },
+// or null for a match under 3 minutes or without a play.
 //   action (up to 60): the plays' scores (but the captures') in 10 minutes, times 1.5;
 //   contest (up to 40): how close it was: the final margin (16 for 0 or 1, 10 for 2, 5 for
 //   3), 6 a change of the lead (up to 12), 6 for a win from 2 or more behind, and 0.5 a
@@ -278,12 +291,15 @@ function clips(plays) {
 // (by default the captures it has).
 export function rateMatch(clips, seconds, scores) {
   const plays = clips.flatMap((c) => c.parts).sort((a, b) => a.tick - b.tick);
-  const points = plays.reduce((n, p) => n + (p.type === 'cap' ? 0 : p.score), 0);
+  // too short to say, or nothing happened (nobody playing)
+  if (seconds < RATED || !plays.length) return null;
+  // a fought capture's kills are action; its capture counts in the contest
+  const points = plays.reduce((n, p) => n + (p.type === 'cap' ? 0 : p.type === 'carry' ? p.score - 1 : p.score), 0);
   // a short match is not rated up for a play or two
   const perTen = (points * 600) / Math.max(seconds, 300);
   const action = Math.min(60, perTen * 1.5);
   // the score as it went
-  const caps = plays.filter((p) => p.type === 'cap');
+  const caps = plays.filter((p) => p.type === 'cap' || p.type === 'carry');
   const now = [0, 0, 0];
   const behind = [0, 0, 0];
   let leader = 0, leadChanges = 0;
@@ -319,7 +335,7 @@ export function ratingText(r) {
     r.caps ? `Contest ${r.contest} of 40: ${contest.join(', ')}` : 'Contest: no captures'];
 }
 
-// { multi, combo, long, knife, save, cap }: how many plays of each, in a list of clips
+// { multi, combo, long, knife, save, carry, cap }: how many plays of each, in a list of clips
 export function countHighlights(list) {
   const n = Object.fromEntries(HIGHLIGHT_TYPES.map((t) => [t, 0]));
   for (const c of list) for (const p of c.parts) n[p.type]++;
