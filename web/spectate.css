@@ -345,6 +345,12 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .notice { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 2; background: var(--glass);
   border: 1px solid var(--line); padding: 12px 18px; font-size: 14px; max-width: min(520px, 86vw); text-align: center; pointer-events: none; }
 
+.unmute { position: absolute; right: max(12px, env(safe-area-inset-right)); top: calc(max(6px, env(safe-area-inset-top)) + 46px); z-index: 4;
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--glass); border: 1px solid var(--line);
+  color: var(--text); font-size: 14px; cursor: pointer; }
+.unmute:hover { background: rgba(70, 84, 106, .95); }
+.unmute svg { width: 17px; height: 17px; }
+
 .dock { position: absolute; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 2;
   display: flex; align-items: center; gap: 4px; padding: 4px; background: rgba(49, 61, 79, .9); border: 1px solid var(--line);
   max-width: calc(100vw - 20px); }

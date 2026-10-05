@@ -206,6 +206,7 @@ function watch(ch) {
     setStatus('Could not start watching.', true);
     return;
   }
+  showSound();  // opened from a link: no sound until a click
   clearInterval(pollTimer);
   pollTimer = setInterval(poll, 250);
   wake();
@@ -529,15 +530,32 @@ function applyVolume() {
 }
 
 function showSound() {
-  const off = prefs.muted || !volume();
+  // the browser holds the sound back until the page is clicked: shown as off, with a hint
+  const blocked = !prefs.muted && volume() > 0 && !!game.al && game.al.blocked();
+  const off = prefs.muted || !volume() || blocked;
   $('sound').querySelector('use').setAttribute('href', off ? '#i-mute' : '#i-sound');
   $('sound').setAttribute('aria-label', off ? 'Unmute' : 'Mute');
+  $('unmute').hidden = !blocked;
   $('volume').value = String(prefs.muted ? 0 : volume());
   $('volume').title = `Volume ${prefs.muted ? 0 : volume()}%`;
 }
 showSound();
 
+// any click or key lets the sound start (the canvas's own handlers may stop the event)
+let soundFreed = 0;  // when a click let it start: that click is no mute (below)
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click']) {
+  window.addEventListener(type, () => {
+    if (!game.al || !game.al.blocked()) return;
+    soundFreed = performance.now();
+    game.al.resume();
+  }, { capture: true, passive: true });
+}
+$('unmute').addEventListener('click', () => game.al.resume());
+if (matchMedia('(hover: none)').matches) $('unmute').querySelector('span').textContent = 'Tap for sound';
+
 $('sound').addEventListener('click', () => {
+  // the sound held back by the browser: the click lets it start (above), not a mute
+  if (performance.now() - soundFreed < 1000) return;
   // touch screens: the first tap shows the volume, the next one mutes
   const box = $('sound').parentElement;
   if (matchMedia('(hover: none)').matches && !box.classList.contains('open')) {
@@ -2264,6 +2282,7 @@ async function startGame() {
   bar.style.width = '100%';
   await new Promise(r => setTimeout(r, 30));
   await game.instantiate();
+  game.al.onChange(showSound);
   game.startGame();
   ready = true;
 }

@@ -14,6 +14,7 @@ export function createAL(rt) {
   const buffers = [null];
   const sources = [null];
   let held = false;  // a paused replay: every sound stands still where it is
+  let onChange = null;  // the page: the sound started or stopped (a page without a click yet has none)
 
   function audio() {
     if (!ctx) {
@@ -22,6 +23,7 @@ export function createAL(rt) {
       ctx = new AC({ latencyHint: 'interactive' });
       master = ctx.createGain();
       master.connect(ctx.destination);
+      ctx.onstatechange = () => { if (onChange) onChange(); };
     }
     return ctx;
   }
@@ -189,7 +191,11 @@ export function createAL(rt) {
       if (!a) return;
       if (held) a.suspend().catch(() => {});
       else if (a.state !== 'running') a.resume().catch(() => {});
+      if (onChange) onChange();
     },
+    // the browser keeps the sound off until the page is clicked (or a key pressed)
+    blocked: () => !!ctx && !held && ctx.state !== 'running',
+    onChange: (fn) => { onChange = fn; },
     setMasterVolume: (v) => { audio(); if (master) master.gain.value = v; },
   };
 }
