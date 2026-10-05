@@ -297,15 +297,17 @@ function listDemos(url, res) {
   res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));
 }
 
-// /demos/<id>.sdm: the demo, gzipped on the way when the browser takes it (it never changes)
+// /demos/<id>.sdm: the demo, gzipped on the way when the browser takes it. A demo never
+// changes once its match is over (a recount of its score rewrites its .json, not it), so
+// browsers and a cache in front (Cloudflare) keep it for good; a missing one is not kept
 function serveDemo(req, res, id) {
   const f = recordings && DEMO_ID.test(id) ? recordings.file(id) : null;
-  if (!f) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
+  if (!f) { res.writeHead(404, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end('not found'); return; }
   const etag = `"${f.meta.bytes.toString(16)}-${f.meta.end.toString(16)}"`;
   const headers = {
     'Content-Type': 'application/octet-stream',
     'Content-Disposition': `attachment; filename="${id}.sdm"`,
-    'Cache-Control': 'public, max-age=86400',
+    'Cache-Control': 'public, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
     ETag: etag,
     Vary: 'Accept-Encoding',
