@@ -23,7 +23,7 @@ procedure Update_Frame;
 implementation
 
 uses
-  ClientGame, InterfaceGraphics, GameMenus;
+  ClientGame, InterfaceGraphics, GameMenus{$IFDEF SPECTATOR}, Spectator{$ENDIF};
 
 var
   IdleCounter, OldMouseX: Integer;
@@ -337,6 +337,9 @@ begin
       CamV.Y := CameraY;
       P.X := SpriteParts.Pos[CameraFollowSprite].X;
       P.Y := SpriteParts.Pos[CameraFollowSprite].Y;
+      {$IFDEF SPECTATOR}
+      SpectatorAim(CameraFollowSprite, P.X, P.Y);
+      {$ENDIF}
       Norm := Vec2Subtract(P, CamV);
       Vec2Scale(S, Norm, CAMSPEED);
       CamV := Vec2Add(CamV, S);

@@ -1,10 +1,13 @@
 // The highlights of a recorded match, found in its messages (a demo as parseDemo in replay.js
-// reads it): runs of kills, very long shots, flag carriers stopped just short of scoring, and
-// the captures. The page plays them as a reel; the hub lists how many a demo has
-// (relay/lib/recorder.mjs), counted the same way.
+// reads it): runs of kills, two quick kills with a weapon switch, very long shots, long knife
+// throws, flag carriers stopped just short of scoring, and the captures. The page plays them
+// as a reel; the hub lists how many a demo has (relay/lib/recorder.mjs), counted the same way.
 //
 // A highlight: { type, tick (the moment), from, to (the clip), slot, name and team (who made
 // it), cams (whom the camera follows from when), label, score (how good it is, to rank them) }.
+// A shot across the screen also has shot: { killer, victim, tick, fired (the tick the shot
+// left), back (more kills follow: the camera goes back to the killer, not on to the victim) },
+// for the camera to show both; a clip of several kills has wide (zoom out by that much).
 
 const TICKS = 60;
 const MSG = { MapChange: 8, ThingSnapshot: 9, ThingTaken: 12, SpriteDeath: 13, PlayersList: 16, NewPlayer: 17,
@@ -17,11 +20,14 @@ const MULTIKILL_GAP = 180;                          // Constants.pas MULTIKILLIN
 const MULTIKILL_MIN = 3;
 const LONG_SHOT = 55;                               // m (the game's 14 px): about 1 kill in 300
 const LONG_SHOT_CUT = 20;                           // ticks before the kill
+const KNIFE_THROW = 20;                             // m: about 1 knife kill in 10, a lobbed throw
+const COMBO_GAP = 120;                              // two kills with a weapon switch, at most this apart
+const WIDE = 0.26;                                  // a clip of several kills: 1.3 times the view
 const SAVE_NEAR = 0.25;                             // of the way between the bases
 const BEFORE = 3 * TICKS, AFTER = 1.5 * TICKS;
 const CAPTURE_RUN = 12 * TICKS;                     // at most this much of the run before a capture
 
-export const HIGHLIGHT_TYPES = ['multi', 'long', 'save', 'cap'];
+export const HIGHLIGHT_TYPES = ['multi', 'combo', 'long', 'knife', 'save', 'cap'];
 
 const MULTIKILL_NAMES = { 3: 'Triple kill', 4: 'Multi kill', 5: 'Multi kill ×2', 6: 'Serial kill', 7: 'Insane kills' };
 const WEAPONS = {
@@ -29,6 +35,12 @@ const WEAPONS = {
   8: 'Barrett', 9: 'Minimi', 10: 'Minigun', 205: 'flamer', 206: 'fists', 207: 'bow', 208: 'bow', 210: 'cluster grenade',
   211: 'knife', 212: 'chainsaw', 222: 'grenade', 224: 'LAW', 225: 'M2',
 };
+const KNIFE = 211, LAW = 224;
+// what a kill was made with, as far as switching goes: the two grenades are one, as are
+// the guns (a grenade and a gun need no switch); a combo takes a knife or a LAW
+const weaponKind = (w) => (w === 222 || w === 210 ? 'grenade' : w <= 10 ? 'gun' : String(w));
+const weaponName = (w) => WEAPONS[w] || 'gun';
+const capital = (s) => s[0].toUpperCase() + s.slice(1);
 
 const dv = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
@@ -107,7 +119,10 @@ export function findHighlights(demo, end = demo.ticks) {
           holder[flag] = 0;
           grabbed[flag] = t;
         }
-        if (enemy) kills.push({ tick: t, slot: killer, by: k, victim, weapon: m[5], dist: d.getFloat32(271, true) });
+        if (enemy) {
+          kills.push({ tick: t, slot: killer, by: k, victim, weapon: m[5], dist: d.getFloat32(271, true),
+            life: d.getFloat32(275, true) });
+        }
         break;
       }
       case MSG.MapChange:
@@ -123,25 +138,56 @@ export function findHighlights(demo, end = demo.ticks) {
     ({ ...h, name: by ? by.name : '', team: by ? by.team : 0, from: Math.max(0, from), to: Math.min(end, to), cams });
   const out = [];
 
-  // runs of kills: the game's own multi-kill count
+  // runs of kills: the game's own multi-kill count. Two quick ones with a knife or a LAW
+  // and something else are a combo; a longer run with them says what it was made with.
   const runs = new Map();
+  const runOf = new Map();   // a kill's run, where it has a clip: a shot from off the screen in it is part of that
   for (const k of kills) {
     const r = runs.get(k.slot);
-    if (r && k.tick - r.last <= MULTIKILL_GAP) { r.n++; r.last = k.tick; continue; }
-    if (r && r.n >= MULTIKILL_MIN) out.push(multi(r));
-    runs.set(k.slot, { slot: k.slot, by: k.by, first: k.tick, last: k.tick, n: 1 });
+    if (r && k.tick - r.last <= MULTIKILL_GAP) { r.kills.push(k); r.last = k.tick; continue; }
+    if (r) run(r);
+    runs.set(k.slot, { slot: k.slot, by: k.by, first: k.tick, last: k.tick, kills: [k] });
   }
-  for (const r of runs.values()) if (r.n >= MULTIKILL_MIN) out.push(multi(r));
-  function multi(r) {
-    return clip({ type: 'multi', tick: r.last, slot: r.slot, by: r.by, kills: r.n, score: 2 ** (r.n - 2),
-      label: MULTIKILL_NAMES[Math.min(7, r.n)] }, r.first - BEFORE, r.last + AFTER);
+  for (const r of runs.values()) run(r);
+  function run(r) {
+    const n = r.kills.length;
+    const weapons = r.kills.map((k) => k.weapon);
+    const kinds = new Set(weapons.map(weaponKind));
+    const switched = kinds.size > 1 && weapons.some((w) => w === KNIFE || w === LAW);
+    const names = [...new Set(weapons.map(weaponName))];
+    let h = null;
+    if (n >= MULTIKILL_MIN) {
+      h = clip({ type: 'multi', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 2 ** (n - 2) * (switched ? 1.5 : 1),
+        label: MULTIKILL_NAMES[Math.min(7, n)] + (switched ? ` · ${names.join(', ')}` : ''), wide: WIDE },
+      r.first - BEFORE, r.last + AFTER);
+    } else if (n === 2 && switched && r.last - r.first <= COMBO_GAP) {
+      h = clip({ type: 'combo', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 1.5,
+        label: capital(names.join(' + ')), wide: WIDE }, r.first - BEFORE, r.last + AFTER);
+    }
+    if (!h) return;
+    out.push(h);
+    for (const k of r.kills) runOf.set(k, h);
   }
 
+  // shots from off the screen: very long ones, and long knife throws (thrown in an arc)
   for (const k of kills) {
-    if (k.dist < LONG_SHOT) continue;
-    out.push(clip({ type: 'long', tick: k.tick, slot: k.slot, by: k.by, victim: k.victim, distance: Math.round(k.dist),
-      score: 1 + (k.dist - LONG_SHOT) / 10, label: `${WEAPONS[k.weapon] ? WEAPONS[k.weapon] + ' kill' : 'Kill'} from ${Math.round(k.dist)} m` },
-      // the victim is off the screen: the camera goes to them just before the shot lands
+    const knife = k.weapon === KNIFE;
+    if (k.dist < (knife ? KNIFE_THROW : LONG_SHOT)) continue;
+    const m = Math.round(k.dist);
+    const score = knife ? 1 + (k.dist - KNIFE_THROW) / 4 : 1 + (k.dist - LONG_SHOT) / 10;
+    const shot = { killer: k.slot, victim: k.victim, tick: k.tick, fired: k.tick - Math.max(0, Math.round(k.life * TICKS)), back: false };
+    const r = runOf.get(k);
+    if (r) {
+      // the run's clip shows it (its first such shot)
+      if (r.shot) continue;
+      r.shot = { ...shot, back: k.tick < r.tick };
+      r.score += score;
+      r.label += knife ? ` · ${m} m throw` : ` · ${m} m shot`;
+      continue;
+    }
+    out.push(clip({ type: knife ? 'knife' : 'long', tick: k.tick, slot: k.slot, by: k.by, victim: k.victim, distance: m,
+      score, label: knife ? `Knife throw from ${m} m` : `${WEAPONS[k.weapon] ? WEAPONS[k.weapon] + ' kill' : 'Kill'} from ${m} m`, shot },
+      // where the camera cannot show both: it goes to the victim just before the shot lands
       k.tick - BEFORE, k.tick + AFTER, [{ tick: k.tick - BEFORE, slot: k.slot }, { tick: k.tick - LONG_SHOT_CUT, slot: k.victim }]));
   }
 
@@ -175,7 +221,7 @@ export function findHighlights(demo, end = demo.ticks) {
   return out.filter((h) => h.tick <= end).sort((a, b) => a.from - b.from || a.tick - b.tick);
 }
 
-// { multi, long, save, cap }: how many of each
+// { multi, combo, long, knife, save, cap }: how many of each
 export function countHighlights(list) {
   const n = Object.fromEntries(HIGHLIGHT_TYPES.map((t) => [t, 0]));
   for (const h of list) n[h.type]++;

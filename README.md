@@ -158,8 +158,11 @@ each one plays on the site at `/replay?id=<demo>`, with pause, speed (¼× to 4�
 timeline to drag through the match (captures and highlights are marked on it), and
 downloads as a `.sdm` file. Highlights (H, or the ★ button) plays only the highlights, one
 clip after another with the camera on whoever made each: runs of three kills or more (the
-game's own multi-kill count), kills from 55 m or more, flag carriers killed close to scoring,
-and the captures. `[` and `]` go to the previous and next one. Demos are
+game's own multi-kill count), two kills within 2 s with a weapon switch (a knife or a LAW and
+something else), kills from 55 m or more, knife throws from 20 m or more, flag carriers
+killed close to scoring, and the captures. For a shot from off the screen the camera zooms
+out to show the shooter and the victim while it flies, then in on the victim (the viewer's
+own zoom ends that for the clip). `[` and `]` go to the previous and next one. Demos are
 kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with fewer
 than two players, and removes the oldest after `keepDays` or once all of them take more
 than `maxGB`. A match is published once it ends (plus the server's broadcast delay).

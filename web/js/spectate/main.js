@@ -250,6 +250,8 @@ function setMode(m, quiet) {
   $('auto').setAttribute('aria-pressed', String(m === 'auto'));
   $('map').setAttribute('aria-pressed', String(m === 'overview'));
   if (match) renderTarget(match);
+  // the reel's own zoom is for its camera only
+  if (replay && replay.reel && m !== 'overview' && (m === 'auto') !== (was === 'auto')) applyZoom();
   if (quiet) return;
   if (m === 'overview') {
     if (was !== 'overview') zoomBeforeMap = zoom;
@@ -294,9 +296,52 @@ function orderedPlayers() {
 
 // ---------- zoom (the game's spectator zoom; fx, fy: the point that stays put)
 
+// the viewer's zoom; a replay's reel adds its own on top while it has the camera
 function setZoom(z, fx = 0.5, fy = 0.5) {
   zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
-  call('soldat_spectator_zoom', zoom, fx, fy);
+  // the viewer's own zoom ends a clip's shot camera
+  if (replay) replay.dropShot();
+  applyZoom(fx, fy);
+}
+
+function applyZoom(fx = 0.5, fy = 0.5) {
+  call('soldat_spectator_zoom', viewZoom(), fx, fy);
+}
+
+const reelCam = { wide: 0, shot: 0, fit: null };  // zoom out for the clip, and for its shot (as far as it went)
+const SHOT_MAX_ZOOM = Math.log(3), SHOT_MAX_ZOOM_PHONE = Math.log(2.2);  // farther apart: no shot camera
+
+function viewZoom() {
+  const extra = replay && replay.reel && mode === 'auto' ? reelCam.wide + reelCam.shot : 0;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + extra));
+}
+
+// the reel's clip (null: the reel stopped): its own zoom, and no shot yet
+function reelClip(h) {
+  reelCam.wide = h && h.wide ? h.wide : 0;
+  reelCam.shot = 0;
+  reelCam.fit = null;
+  call('soldat_spectator_frame', 0, 0, 0);
+  applyZoom();
+}
+
+// a shot from afar (Replay.shotAt): the camera between the killer and the victim, zoomed out
+// to show both. Whether they fit is decided as it starts; too far apart, the clip cuts to
+// the victim instead. The view holds as far out as it went (the two may close in).
+function reelShot(shot) {
+  if (!shot || mode !== 'auto') {
+    call('soldat_spectator_frame', 0, 0, 0);
+    if (reelCam.shot) { reelCam.shot = 0; applyZoom(); }
+    return;
+  }
+  const fit = call('soldat_spectator_frame', shot.a, shot.b, shot.mix);
+  if (fit < MIN_ZOOM) return;  // one of them is not there (yet)
+  const max = phone ? SHOT_MAX_ZOOM_PHONE : SHOT_MAX_ZOOM;
+  if (reelCam.fit == null && fit > max + 0.1) { replay.dropShot(); return; }
+  reelCam.fit = Math.max(reelCam.fit ?? fit, fit);
+  const base = zoom + reelCam.wide;
+  reelCam.shot = Math.max(0, Math.min(reelCam.fit, max) - base) * shot.out;
+  applyZoom();
 }
 
 // phones: the picture fills the screen. The game draws it in the screen's shape; what the
@@ -716,7 +761,7 @@ function poll() {
     lostAt = 0;
   }
   // joining resets the zoom
-  if (Math.abs(s.zoom - zoom) > 0.01 && performance.now() - joinedAt < 5000) setZoom(zoom);
+  if (Math.abs(s.zoom - viewZoom()) > 0.01 && performance.now() - joinedAt < 5000) applyZoom();
   renderScorebug(s);
   renderVote(s);
   renderTarget(s);
@@ -1342,7 +1387,15 @@ function playDemo(demo, meta, ch) {
     onHold: (held) => game.al.hold(held),
     onTime: () => { barKey = ''; renderBar(); },
     onEnd: () => { barKey = ''; renderBar(); wake(); },
-    onClip: (h) => { clearNews(); showClip(h); barKey = ''; renderBar(); },
+    onClip: (h) => {
+      reelClip(h);
+      if (!h) return;
+      clearNews();
+      showClip(h);
+      barKey = '';
+      renderBar();
+    },
+    onShot: (shot) => reelShot(shot),
   });
   $('loading').hidden = true;
   watch(ch);
@@ -1399,13 +1452,14 @@ function renderBar() {
 }
 
 // "2 multi-kills, 1 long shot, 3 saves, 9 captures"
-const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], long: ['long shot', 'long shots'], save: ['save', 'saves'],
+const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], combo: ['weapon combo', 'weapon combos'],
+  long: ['long shot', 'long shots'], knife: ['knife throw', 'knife throws'], save: ['save', 'saves'],
   cap: ['capture', 'captures'] };
 function highlightsText(n) {
   return Object.entries(HIGHLIGHT_NAMES).filter(([k]) => n[k]).map(([k, [one, more]]) => `${n[k]} ${n[k] === 1 ? one : more}`).join(', ') || 'none';
 }
 // what a match is listed with: the plays, not the captures (the score has those)
-const playsOf = (n) => (n ? n.multi + n.long + n.save : 0);
+const playsOf = (n) => (n ? Object.entries(n).reduce((a, [k, v]) => a + (k === 'cap' ? 0 : v), 0) : 0);
 
 let clipTimer = 0;
 function showClip(h) {

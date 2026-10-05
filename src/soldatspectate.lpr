@@ -40,6 +40,11 @@ begin
   Result := SpectatorOverview;
 end;
 
+function soldat_spectator_frame(A, B: LongInt; Mix: Single): Single; cdecl;
+begin
+  Result := SpectatorFrame(A, B, Mix);
+end;
+
 procedure soldat_spectator_set(Name, Value: PAnsiChar); cdecl;
 begin
   SpectatorSet(Name, Value);
@@ -78,6 +83,7 @@ exports
   soldat_spectator_zoom,
   soldat_spectator_pan,
   soldat_spectator_overview,
+  soldat_spectator_frame,
   soldat_spectator_state,
   soldat_spectator_set,
   soldat_spectator_mouse;

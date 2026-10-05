@@ -25,6 +25,13 @@ procedure SpectatorZoom(Z, FX, FY: Single);
 procedure SpectatorPan(DX, DY: Single);
 // centers the free camera on the map; returns the zoom that shows all of it
 function SpectatorOverview: Single;
+// a shot from afar: while the camera follows player A, it aims Mix of the way from A to
+// player B (0 at A, 0.5 between them). Returns the zoom that shows both from between them,
+// or below MIN_ZOOM when one of them cannot be followed. A = 0 aims at the followed player
+// again, as do the page's other camera moves.
+function SpectatorFrame(A, B: LongInt; Mix: Single): Single;
+// where the camera aims while it follows Slot, whose sprite is at X, Y (Update_Frame)
+procedure SpectatorAim(Slot: Integer; var X, Y: Single);
 // sets a client setting without the console's "is now set to" line
 procedure SpectatorSet(Name, Value: PAnsiChar);
 // writes a text snapshot of the match into Buf (see SpectatorState in the .pas), returns
@@ -91,6 +98,9 @@ var
   KeepPlace: Boolean = False;  // a replay jumped: the camera stays where it was while rejoining
   KeptX, KeptY, KeptZoom: Single;
   KeptJoined: Integer;         // calls since the PlayersList, without the own player yet
+  FrameA: Integer = 0;         // SpectatorFrame
+  FrameB: Integer = 0;
+  FrameMix: Single = 0;
 
 procedure SpectatorInit;
 begin
@@ -240,6 +250,8 @@ begin
 end;
 
 procedure SpectatorCameraTick;
+var
+  X, Y: Single;
 begin
   SpectatorKeepCamera;
   CameraPrev.X := CameraX;
@@ -248,8 +260,11 @@ begin
   if (CameraFollowSprite > 0) and (CameraFollowSprite <= MAX_SPRITES) and
     Sprite[CameraFollowSprite].Active then
   begin
-    CameraX := CameraX + (SpriteParts.Pos[CameraFollowSprite].X - CameraX) * CAMSPEED;
-    CameraY := CameraY + (SpriteParts.Pos[CameraFollowSprite].Y - CameraY) * CAMSPEED;
+    X := SpriteParts.Pos[CameraFollowSprite].X;
+    Y := SpriteParts.Pos[CameraFollowSprite].Y;
+    SpectatorAim(CameraFollowSprite, X, Y);
+    CameraX := CameraX + (X - CameraX) * CAMSPEED;
+    CameraY := CameraY + (Y - CameraY) * CAMSPEED;
   end;
 end;
 
@@ -298,6 +313,7 @@ end;
 procedure SpectatorFollow(Slot: LongInt);
 begin
   CenterMouse;
+  FrameA := 0;
   if Slot < 0 then
   begin
     Wanted := -1;
@@ -335,6 +351,7 @@ end;
 procedure SpectatorPan(DX, DY: Single);
 begin
   CenterMouse;
+  FrameA := 0;
   Wanted := 0;
   CameraFollowSprite := 0;
   CameraX := CameraX + DX * exp(r_zoom.Value) * GameWidth;
@@ -359,6 +376,7 @@ begin
         MinY := Min(MinY, y); MaxY := Max(MaxY, y);
       end;
   CenterMouse;
+  FrameA := 0;
   Wanted := 0;
   CameraFollowSprite := 0;
   CameraX := (MinX + MaxX) / 2;
@@ -366,6 +384,32 @@ begin
   KeepHere;
   Result := EnsureRange(Ln(Max(1, Max((MaxX - MinX) * 1.05 / GameWidth,
     (MaxY - MinY) * 1.05 / GameHeight))), MIN_ZOOM, MAX_ZOOM);
+end;
+
+function SpectatorFrame(A, B: LongInt; Mix: Single): Single;
+const
+  // around each of them: their bodies, and room to see where they are
+  MARGIN_X = 90;
+  MARGIN_Y = 80;
+begin
+  Result := MIN_ZOOM - 1;
+  FrameA := 0;
+  if (A = B) or not Followable(A) or not Followable(B) then
+    Exit;
+  FrameA := A;
+  FrameB := B;
+  FrameMix := EnsureRange(Mix, 0, 1);
+  Result := Ln(Max(
+    (Abs(SpriteParts.Pos[B].X - SpriteParts.Pos[A].X) + 2 * MARGIN_X) / GameWidth,
+    (Abs(SpriteParts.Pos[B].Y - SpriteParts.Pos[A].Y) + 2 * MARGIN_Y) / GameHeight));
+end;
+
+procedure SpectatorAim(Slot: Integer; var X, Y: Single);
+begin
+  if (FrameA = 0) or (Slot <> FrameA) or not Followable(FrameB) then
+    Exit;
+  X := X + (SpriteParts.Pos[FrameB].X - X) * FrameMix;
+  Y := Y + (SpriteParts.Pos[FrameB].Y - Y) * FrameMix;
 end;
 
 procedure SpectatorSet(Name, Value: PAnsiChar);

@@ -31,6 +31,10 @@ const HEARTBEAT_SLOTS = { [MSG.HeartBeat]: 32, [MSG.HeartBeat16]: 16, [MSG.Heart
 const PREROLL = 2 * TICKS, PREROLL_SPEED = 30;
 // the client leaves after 15 s without a ping; a demo without them gets one every 2 s
 const PING_GAP = 2 * TICKS;
+// a shot from afar in the reel (a highlight's shot): the camera eases out to show both
+// players before it leaves, holds while it flies, and eases in after it lands
+const SHOT_OUT = 40, SHOT_HOLD = 18, SHOT_IN = 42;
+const ease = (x) => x * x * (3 - 2 * x);
 
 const dv = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
@@ -256,7 +260,8 @@ class MatchState {
 export class Replay {
   // demo: parseDemo's; meta: the hub's listing of it; hooks: call(export, ...args) into the
   // game, onFollow(slot) (the director's pick), onHold(held) (paused or not), onTime()
-  // (moved), onEnd(), onClip(highlight) (the reel goes on to it)
+  // (moved), onEnd(), onClip(highlight) (the reel goes on to it; null: the reel stopped),
+  // onShot(shot) (shotAt, each frame while it has one, then once null)
   constructor(demo, meta, hooks) {
     this.demo = demo;
     this.meta = meta;
@@ -268,7 +273,8 @@ export class Replay {
     this.markers = [];
     this.scan();
     this.highlights = findHighlights(demo, this.end);
-    this.reel = null;        // highlights only: { i (the clip), done }
+    this.reel = null;        // highlights only: { i (the clip), done, shotOff (no shot camera in it) }
+    this.shooting = false;   // onShot had a shot last
     this.following = 0;      // the reel's camera
     this.jump(0);
   }
@@ -329,6 +335,9 @@ export class Replay {
   camAt(tick) {
     const clip = this.clip;
     if (clip) {
+      // the shot camera stays on the killer until it is on the victim (or back on the killer)
+      const s = this.reel.shotOff ? null : clip.shot;
+      if (s) return tick < s.tick + SHOT_HOLD + SHOT_IN || s.back ? s.killer : s.victim;
       let slot = clip.slot;
       for (const c of clip.cams) if (c.tick <= tick) slot = c.slot;
       return slot;
@@ -336,6 +345,34 @@ export class Replay {
     let slot = 0;
     for (const c of this.demo.cams) { if (c.tick > tick) break; slot = c.slot; }
     return slot;
+  }
+
+  // the clip's shot from afar at `tick`: { a (the killer), b (the victim), mix (how far from a
+  // to b the camera aims), out (how far zoomed out to show both, 0 to 1) }, or null
+  shotAt(tick) {
+    const clip = this.clip, s = clip && !this.reel.shotOff ? clip.shot : null;
+    if (!s) return null;
+    const t0 = s.fired - SHOT_OUT, t1 = s.fired, t2 = s.tick + SHOT_HOLD, t3 = t2 + SHOT_IN;
+    if (tick < t0 || tick >= t3) return null;
+    const shot = { a: s.killer, b: s.victim, mix: 0.5, out: 1 };
+    if (tick < t1) {
+      shot.out = ease((tick - t0) / (t1 - t0));
+      shot.mix = shot.out / 2;
+    } else if (tick >= t2) {
+      const e = ease((tick - t2) / (t3 - t2));
+      shot.out = 1 - e;
+      shot.mix = 0.5 + ((s.back ? 0 : 1) - 0.5) * e;
+    }
+    return shot;
+  }
+
+  // the clip goes on without its shot camera (the viewer zoomed, or the players are too far
+  // apart to show both)
+  dropShot() {
+    if (!this.reel || this.reel.shotOff || !this.clip.shot) return;
+    this.reel.shotOff = true;
+    this.following = -1;
+    if (this.shooting) { this.shooting = false; this.hooks.onShot(null); }
   }
 
   // sets up the stream to continue from a little before `tick`
@@ -367,7 +404,8 @@ export class Replay {
   // highlights only: the clips one after another, the camera on whoever made each
   playReel(i = 0) {
     if (!this.highlights.length) return;
-    this.reel = { i: Math.max(0, Math.min(this.highlights.length - 1, i)), done: false };
+    this.reel = { i: Math.max(0, Math.min(this.highlights.length - 1, i)), done: false, shotOff: false };
+    this.shooting = false;
     this.following = -1;
     this.playing = true;
     this.seek(this.clip.from);
@@ -379,9 +417,11 @@ export class Replay {
   stopReel() {
     if (!this.reel) return;
     this.reel = null;
+    this.shooting = false;
     this.cam = this.demo.cams.findIndex(c => c.tick > this.pos);
     if (this.cam < 0) this.cam = this.demo.cams.length;
     if (this.sock && !this.joining) this.followDue = this.camAt(this.pos);
+    this.hooks.onClip(null);
     this.hooks.onTime();
   }
 
@@ -437,6 +477,8 @@ export class Replay {
     if (clip && this.target == null && pos >= clip.to && !this.reel.done) {
       if (this.reel.i + 1 < this.highlights.length) {
         this.reel.i++;
+        this.reel.shotOff = false;
+        this.shooting = false;
         this.following = -1;
         this.seek(this.clip.from);
         this.hooks.onClip(this.clip);
@@ -466,6 +508,8 @@ export class Replay {
     if (this.reel) {
       const slot = this.camAt(pos);
       if (slot !== this.following) { this.following = slot; this.hooks.onFollow(slot); }
+      const shot = this.shotAt(pos);
+      if (shot || this.shooting) { this.shooting = !!shot; this.hooks.onShot(shot); }
     } else {
       while (this.cam < cams.length && cams[this.cam].tick <= pos) this.hooks.onFollow(cams[this.cam++].slot);
     }
