@@ -586,6 +586,10 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 @media (pointer: coarse) {
   .say-text { font-size: 16px; }
 }
+/* touch only: a pinch zooms, the dock keeps the room of its zoom buttons */
+@media (hover: none) and (pointer: coarse) {
+  .zoom { display: none; }
+}
 @keyframes turn { 0%, 30% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
 @media (prefers-reduced-motion: reduce) {
   .ui { transition: none; }
