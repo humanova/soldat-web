@@ -89,7 +89,8 @@ var
   LastEventTick: Integer = 0;
   Wanted: Integer = -1;        // the page's camera: a slot, 0 the free camera, -1 the game's
   KeepPlace: Boolean = False;  // a replay jumped: the camera stays where it was while rejoining
-  KeptX, KeptY: Single;
+  KeptX, KeptY, KeptZoom: Single;
+  KeptJoined: Integer;         // calls since the PlayersList, without the own player yet
 
 procedure SpectatorInit;
 begin
@@ -192,17 +193,36 @@ begin
     Sprite[Slot].IsNotSpectator();
 end;
 
+// while a jump rejoins: the camera and zoom to keep (also where the page moved them meanwhile)
+procedure KeepHere;
+begin
+  if KeepPlace then
+  begin
+    KeptX := CameraX;
+    KeptY := CameraY;
+    KeptZoom := r_zoom.Value;
+  end;
+end;
+
 procedure SpectatorKeepCamera;
 begin
   if KeepPlace then
   begin
-    // joining puts the camera at the map's origin
+    // joining puts the camera at the map's origin, and the own player's arrival (a new one
+    // to the client: the PlayersList forgot it) resets the zoom
     CameraX := KeptX;
     CameraY := KeptY;
     CameraPrev.X := KeptX;
     CameraPrev.Y := KeptY;
+    if (MySprite > 0) and not SameValue(r_zoom.Value, KeptZoom) then
+      r_zoom.SetValue(KeptZoom);
+    // joined: the PlayersList taken and the own player back (a demo without it: soon after)
     if (MySprite > 0) and not RequestingGame then
-      KeepPlace := False;
+    begin
+      Inc(KeptJoined);
+      if ClientPlayerReceived or (KeptJoined > 60) then
+        KeepPlace := False;
+    end;
   end;
   if Wanted = 0 then
     CameraFollowSprite := 0
@@ -267,10 +287,10 @@ begin
   // camera may be at the map's origin until the next tick)
   if not KeepPlace then
   begin
-    KeptX := CameraX;
-    KeptY := CameraY;
+    KeepPlace := True;
+    KeepHere;
   end;
-  KeepPlace := True;
+  KeptJoined := 0;
   RequestingGame := True;
   RequestGameRetryTicks := 3 * 60;
 end;
@@ -309,6 +329,7 @@ begin
     CameraX := CameraX + (FX - 0.5) * (exp(Old) - exp(Z)) * GameWidth;
     CameraY := CameraY + (FY - 0.5) * (exp(Old) - exp(Z)) * GameHeight;
   end;
+  KeepHere;
 end;
 
 procedure SpectatorPan(DX, DY: Single);
@@ -318,6 +339,7 @@ begin
   CameraFollowSprite := 0;
   CameraX := CameraX + DX * exp(r_zoom.Value) * GameWidth;
   CameraY := CameraY + DY * exp(r_zoom.Value) * GameHeight;
+  KeepHere;
 end;
 
 function SpectatorOverview: Single;
@@ -341,6 +363,7 @@ begin
   CameraFollowSprite := 0;
   CameraX := (MinX + MaxX) / 2;
   CameraY := (MinY + MaxY) / 2;
+  KeepHere;
   Result := EnsureRange(Ln(Max(1, Max((MaxX - MinX) * 1.05 / GameWidth,
     (MaxY - MinY) * 1.05 / GameHeight))), MIN_ZOOM, MAX_ZOOM);
 end;

@@ -2325,8 +2325,8 @@ begin
       end;
     end;
 
-    // Aim cursor
-    if not (LimboMenu.Active or TeamMenu.Active or EscMenu.Active) and not SpriteMe.DeadMeat
+    // Aim cursor (none for the spectator: right after joining its own sprite is alive)
+    if {$IFDEF SPECTATOR}False and{$ENDIF} not (LimboMenu.Active or TeamMenu.Active or EscMenu.Active) and not SpriteMe.DeadMeat
       and ((MapChangeCounter < 0) or (MapChangeCounter = 999999999))
       and not (DemoPlayer.Active and (not demo_showcrosshair.Value))
       and not ((SpectNumber > 0) and (SpectNumber <= 32) and (Sprite[SpectNumber].Player.DemoPlayer = False)) then
