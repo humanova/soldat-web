@@ -405,6 +405,9 @@ export class Replay {
     this.jump(tick);
     if (this.time >= this.length) this.playing = false;
     if (this.sock) {
+      // the game rejoins as it runs: held (paused, or a reel's match over while the next one
+      // loads) it would never load a new map nor answer. Its speed is set again once it has.
+      this.hooks.call('soldat_spectator_speed', 1);
       this.hooks.call('soldat_spectator_rewind');
       this.sock.deliver(this.state.buildPlayersList(this.pos));
     }
