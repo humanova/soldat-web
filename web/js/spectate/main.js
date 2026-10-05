@@ -402,6 +402,52 @@ function moveGesture() {
   gesture.c = c;
 }
 
+// ---------- the game's own free camera: a click on the picture holds the mouse (pointer lock)
+// and the camera flows towards the cursor, faster the farther it is from the middle, as in
+// the game. Esc, or any other camera, lets go.
+
+let downAt = null;  // where a mouse press started (a drag is no click)
+canvas.addEventListener('pointerdown', (e) => {
+  downAt = e.pointerType === 'mouse' && e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+});
+canvas.addEventListener('click', (e) => {
+  const at = downAt;
+  downAt = null;
+  if (!at || !watching || mouseHeld() || Math.hypot(e.clientX - at.x, e.clientY - at.y) > 5) return;
+  if (mode !== 'free') setMode('free');
+  try {
+    const p = canvas.requestPointerLock({ unadjustedMovement: true });
+    if (p && p.catch) p.catch(() => { try { canvas.requestPointerLock(); } catch (_) {} });
+  } catch (_) {
+    try { canvas.requestPointerLock(); } catch (_) {}
+  }
+});
+
+const mouseHeld = () => document.pointerLockElement === canvas;
+let mouseMove = [0, 0];
+document.addEventListener('mousemove', (e) => {
+  if (!mouseHeld()) return;
+  mouseMove[0] += e.movementX;
+  mouseMove[1] += e.movementY;
+});
+// once a frame: the movement since the last, and the cursor back after a zoom centered it
+function steer() {
+  if (!mouseHeld()) return;
+  if (mode !== 'free' || !watching) { document.exitPointerLock(); return; }
+  call('soldat_spectator_mouse', mouseMove[0], mouseMove[1], 1);
+  mouseMove = [0, 0];
+  requestAnimationFrame(steer);
+}
+document.addEventListener('pointerlockchange', () => {
+  mouseMove = [0, 0];
+  if (mouseHeld()) {
+    requestAnimationFrame(steer);
+    wake();
+  } else {
+    call('soldat_spectator_mouse', 0, 0, 0);
+  }
+});
+
 // ---------- controls
 
 $('auto').addEventListener('click', () => setMode('auto'));

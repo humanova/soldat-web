@@ -69,6 +69,13 @@ const
   MIN_ZOOM = -0.9;
   MAX_ZOOM = 1.6;
 
+// The game's free camera, steered by the mouse: while the page holds the mouse (pointer
+// lock), its movement moves the game's cursor as in the game (ControlGame's
+// SDL_MOUSEMOTION) and the camera flows towards it (Update_Frame). Held 0 lets go: the
+// cursor back in the middle, the camera still. Moving by 0, 0 puts the cursor back where it
+// was after the other calls centered it.
+procedure SpectatorMouse(DX, DY: Single; Held: LongInt);
+
 implementation
 
 uses
@@ -416,6 +423,31 @@ begin
     Exit(0);
   Move(S[1], Buf^, Result);
   Buf[Result] := #0;
+end;
+
+var
+  MouseHeld: Boolean = False;
+  HeldX, HeldY: Single;
+
+procedure SpectatorMouse(DX, DY: Single; Held: LongInt);
+begin
+  if Held = 0 then
+  begin
+    MouseHeld := False;
+    mx := GameWidthHalf;
+    my := GameHeightHalf;
+    Exit;
+  end;
+  if not MouseHeld then
+  begin
+    MouseHeld := True;
+    HeldX := GameWidthHalf;
+    HeldY := GameHeightHalf;
+  end;
+  HeldX := Max(0, Min(GameWidth, HeldX + DX * cl_sensitivity.Value));
+  HeldY := Max(0, Min(GameHeight, HeldY + DY * cl_sensitivity.Value));
+  mx := HeldX;
+  my := HeldY;
 end;
 
 end.

@@ -65,6 +65,11 @@ begin
   SpectatorRewind;
 end;
 
+procedure soldat_spectator_mouse(DX, DY: Single; Held: LongInt); cdecl;
+begin
+  SpectatorMouse(DX, DY, Held);
+end;
+
 exports
   soldat_spectator_speed,
   soldat_spectator_rewind,
@@ -74,7 +79,8 @@ exports
   soldat_spectator_pan,
   soldat_spectator_overview,
   soldat_spectator_state,
-  soldat_spectator_set;
+  soldat_spectator_set,
+  soldat_spectator_mouse;
 
 begin
   DefaultSystemCodePage := CP_UTF8;
