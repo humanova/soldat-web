@@ -76,14 +76,14 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   font-size: 16px; font-weight: 700; text-decoration: none; border-right: 2px solid var(--bg); }
 .tab:hover { color: var(--muted); }
 .tab.active { background: var(--panel); color: var(--text); }
-.tab.logo { padding-left: 8px; }
-.tab.ext::after { content: "↗"; font-size: 11px; margin-left: 5px; font-weight: 400; }
+/* the logo leads to Live, but is not a tab of its own */
+.tab.logo { padding-left: 8px; color: var(--text); }
 .tabs .fill-tab { flex: 1; background: var(--bg); }
-/* the way to the game: a green tab */
-.play-link { gap: 6px; background: var(--green-lo); color: var(--green-text); }
-.play-link:hover { background: var(--green); color: #fff; }
-.play-link svg { width: 13px; height: 13px; }
-.tag { align-self: center; margin-right: 10px; background: var(--green-lo); color: var(--green-text); font-size: 13px; padding: 4px 12px; }
+/* the way to the game: a green button at the end of the bar */
+.play-link { display: inline-flex; align-items: center; gap: 6px; align-self: center; margin-right: 10px; padding: 4px 12px;
+  background: var(--green); color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.play-link:hover { background: var(--green-hi); }
+.play-link svg { width: 12px; height: 12px; }
 
 .guide-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px;
   width: 100%; max-width: 1180px; margin: 0 auto; padding: 22px 16px 32px; }
@@ -157,9 +157,12 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .score-line { font-variant-numeric: tabular-nums; }
 .score-line b { font-weight: 700; }
 .score-line i { font-style: normal; color: var(--dim); margin: 0 4px; }
-.demos .more { display: block; margin: 8px auto 0; }
+.demos .listing-head .btn { min-height: 0; padding: 4px 12px; font-size: 13px; }
+.all-link { display: block; margin-top: 8px; text-align: right; color: var(--muted); font-size: 13px; text-decoration: none; }
+.all-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+#viewer-back { margin-left: auto; min-height: 0; padding: 4px 12px; font-size: 13px; }
 
-/* the Demos tab: the drop zone for a demo file, and the demos opened since the page loaded */
+/* the demo viewer: the drop zone for a demo file, and the demos opened since the page loaded */
 .on-viewer .listing > :not(#viewer) { display: none !important; }
 .drop-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   min-height: 190px; padding: 24px 16px; background: var(--row); border: 2px dashed var(--line); color: var(--muted);
@@ -510,8 +513,11 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 }
 @media (max-width: 560px) {
   .tab { padding: 0 12px; font-size: 15px; }
-  .tab.ext { display: none; }
-  .tag { display: none; }
+  .play-link { margin-right: 8px; padding: 4px 10px; }
+}
+/* phones: the logo is its icon and the TV badge, so that the bar fits */
+@media (max-width: 420px) {
+  .tabs .logo-word { display: none; }
   .columns { display: none; }
   .channel { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 11px 6px 11px 8px; }
   .channel .ch-map, .channel .ch-mode { display: none; }

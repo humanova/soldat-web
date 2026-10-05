@@ -1658,14 +1658,14 @@ async function refresh(fresh = false) {
 
 let demos = [];
 let demosOf;          // the tab they are of
-let demosLimit = 20;
+const DEMOS_SHOWN = 5;  // the newest: all of them are on the stats page
 const recordsTab = () => channels.some(c => (c.group || null) === tab && c.record);
 
 async function refreshDemos() {
   if (!recordsTab()) { renderDemos(); return; }
   const of = tab;
   try {
-    const q = new URLSearchParams({ group: tab || '', limit: String(demosLimit + 1) });
+    const q = new URLSearchParams({ group: tab || '', limit: String(DEMOS_SHOWN) });
     const res = await fetch(httpBase() + '/api/demos?' + q, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -1695,7 +1695,7 @@ function renderDemos() {
   if (!show) return;
   const ol = $('demo-list');
   ol.textContent = '';
-  for (const d of demos.slice(0, demosLimit)) {
+  for (const d of demos.slice(0, DEMOS_SHOWN)) {
     const li = el('li');
     const b = el('button', 'channel demo');
     b.type = 'button';
@@ -1724,10 +1724,8 @@ function renderDemos() {
     ol.append(li);
   }
   $('demos-empty').hidden = demos.length > 0;
-  $('demos-more').hidden = demos.length <= demosLimit;
+  $('demos-all').hidden = !demos.length;
 }
-
-$('demos-more').addEventListener('click', () => { demosLimit += 40; refreshDemos(); });
 
 // ★ 5: the match's plays (multi-kills, long shots, saves)
 function highlightCount(n) {
@@ -1753,9 +1751,9 @@ function showAge() {
 }
 setInterval(() => { if (!watching) showAge(); }, 1000);
 
-// ---------- the Demos tab: a demo file from the viewer's computer, played on the page
+// ---------- the demo viewer: a demo file from the viewer's computer, played on the page
 
-let viewer = false;   // the Demos tab is open
+let viewer = false;   // the demo viewer is open (in place of the tab's list)
 const opened = [];    // the demos opened since the page loaded: { file, name, map, start, ticks }
 
 const sizeText = (n) => `${(n / 1048576).toFixed(1)} MB`;
@@ -1850,7 +1848,8 @@ $('demo-file').addEventListener('change', (e) => {
   e.target.value = '';
   openFile(file);
 });
-document.querySelector('.tabs .demos-tab').addEventListener('click', (e) => { e.preventDefault(); setViewer(); });
+for (const a of document.querySelectorAll('.open-demo')) a.addEventListener('click', (e) => { e.preventDefault(); setViewer(); });
+$('viewer-back').addEventListener('click', () => setTab(tab));
 
 // a file dropped anywhere on the guide opens (on a match: nothing; the browser would leave the page for it)
 const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -1890,7 +1889,6 @@ function showTabAddress() {
 function setTab(group) {
   tab = group;
   viewer = false;
-  demosLimit = 20;
   showTabAddress();
   renderGuide();
   refreshDemos();
@@ -1899,22 +1897,22 @@ function setTab(group) {
 function renderTabs() {
   const groups = [...new Set(channels.map(c => c.group).filter(Boolean))];
   if (tab && !groups.includes(tab)) tab = null;
-  const logo = document.querySelector('.tabs .logo');
-  logo.classList.toggle('active', !tab && !viewer);
-  document.querySelector('.tabs .demos-tab').classList.toggle('active', viewer);
+  // the demo viewer is opened from a tab's list: that tab stays on
+  const live = document.querySelector('.tabs .live-tab');
+  live.classList.toggle('active', !tab);
   $('guide').classList.toggle('on-viewer', viewer);
   $('viewer').hidden = !viewer;
   for (const t of document.querySelectorAll('.tabs .group')) t.remove();
-  let after = logo;
+  let after = live;
   for (const g of groups) {
-    const a = el('a', 'tab group' + (g === tab && !viewer ? ' active' : ''), g);
+    const a = el('a', 'tab group' + (g === tab ? ' active' : ''), g);
     a.href = '#' + slug(g);
     a.addEventListener('click', (e) => { e.preventDefault(); setTab(g); });
     after.after(a);
     after = a;
   }
 }
-document.querySelector('.tabs .logo').addEventListener('click', (e) => { e.preventDefault(); setTab(null); });
+for (const a of document.querySelectorAll('.tabs .logo, .tabs .live-tab')) a.addEventListener('click', (e) => { e.preventDefault(); setTab(null); });
 
 function renderGuide() {
   renderTabs();

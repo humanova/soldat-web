@@ -635,7 +635,11 @@ function showAccount() {
     });
     box.append(who, out);
   } else {
-    const a = el('a', 'Sign in with Discord');
+    // "Sign in" on phones, where the bar is short
+    const a = el('a', 'Sign in');
+    const more = el('span', ' with Discord');
+    more.className = 'long';
+    a.append(more);
     a.className = 'signin';
     a.href = '#';
     a.addEventListener('click', (e) => { e.preventDefault(); signIn(); });

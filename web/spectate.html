@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=4">
+<link rel="stylesheet" href="spectate.css?v=5">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || /\/[\w-]+$/.test(location.pathname)) document.documentElement.classList.add('direct');</script>
@@ -51,13 +51,12 @@
 <!-- the channel guide -->
 <div id="guide">
   <header class="tabs">
-    <a class="tab active logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
-    <!-- the hub's server groups (Gather) are put between the logo and Demos: js/spectate/main.js renderTabs -->
-    <a class="tab demos-tab" href="#demo" title="Watch a demo file (.sdm) from your computer">Demos</a>
-    <a class="tab play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg width="13" height="13" aria-hidden="true"><use href="#i-play"/></svg>Play</a>
-    <a class="tab ext" href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a>
+    <a class="tab logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
+    <a class="tab live-tab active" href="./">Live</a>
+    <!-- the hub's server groups (Gather) are put between Live and Stats: js/spectate/main.js renderTabs -->
+    <a class="tab" href="/stats/" title="The Gather matches Soldat TV recorded: players, maps and replays">Stats</a>
     <span class="fill-tab"></span>
-    <span class="tag">Live matches</span>
+    <a class="play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg width="13" height="13" aria-hidden="true"><use href="#i-play"/></svg>Play</a>
   </header>
 
   <main class="guide-main">
@@ -81,21 +80,23 @@
         <div class="listing-head">
           <h2 id="demos-title">Recorded matches</h2>
           <p class="summary">Recorded while Soldat TV watches</p>
+          <button type="button" class="btn quiet open-demo" title="Watch a demo file (.sdm) from your computer">Open a demo file</button>
         </div>
         <div class="columns" aria-hidden="true">
           <span>Match</span><span>Map</span><span class="c-mode num">Score</span><span class="num">Length</span>
         </div>
         <ol id="demo-list" class="channels demo-list"></ol>
         <p id="demos-empty" class="list-empty" hidden>No matches recorded yet. A match is recorded while someone watches it here.</p>
-        <button id="demos-more" type="button" class="btn quiet more" hidden>Show more</button>
+        <a id="demos-all" class="all-link" href="/stats/" hidden>All recorded matches, with their players →</a>
       </section>
 
-      <!-- the Demos tab: a demo from the viewer's computer, played here (js/spectate/main.js: openFile) -->
+      <!-- the demo viewer: a demo from the viewer's computer, played here (js/spectate/main.js: openFile) -->
       <section id="viewer" class="viewer" aria-labelledby="viewer-title" hidden>
         <div class="listing-head">
           <h1 id="viewer-title">Watch a demo</h1>
           <p class="summary">Soldat demos (.sdm) play here, in your browser</p>
           <span id="viewer-status" class="status error" role="status"></span>
+          <button id="viewer-back" type="button" class="btn quiet">Back</button>
         </div>
         <label id="drop" class="drop-zone">
           <input id="demo-file" type="file" accept=".sdm,.gz" class="visually-hidden">
@@ -123,6 +124,7 @@
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone watching.</p>
         <p>Contact <b class="nick">humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
           if you want your server to be included. Listed servers can also be played on <a href="https://play.soldat.live">play.soldat.live</a>.</p>
+        <p>Have a Soldat demo (.sdm)? <a href="#demo" class="open-demo">Watch it here</a>.</p>
       </div>
       <section class="tv-chat" aria-labelledby="tv-chat-title">
         <h2 id="tv-chat-title">Chat</h2>
@@ -142,13 +144,13 @@
         <dl class="keys">
           <dt>Scroll, pinch</dt><dd>zoom</dd>
           <dt>Drag</dt><dd>look around</dd>
-          <dt>Click</dt><dd>steer with the mouse, as in the game (<kbd>Esc</kbd>: let go)</dd>
+          <dt>Click</dt><dd>steer with the mouse</dd>
           <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous, next player</dd>
           <dt><kbd>A</kbd> <kbd>F</kbd> <kbd>O</kbd></dt><dd>auto, free, overview</dd>
           <dt><kbd>Tab</kbd> <kbd>C</kbd></dt><dd>players, game chat</dd>
           <dt><kbd>Enter</kbd></dt><dd>Soldat TV chat</dd>
           <dt><kbd>Space</kbd> <kbd>J</kbd> <kbd>L</kbd></dt><dd>replays: pause, back, forward</dd>
-          <dt>Drag a bar</dt><dd>move a panel (double-click: back)</dd>
+          <dt>Drag a bar</dt><dd>move a panel</dd>
         </dl>
       </div>
     </aside>
@@ -157,7 +159,9 @@
   <footer class="credits">
     <a href="https://soldat.pl/en/" target="_blank" rel="noopener">Soldat</a> © Transhuman Design ·
     client rewritten from <a href="https://github.com/Soldat/soldat" target="_blank" rel="noopener">Soldat/soldat</a> (MIT) ·
-    by <a href="https://twitter.com/humanova" target="_blank" rel="noopener">humanova</a>
+    by <a href="https://twitter.com/humanova" target="_blank" rel="noopener">humanova</a> ·
+    <a href="https://soldat.pl/en/" target="_blank" rel="noopener">soldat.pl</a> ·
+    <a href="https://store.steampowered.com/app/638490/Soldat/" target="_blank" rel="noopener">Steam</a>
   </footer>
 </div>
 
