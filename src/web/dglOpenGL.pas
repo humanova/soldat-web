@@ -114,6 +114,13 @@ const
   GL_DYNAMIC_DRAW = $88E8;
   GL_SCISSOR_TEST = $0C11;
   GL_CULL_FACE = $0B44;
+  GL_STENCIL_TEST = $0B90;
+  GL_STENCIL_BUFFER_BIT = $00000400;
+  GL_STENCIL_BITS = $0D57;
+  GL_ALWAYS = $0207;
+  GL_EQUAL = $0202;
+  GL_KEEP = $1E00;
+  GL_REPLACE = $1E01;
 
 type
   TglActiveTexture = procedure(texture: GLenum); cdecl;
@@ -170,6 +177,12 @@ type
   TglTexParameteri = procedure(target: GLenum; pname: GLenum; param: GLint); cdecl;
   TglTexSubImage2D = procedure(target: GLenum; level: GLint; xoffset: GLint; yoffset: GLint; width: GLsizei; height: GLsizei; format: GLenum; _type: GLenum; const pixels: PGLvoid); cdecl;
   TglUniform1i = procedure(location: GLint; v0: GLint); cdecl;
+  TglUniform1f = procedure(location: GLint; v0: GLfloat); cdecl;
+  TglUniform4f = procedure(location: GLint; v0, v1, v2, v3: GLfloat); cdecl;
+  TglClearStencil = procedure(s: GLint); cdecl;
+  TglStencilFunc = procedure(func: GLenum; ref: GLint; mask: GLuint); cdecl;
+  TglStencilOp = procedure(fail, zfail, zpass: GLenum); cdecl;
+  TglStencilMask = procedure(mask: GLuint); cdecl;
   TglUniformMatrix3fv = procedure(location: GLint; count: GLsizei; transpose: GLboolean; value: PGLfloat); cdecl;
   TglUseProgram = procedure(programObj: GLhandle); cdecl;
   TglVertexAttribPointer = procedure(index: GLuint; size: GLint; _type: GLenum; normalized: GLboolean; stride: GLsizei; const _pointer: PGLvoid); cdecl;
@@ -236,6 +249,12 @@ var
   glTexParameteri: TglTexParameteri;
   glTexSubImage2D: TglTexSubImage2D;
   glUniform1i: TglUniform1i;
+  glUniform1f: TglUniform1f;
+  glUniform4f: TglUniform4f;
+  glClearStencil: TglClearStencil;
+  glStencilFunc: TglStencilFunc;
+  glStencilOp: TglStencilOp;
+  glStencilMask: TglStencilMask;
   glUniformMatrix3fv: TglUniformMatrix3fv;
   glUseProgram: TglUseProgram;
   glVertexAttribPointer: TglVertexAttribPointer;
@@ -361,6 +380,18 @@ procedure imp_glTexSubImage2D(target: GLenum; level: GLint; xoffset: GLint; yoff
 procedure js_glTexSubImage2D(target: GLenum; level: GLint; xoffset: GLint; yoffset: GLint; width: GLsizei; height: GLsizei; format: GLenum; _type: GLenum; const pixels: PGLvoid); cdecl; begin imp_glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, _type, pixels); end;
 procedure imp_glUniform1i(location: GLint; v0: GLint); cdecl; external 'gl' name 'glUniform1i';
 procedure js_glUniform1i(location: GLint; v0: GLint); cdecl; begin imp_glUniform1i(location, v0); end;
+procedure imp_glUniform1f(location: GLint; v0: GLfloat); cdecl; external 'gl' name 'glUniform1f';
+procedure js_glUniform1f(location: GLint; v0: GLfloat); cdecl; begin imp_glUniform1f(location, v0); end;
+procedure imp_glUniform4f(location: GLint; v0, v1, v2, v3: GLfloat); cdecl; external 'gl' name 'glUniform4f';
+procedure js_glUniform4f(location: GLint; v0, v1, v2, v3: GLfloat); cdecl; begin imp_glUniform4f(location, v0, v1, v2, v3); end;
+procedure imp_glClearStencil(s: GLint); cdecl; external 'gl' name 'glClearStencil';
+procedure js_glClearStencil(s: GLint); cdecl; begin imp_glClearStencil(s); end;
+procedure imp_glStencilFunc(func: GLenum; ref: GLint; mask: GLuint); cdecl; external 'gl' name 'glStencilFunc';
+procedure js_glStencilFunc(func: GLenum; ref: GLint; mask: GLuint); cdecl; begin imp_glStencilFunc(func, ref, mask); end;
+procedure imp_glStencilOp(fail, zfail, zpass: GLenum); cdecl; external 'gl' name 'glStencilOp';
+procedure js_glStencilOp(fail, zfail, zpass: GLenum); cdecl; begin imp_glStencilOp(fail, zfail, zpass); end;
+procedure imp_glStencilMask(mask: GLuint); cdecl; external 'gl' name 'glStencilMask';
+procedure js_glStencilMask(mask: GLuint); cdecl; begin imp_glStencilMask(mask); end;
 procedure imp_glUniformMatrix3fv(location: GLint; count: GLsizei; transpose: GLboolean; value: PGLfloat); cdecl; external 'gl' name 'glUniformMatrix3fv';
 procedure js_glUniformMatrix3fv(location: GLint; count: GLsizei; transpose: GLboolean; value: PGLfloat); cdecl; begin imp_glUniformMatrix3fv(location, count, transpose, value); end;
 procedure imp_glUseProgram(programObj: GLhandle); cdecl; external 'gl' name 'glUseProgram';
@@ -428,6 +459,12 @@ begin
   glTexParameteri := @js_glTexParameteri;
   glTexSubImage2D := @js_glTexSubImage2D;
   glUniform1i := @js_glUniform1i;
+  glUniform1f := @js_glUniform1f;
+  glUniform4f := @js_glUniform4f;
+  glClearStencil := @js_glClearStencil;
+  glStencilFunc := @js_glStencilFunc;
+  glStencilOp := @js_glStencilOp;
+  glStencilMask := @js_glStencilMask;
   glUniformMatrix3fv := @js_glUniformMatrix3fv;
   glUseProgram := @js_glUseProgram;
   glVertexAttribPointer := @js_glVertexAttribPointer;

@@ -761,6 +761,14 @@ begin
   r_forcebg_color2 := TColorCvar.Add('r_forcebg_color2', 'Force bg second color', $00FF0000, $00FF0000, [CVAR_CLIENT], nil);
   r_renderui := TBooleanCvar.Add('r_renderui', 'Enables interface rendering', True, True, [CVAR_CLIENT], nil);
   r_zoom := TSingleCvar.Add('r_zoom', 'Sets rendering zoom (only for spectators)', 0.0, 0.0, [CVAR_CLIENT], @r_zoomChange, -5.0, 5.0);
+  {$IFDEF SPECTATOR}
+  spec_silhouettes := TBooleanCvar.Add('spec_silhouettes', 'Shows players behind scenery as silhouettes', True, True, [CVAR_CLIENT], nil);
+  spec_tracers := TBooleanCvar.Add('spec_tracers', 'Draws a team coloured trace behind bullets', True, True, [CVAR_CLIENT], nil);
+  spec_deaths := TBooleanCvar.Add('spec_deaths', 'Marks where players died for a few seconds', True, True, [CVAR_CLIENT], nil);
+  spec_names := TBooleanCvar.Add('spec_names', 'Shows the names under the players', True, True, [CVAR_CLIENT], nil);
+  spec_health := TBooleanCvar.Add('spec_health', 'Shows health bars under the players', True, True, [CVAR_CLIENT], nil);
+  spec_trails := TBooleanCvar.Add('spec_trails', 'Draws the path of a flag carrier', True, True, [CVAR_CLIENT], nil);
+  {$ENDIF}
   r_msaa := TIntegerCVar.Add('r_msaa', 'Sets the number of samples for anti-aliasing (MSAA).', 0, 0, [CVAR_CLIENT, CVAR_INITONLY], nil, 0, 32);
 
   // Ui Cvars

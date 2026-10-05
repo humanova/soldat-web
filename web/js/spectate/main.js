@@ -66,6 +66,7 @@ let replay = null;    // the recorded match being played (js/spectate/replay.js)
 
 const game = new SoldatRuntime(canvas, {
   input: false,
+  stencil: true,  // players behind scenery are drawn as silhouettes (spec_silhouettes)
   relayUrl: () => hubBase() + '/watch',
   relayRequest(kind, d) {
     if (kind === 'files') return { type: 'files', server: watching && watching.id, files: d.files };
@@ -201,6 +202,7 @@ function watch(ch) {
   try { game.call('soldat_spectator_speed', 1); } catch (_) {}
   game.al.hold(false);
   applyVolume();
+  applyVisuals();
   if (!game.join('tv', 1, '')) {
     showGuide();
     setStatus('Could not start watching.', true);
@@ -596,7 +598,7 @@ if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
 window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
   // Enter and Space on a button press it
-  if ((e.code === 'Enter' || e.code === 'Space') && e.target.closest && e.target.closest('button, a')) return;
+  if ((e.code === 'Enter' || e.code === 'Space') && e.target.closest && e.target.closest('button, a, label')) return;
   const keys = {
     ...(replay && replayKeys),
     ArrowLeft: () => cycle(-1), ArrowRight: () => cycle(1),
@@ -605,7 +607,8 @@ window.addEventListener('keydown', (e) => {
     Equal: () => setZoom(zoom - 0.25), NumpadAdd: () => setZoom(zoom - 0.25),
     Minus: () => setZoom(zoom + 0.25), NumpadSubtract: () => setZoom(zoom + 0.25),
     Digit0: () => setZoom(0), Tab: () => toggleRoster(), KeyC: () => toggleChat(),
-    Escape: () => closeRoster(), Enter: () => sayKey(),
+    KeyV: () => toggleVisuals(),
+    Escape: () => { closeRoster(); toggleVisuals(false); }, Enter: () => sayKey(),
   };
   const pan = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1] }[e.code];
   if (pan) {
@@ -626,6 +629,34 @@ function sayKey() {
   $('tvchat').querySelector('.say-text').focus();
 }
 
+// ---------- what is shown over the match: the game's spec_* settings (all on at first),
+// switched in the menu under the eye and kept in prefs.visuals
+
+const visuals = (prefs.visuals && typeof prefs.visuals === 'object') ? prefs.visuals : (prefs.visuals = {});
+const visualBoxes = [...$('visuals').querySelectorAll('input[data-cvar]')];
+
+function applyVisuals() {
+  for (const box of visualBoxes) setCvar(box.dataset.cvar, visuals[box.dataset.cvar] === false ? '0' : '1');
+}
+for (const box of visualBoxes) {
+  box.checked = visuals[box.dataset.cvar] !== false;
+  box.addEventListener('change', () => {
+    visuals[box.dataset.cvar] = box.checked;
+    savePrefs();
+    if (game.running) setCvar(box.dataset.cvar, box.checked ? '1' : '0');
+  });
+}
+function toggleVisuals(open = $('visuals').hidden) {
+  $('visuals').hidden = !open;
+  $('visuals-btn').setAttribute('aria-expanded', String(open));
+  if (open) wake();
+}
+$('visuals-btn').addEventListener('click', () => toggleVisuals());
+// a click anywhere else closes it
+document.addEventListener('pointerdown', (e) => {
+  if (!$('visuals').hidden && !e.target.closest('.visuals')) toggleVisuals(false);
+});
+
 // ---------- controls fade out while nothing happens
 
 let idleTimer = 0;
@@ -634,7 +665,7 @@ function wake() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     if (!$('dock').matches(':hover') && !$('replaybar').matches(':hover') && !scrub &&
-      !$('volume').parentElement.matches(':hover') && $('roster').hidden) idle();
+      !$('volume').parentElement.matches(':hover') && $('roster').hidden && $('visuals').hidden) idle();
   }, 3200);
 }
 function idle() {

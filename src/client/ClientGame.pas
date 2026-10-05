@@ -65,7 +65,7 @@ uses
   SysUtils, StrUtils, Math, Classes,
   Client, Game, Sprites, GameStrings, Demo,
   Net, NetworkClientSprite, NetworkClientConnection,
-  {$IFDEF SPECTATOR}Spectator,{$ENDIF}
+  {$IFDEF SPECTATOR}Spectator, SpectatorGraphics,{$ENDIF}
   {$IFDEF ENABLE_FAE}FaeBase, FaeClient, NetworkClientFae,{$ENDIF}
   {$IFDEF STEAM}Steam, NetworkClientGame,{$ENDIF}
   GameRendering, Gfx, UpdateFrame, GameMenus, Util, InterfaceGraphics, WebDownload;
@@ -300,6 +300,10 @@ begin
 
     // General game updating
     Update_Frame;
+
+    {$IFDEF SPECTATOR}
+    SpectatorGraphicsTick;
+    {$ENDIF}
 
     if DemoRecorder.Active and (MainTickCounter mod demo_rate.Value = 0) then
       DemoRecorder.SavePosition;

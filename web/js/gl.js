@@ -46,6 +46,23 @@ export function createGL(rt, getContext) {
   let lodBias = 0;
   let current = null;
   const programBias = new Map();
+  // a stencil buffer for a framebuffer the game renders into (made when it first clears its
+  // stencil: the spectator's silhouettes); the canvas has its own (sdl.js)
+  let drawFb = null;
+  const fbTexture = new Map(), fbStencil = new Map(), texSize = new WeakMap();
+
+  function stencilFor(fb) {
+    const g = ctx(), size = texSize.get(fbTexture.get(fb));
+    if (!size) return;
+    let rb = fbStencil.get(fb);
+    if (rb && rb.w === size[0] && rb.h === size[1]) return;
+    if (!rb) { rb = { buf: g.createRenderbuffer() }; fbStencil.set(fb, rb); }
+    rb.w = size[0];
+    rb.h = size[1];
+    g.bindRenderbuffer(g.RENDERBUFFER, rb.buf);
+    g.renderbufferStorage(g.RENDERBUFFER, g.DEPTH24_STENCIL8, rb.w, rb.h);
+    g.framebufferRenderbuffer(g.FRAMEBUFFER, g.DEPTH_STENCIL_ATTACHMENT, g.RENDERBUFFER, rb.buf);
+  }
 
   function applyBias() {
     if (!current || current.loc === null || current.value === lodBias) return;
@@ -108,7 +125,10 @@ export function createGL(rt, getContext) {
     glAttachShader: (p, s) => ctx().attachShader(programs[p], shaders[s]),
     glBindAttribLocation: (p, index, namePtr) => ctx().bindAttribLocation(programs[p], index, rt.cstr(namePtr)),
     glBindBuffer: (target, id) => ctx().bindBuffer(target, buffers[id] || null),
-    glBindFramebuffer: (target, id) => ctx().bindFramebuffer(target, framebuffers[id] || null),
+    glBindFramebuffer: (target, id) => {
+      ctx().bindFramebuffer(target, framebuffers[id] || null);
+      if (target !== 0x8CA8 /*READ_FRAMEBUFFER*/) drawFb = framebuffers[id] || null;
+    },
     glBindTexture: (target, id) => {
       if (target !== 0x0DE1 /*TEXTURE_2D*/) return;
       ctx().bindTexture(target, textures[id] || null);
@@ -122,7 +142,11 @@ export function createGL(rt, getContext) {
     },
     glBufferSubData: (target, offset, size, ptr) =>
       ctx().bufferSubData(target, offset, rt.u8().subarray(ptr, ptr + size)),
-    glClear: (mask) => ctx().clear(mask),
+    glClear: (mask) => {
+      if ((mask & 0x400 /*STENCIL_BUFFER_BIT*/) && drawFb) stencilFor(drawFb);
+      ctx().clear(mask);
+    },
+    glClearStencil: (s) => ctx().clearStencil(s),
     glClearColor: (r, g, b, a) => ctx().clearColor(r, g, b, a),
     glColorPointer: noop,
     glCompileShader: (s) => {
@@ -138,7 +162,14 @@ export function createGL(rt, getContext) {
       return id;
     },
     glDeleteBuffers: del(buffers, (b) => ctx().deleteBuffer(b)),
-    glDeleteFramebuffers: del(framebuffers, (f) => ctx().deleteFramebuffer(f)),
+    glDeleteFramebuffers: del(framebuffers, (f) => {
+      const rb = fbStencil.get(f);
+      if (rb) ctx().deleteRenderbuffer(rb.buf);
+      fbStencil.delete(f);
+      fbTexture.delete(f);
+      if (drawFb === f) drawFb = null;
+      ctx().deleteFramebuffer(f);
+    }),
     glDeleteProgram: (p) => { if (programs[p]) { ctx().deleteProgram(programs[p]); programs[p] = null; } },
     glDeleteShader: (s) => { if (shaders[s]) { ctx().deleteShader(shaders[s]); shaders[s] = null; } },
     glDeleteTextures: del(textures, (t) => ctx().deleteTexture(t)),
@@ -153,8 +184,10 @@ export function createGL(rt, getContext) {
     glEnableClientState: noop,
     glEnableVertexAttribArray: (i) => ctx().enableVertexAttribArray(i),
     glFinish: () => ctx().finish(),
-    glFramebufferTexture2D: (target, attachment, textarget, tex, level) =>
-      ctx().framebufferTexture2D(target, attachment, textarget, textures[tex] || null, level),
+    glFramebufferTexture2D: (target, attachment, textarget, tex, level) => {
+      ctx().framebufferTexture2D(target, attachment, textarget, textures[tex] || null, level);
+      if (drawFb && attachment === 0x8CE0 /*COLOR_ATTACHMENT0*/) fbTexture.set(drawFb, textures[tex] || null);
+    },
     glGenBuffers: gen(buffers, () => ctx().createBuffer()),
     glGenFramebuffers: gen(framebuffers, () => ctx().createFramebuffer()),
     glGenTextures: gen(textures, () => ctx().createTexture()),
@@ -243,8 +276,13 @@ export function createGL(rt, getContext) {
         lodBias = param;
     },
     glTexImage2D: (target, level, internal, w, h, border, format, type, ptr) => {
-      ctx().texImage2D(target, level, internal, w, h, 0, format, type,
+      const g = ctx();
+      g.texImage2D(target, level, internal, w, h, 0, format, type,
         imageData(w, h, format, type, ptr));
+      if (level === 0) {
+        const t = g.getParameter(g.TEXTURE_BINDING_2D);
+        if (t) texSize.set(t, [w, h]);
+      }
     },
     glTexImage2DMultisample: noop,
     glTexParameteri: (target, pname, param) => ctx().texParameteri(target, pname, param),
@@ -252,7 +290,12 @@ export function createGL(rt, getContext) {
       ctx().texSubImage2D(target, level, x, y, w, h, format, type,
         imageData(w, h, format, type, ptr));
     },
+    glStencilFunc: (func, ref, mask) => ctx().stencilFunc(func, ref, mask),
+    glStencilMask: (mask) => ctx().stencilMask(mask),
+    glStencilOp: (fail, zfail, zpass) => ctx().stencilOp(fail, zfail, zpass),
+    glUniform1f: (loc, v) => { if (loc > 0) ctx().uniform1f(uniforms[loc], v); },
     glUniform1i: (loc, v) => { if (loc > 0) ctx().uniform1i(uniforms[loc], v); },
+    glUniform4f: (loc, a, b, c, d) => { if (loc > 0) ctx().uniform4f(uniforms[loc], a, b, c, d); },
     glUniformMatrix3fv: (loc, count, transpose, ptr) => {
       if (loc <= 0) return;
       const f = new Float32Array(rt.u8().slice(ptr, ptr + 36 * count).buffer);

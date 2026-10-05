@@ -49,7 +49,8 @@ uses
   Math, SysUtils, IniFiles, Classes, Contnrs,
   Constants, Sprites, Parts, Game, Weapons, PolyMap, MapFile, Vector, Util,
   InterfaceGraphics, ClientGame, GameStrings, GostekGraphics, Input,
-  PhysFS, Cvar, MapGraphics, TraceLog {$IFDEF TESTING},  Version{$ENDIF};
+  PhysFS, Cvar, MapGraphics, TraceLog {$IFDEF TESTING},  Version{$ENDIF}
+  {$IFDEF SPECTATOR}, SpectatorGraphics{$ENDIF};
 
 type
   TTextureLoadData = record
@@ -962,9 +963,18 @@ begin
 
     GfxBegin();
 
+    {$IFDEF SPECTATOR}
+    RenderFlagTrails;
+    {$ENDIF}
+
     for i := 1 to MAX_BULLETS do
       if Bullet[i].Active or (Bullet[i].PingAdd > 0) then
+      begin
+        {$IFDEF SPECTATOR}
+        RenderTracer(i);
+        {$ENDIF}
         Bullet[i].Render(TimeElapsed);
+      end;
 
     for i := 1 to MAX_SPRITES do
       if Sprite[i].Active then
@@ -998,6 +1008,10 @@ begin
     GfxSetMipmapBias(r_mipmapbias.Value);
     RenderProps(2);
     GfxSetMipmapBias(0);
+
+    {$IFDEF SPECTATOR}
+    RenderSilhouettes;
+    {$ENDIF}
 
     // the interface ignores the spectator zoom (w, h above are the zoomed view)
     if r_scaleinterface.Value then

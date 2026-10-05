@@ -197,6 +197,16 @@ procedure GfxSpriteVertices(s: PGfxSprite; x, y, w, h, sx, sy, cx, cy, r: Single
   Color: TGfxColor; v: PGfxVertex);
 procedure GfxSaveScreen(Filename: string; x, y, w, h: Integer; Async: Boolean = True);
 procedure GfxSetMipmapBias(Bias: Single);
+{$IFDEF SPECTATOR}
+// The spectator's silhouettes: fragments at or below AlphaRef are left out, Flat (0 to 1)
+// draws the shapes in Color, and the stencil keeps where the front scenery covers. Called
+// between batches (GfxEnd, then GfxBegin).
+type
+  TGfxStencil = (GFX_STENCIL_OFF, GFX_STENCIL_MARK, GFX_STENCIL_INSIDE);
+function GfxStencilClear: Boolean;  // False: there is no stencil buffer
+procedure GfxStencil(Mode: TGfxStencil);
+procedure GfxFlat(Flat: Single; Color: TGfxColor; AlphaRef: Single);
+{$ENDIF}
 
 // pseudo constructors
 function ARGB(argb: LongWord): TGfxColor; overload;
@@ -421,6 +431,9 @@ var
     MajorVersion: Integer;
     ShaderProgram: GLuint;
     MatrixLoc: GLint;
+    {$IFDEF SPECTATOR}
+    AlphaRefLoc, FlatLoc, FlatColorLoc: GLint;
+    {$ENDIF}
     Batch: TBatch;
     RenderTarget: TGfxTexture;
     WhiteTexture: TGfxTexture;
@@ -520,6 +533,28 @@ const
     '}'
   );
 
+  {$IFDEF SPECTATOR}
+  // as below, with GfxFlat's alpha test and flat colour
+  FRAG_SOURCE: array[0..16] of string = (
+    '#version 120',
+    '#define DITHERING 1',
+    'varying vec2 texcoords;',
+    'varying vec4 color;',
+    'uniform sampler2D sampler;',
+    'uniform sampler2D dither;',
+    'uniform float alpharef;',
+    'uniform float flatmix;',
+    'uniform vec4 flatcolor;',
+    'void main() {',
+    '  gl_FragColor = texture2D(sampler, texcoords) * color;',
+    '  if (gl_FragColor.a <= alpharef) discard;',
+    '  gl_FragColor = mix(gl_FragColor, flatcolor * gl_FragColor.a, flatmix);',
+    '#if DITHERING',
+    '  gl_FragColor.rgb += (1.0 - flatmix) * vec3(texture2D(dither, gl_FragCoord.xy / 8.0).a / 32.0 - 1.0/128.0);',
+    '#endif',
+    '}'
+  );
+  {$ELSE}
   FRAG_SOURCE: array[0..11] of string = (
     '#version 120',
     '#define DITHERING 1',
@@ -534,6 +569,7 @@ const
     '#endif',
     '}'
   );
+  {$ENDIF}
 
   DITHER: array[1..8*8] of Byte = (
      0, 32,  8, 40,  2, 34, 10, 42,
@@ -637,6 +673,12 @@ begin
   glUseProgram(GfxContext.ShaderProgram);
   glUniform1i(glGetUniformLocation(GfxContext.ShaderProgram, PGLchar('dither')), 1);
   GfxContext.MatrixLoc := glGetUniformLocation(GfxContext.ShaderProgram, PGLchar('mvp'));
+  {$IFDEF SPECTATOR}
+  GfxContext.AlphaRefLoc := glGetUniformLocation(GfxContext.ShaderProgram, PGLchar('alpharef'));
+  GfxContext.FlatLoc := glGetUniformLocation(GfxContext.ShaderProgram, PGLchar('flatmix'));
+  GfxContext.FlatColorLoc := glGetUniformLocation(GfxContext.ShaderProgram, PGLchar('flatcolor'));
+  GfxFlat(0, RGBA(0, 0), -1);
+  {$ENDIF}
 
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
@@ -952,6 +994,54 @@ procedure GfxSetMipmapBias(Bias: Single);
 begin
   glTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, Bias);
 end;
+
+{$IFDEF SPECTATOR}
+function GfxStencilClear: Boolean;
+var
+  Bits: GLint;
+begin
+  glStencilMask($FF);
+  glClearStencil(0);
+  glClear(GL_STENCIL_BUFFER_BIT);
+  Bits := 0;
+  glGetIntegerv(GL_STENCIL_BITS, @Bits);
+  Result := Bits > 0;
+end;
+
+procedure GfxStencil(Mode: TGfxStencil);
+begin
+  case Mode of
+    GFX_STENCIL_OFF:
+      glDisable(GL_STENCIL_TEST);
+    GFX_STENCIL_MARK:  // what is drawn marks the stencil
+    begin
+      glEnable(GL_STENCIL_TEST);
+      glStencilMask(1);
+      glStencilFunc(GL_ALWAYS, 1, 1);
+      glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    end;
+    GFX_STENCIL_INSIDE:  // drawn only where marked, and there once (overlaps do not add up)
+    begin
+      glEnable(GL_STENCIL_TEST);
+      glStencilMask(1);
+      glStencilFunc(GL_EQUAL, 1, 1);
+      glStencilOp(GL_KEEP, GL_KEEP, GL_ZERO);
+    end;
+  end;
+end;
+
+procedure GfxFlat(Flat: Single; Color: TGfxColor; AlphaRef: Single);
+var
+  a: Single;
+begin
+  if GfxContext.ShaderProgram = 0 then
+    Exit;
+  a := Color.a / 255;
+  glUniform1f(GfxContext.AlphaRefLoc, AlphaRef);
+  glUniform1f(GfxContext.FlatLoc, Flat);
+  glUniform4f(GfxContext.FlatColorLoc, a * Color.r / 255, a * Color.g / 255, a * Color.b / 255, a);
+end;
+{$ENDIF}
 
 constructor TScreenshotThread.Create(Filename: string; w, h: Integer; Data: PByte);
 begin

@@ -88,7 +88,7 @@ implementation
 
 uses
   SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Bullets, Sparks, Constants, Cvar, Net,
-  InterfaceGraphics;
+  InterfaceGraphics, SpectatorGraphics;
 
 var
   Events: AnsiString = '';
@@ -298,6 +298,7 @@ begin
     StopVote;
   Events := '';
   LastEvent := '';
+  SpectatorGraphicsClear;
   // a jump while the last one still rejoins keeps the place from before that one (the
   // camera may be at the map's origin until the next tick)
   if not KeepPlace then

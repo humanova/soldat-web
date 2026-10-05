@@ -51,7 +51,7 @@ uses
   Client, SysUtils, Types, TraceLog,
   Game, Math, Calc, Version, Util, PolyMap,
   Demo, Weapons, GameStrings, Net, GameMenus, Gfx, GameRendering, PhysFS,
-  ClientGame, Console, MapGraphics, Steam;
+  ClientGame, Console, MapGraphics, Steam{$IFDEF SPECTATOR}, SpectatorGraphics{$ENDIF};
 
 {$IFDEF SPECTATOR}
 const
@@ -1492,44 +1492,33 @@ begin
 end;
 
 {$IFDEF SPECTATOR}
-// the team colours of the spectator page (spectate.css), and lighter ones for text
-function SpectatorTeamColor(i: Integer; Light: Boolean): Cardinal;
-begin
-  Result := Sprite[i].Player.ShirtColor and $FFFFFF;
-  if IsTeamGame then
-    case Sprite[i].Player.Team of
-      TEAM_ALPHA:   Result := iif(Light, $FF8A7E, $E8463A);
-      TEAM_BRAVO:   Result := iif(Light, $8AB0FF, $4A80F0);
-      TEAM_CHARLIE: Result := iif(Light, $F4E27A, $E0CC40);
-      TEAM_DELTA:   Result := iif(Light, $8EE09E, $46C060);
-    end
-  else if Light then
-    Result := $F0F0F0;
-end;
-
-function SpectatorFlagColor(Style: Integer): Cardinal;
-begin
-  case Style of
-    OBJECT_ALPHA_FLAG: Result := $FF4A3C;
-    OBJECT_BRAVO_FLAG: Result := $4A84FF;
-  else
-    Result := $FFDC3C;
-  end;
-end;
-
 // 0 at the normal view, 1 from about 1.9 times as far out
 function ZoomedOut: Single;
 begin
   Result := EnsureRange((r_zoom.Value - 0.15) / 0.5, 0, 1);
 end;
 
-function CarriesFlag(i: Integer): Integer;
+// where players died in the last seconds (spec_deaths): a cross in their team's colour
+procedure RenderDeathMarks;
+var
+  i, Age: Integer;
+  x, y, s, Fade: Single;
 begin
-  Result := 0;
-  with Sprite[i] do
-    if (HoldedThing > 0) and (HoldedThing <= MAX_THINGS) and
-      (Thing[HoldedThing].Style in [OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG]) then
-      Result := Thing[HoldedThing].Style;
+  if not spec_deaths.Value then
+    Exit;
+  for i := Low(DeathMarks) to High(DeathMarks) do
+  begin
+    Age := SpecTick - DeathMarks[i].Tick;
+    if (Age < 0) or (Age > DEATH_TICKS) then
+      Continue;
+    Fade := EnsureRange((DEATH_TICKS - Age) / 90, 0, 1);
+    // it comes in a little bigger
+    s := 4 * _rscala.y * (1 + 0.8 * Max(0, 1 - Age / 12));
+    x := ((DeathMarks[i].X - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+    y := ((DeathMarks[i].Y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
+    DrawCross(x, y, s + 0.8 * _rscala.y, 3.4 * _rscala.y, RGBA(0, 150 * Fade));
+    DrawCross(x, y, s, 1.7 * _rscala.y, RGBA(DeathMarks[i].Color, 235 * Fade));
+  end;
 end;
 
 // Who is who when the view is far out: a team coloured arrow over every player (the
@@ -1544,6 +1533,7 @@ var
 begin
   // no "with Sprite[i] do" for the players: the sprite's own fields (its Alpha) would take
   // the place of locals of the same name, and the gostek would be drawn see-through
+  RenderDeathMarks;
   Out := ZoomedOut;
   Arrow := Textures[GFX_INTERFACE_ARROW];
   FlagIcon := Textures[GFX_INTERFACE_FLAG];
@@ -1919,6 +1909,78 @@ begin
   end;
 end;
 
+{$IFDEF SPECTATOR}
+// under a player (spec_health): the health, green to red, and the vest under it; y is the
+// top, and the height is the result
+function RenderHealthBar(cx, y: Single; i: Integer; Alpha: Byte): Single;
+var
+  f, w, h, p: Single;
+  Color: TGfxColor;
+begin
+  w := 22 * _rscala.x;
+  h := 2.4 * _rscala.y;
+  p := 0.7 * _rscala.y;
+  y := y + p;
+  f := EnsureRange(Sprite[i].Health / StartHealth, 0, 1);
+  if f > 0.5 then
+    Color := RGBA(Round(510 * (1 - f)), 220, 70, Alpha)
+  else
+    Color := RGBA(235, Round(440 * f), 60, Alpha);
+  DrawRect(cx - w / 2 - p, y - p, cx + w / 2 + p, y + h + p, RGBA(0, Alpha * 0.55));
+  DrawRect(cx - w / 2, y, cx - w / 2 + w * f, y + h, Color);
+  Result := h + 2 * p;
+  if Sprite[i].Vest > 0 then
+  begin
+    f := EnsureRange(Sprite[i].Vest / DEFAULTVEST, 0, 1);
+    DrawRect(cx - w / 2 - p, y + h + p, cx + w / 2 + p, y + h + 1.2 * _rscala.y + 2 * p,
+      RGBA(0, Alpha * 0.55));
+    DrawRect(cx - w / 2, y + h + p, cx - w / 2 + w * f, y + h + 1.2 * _rscala.y + p,
+      RGBA($8CC8FF, Alpha));
+    Result := Result + 1.2 * _rscala.y + p;
+  end;
+end;
+
+// Right under the player's feet their health bar, and their name under it. Both move with the
+// player; one off the screen keeps the name at the screen's edge (without the bar).
+procedure RenderPlayerName(Width, Height: Single; i: Integer; OnlyOffscreen: Boolean);
+const
+  FEET = 15;  // from the skeleton's point 7 to just under the feet, in the world's units
+var
+  Alpha: Byte;
+  rc: TGfxRect;
+  x, y, w, h, Bar: Single;
+begin
+  if (i = CameraFollowSprite) or (CarriesFlag(i) > 0) then
+    Alpha := 255
+  else
+    Alpha := Round(255 * (1 - EnsureRange((r_zoom.Value - 0.7) / 0.4, 0, 1)));
+  if Alpha = 0 then
+    Exit;
+
+  x := ((Sprite[i].Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+  y := ((Sprite[i].Skeleton.Pos[7].y + FEET - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
+
+  Bar := 0;
+  if spec_health.Value and not Sprite[i].DeadMeat then
+    Bar := RenderHealthBar(x, y, i, Alpha) + 1.5 * _rscala.y;
+
+  if not spec_names.Value then
+    Exit;
+  rc := GfxTextMetrics(WideString(Sprite[i].Player.Name));
+  w := RectWidth(rc);
+  h := RectHeight(rc);
+  x := Max(0, Min(Width - w, x - w / 2));
+  y := Max(0, Min(Height - h, y + Bar));
+  if Sprite[i].DeadMeat then
+    GfxTextColor(RGBA($A0A0A0, Alpha div 2))
+  else
+    GfxTextColor(RGBA(SpectatorTeamColor(i, True), Alpha));
+  // the letters from y down (the top alignment would leave the font's ascent above them)
+  GfxTextVerticalAlign(GFX_BASELINE);
+  GfxDrawText(x, y - rc.Top);
+  GfxTextVerticalAlign(GFX_TOP);
+end;
+{$ELSE}
 procedure RenderPlayerName(Width, Height: Single; i: Integer; OnlyOffscreen: Boolean);
 var
   Alpha: Byte;
@@ -1945,29 +2007,17 @@ begin
 
     Alpha := Min(255, 50 + Round(100000 / (dx + dy / 2)));
 
-    {$IFDEF SPECTATOR}
-    if (i = CameraFollowSprite) or (CarriesFlag(i) > 0) then
-      Alpha := 255
-    else
-      Alpha := Round(255 * (1 - EnsureRange((r_zoom.Value - 0.7) / 0.4, 0, 1)));
-    if Alpha = 0 then
-      Exit;
-    if Sprite[i].DeadMeat then
-      GfxTextColor(RGBA($A0A0A0, Alpha div 2))
-    else
-      GfxTextColor(RGBA(SpectatorTeamColor(i, True), Alpha));
-    {$ELSE}
     if (Sprite[i].HoldedThing > 0) and (Thing[Sprite[i].HoldedThing].Style < 4) then
       GfxTextColor(RGBA(OUTOFSCREENFLAG_MESSAGE_COLOR, Alpha))
     else if Sprite[i].DeadMeat then
       GfxTextColor(RGBA(OUTOFSCREENDEAD_MESSAGE_COLOR, Alpha))
     else
       GfxTextColor(RGBA(OUTOFSCREEN_MESSAGE_COLOR, Alpha));
-    {$ENDIF}
 
     GfxDrawText(x, y);
   end;
 end;
+{$ENDIF}
 
 procedure RenderPlayerNames(Width, Height: Single);
 var

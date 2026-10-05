@@ -243,6 +243,17 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .volume input { width: 0; margin: 0; opacity: 0; accent-color: var(--green); cursor: pointer;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .8)); transition: width .15s, opacity .15s, margin .15s; }
 .volume:hover input, .volume input:focus-visible, .volume.open input { width: 90px; margin: 0 6px; opacity: 1; }
+/* what is shown over the match: a list under its button */
+.visuals { position: relative; }
+.visuals-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: grid; padding: 3px 0;
+  background: var(--glass); border: 1px solid var(--line); font-size: 12px; }
+.visuals-menu[hidden] { display: none; }
+.visuals-title { margin: 0; padding: 2px 10px 3px; color: var(--muted); font-size: 11px; }
+.visuals-menu label { display: flex; align-items: center; gap: 7px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
+.visuals-menu label:hover { background: rgba(255, 255, 255, .08); }
+.visuals-menu input { width: 12px; height: 12px; margin: 0; accent-color: var(--green); cursor: pointer; }
+/* a finger needs taller rows */
+@media (pointer: coarse) { .visuals-menu label { padding: 7px 12px; } }
 
 /* ---------- the panels over the match: the menus' slate boxes and dark title bars, the
    game's own text shadows. All of them can be dragged (main.js: movable panels). */

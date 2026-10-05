@@ -27,6 +27,9 @@ type
     Background, BackgroundCount: Integer;
     Edges: array[0..1] of array of TGfxDrawCommand;
     Polys: array[0..1] of array of TGfxDrawCommand;
+    {$IFDEF SPECTATOR}
+    Cover: array of TGfxDrawCommand;  // the front polygons a player can be in (silhouettes)
+    {$ENDIF}
   end;
 
 var
@@ -174,6 +177,15 @@ procedure LoadMapGraphics(var MapFile: TMapFile; BgForce: Boolean;
   BgColorTop, BgColorBtm: TMapColor);
 const
   BACKPOLY = [POLY_TYPE_BACKGROUND, POLY_TYPE_BACKGROUND_TRANSITION];
+  {$IFDEF SPECTATOR}
+  // front polygons some players go through (the ground and walls the players collide with
+  // would show their feet and shoulders where they touch it)
+  COVERPOLY = [POLY_TYPE_ONLY_BULLETS, POLY_TYPE_DOESNT,
+    POLY_TYPE_RED_BULLETS, POLY_TYPE_RED_PLAYER, POLY_TYPE_BLUE_BULLETS, POLY_TYPE_BLUE_PLAYER,
+    POLY_TYPE_YELLOW_BULLETS, POLY_TYPE_YELLOW_PLAYER, POLY_TYPE_GREEN_BULLETS,
+    POLY_TYPE_GREEN_PLAYER, POLY_TYPE_ONLY_FLAGGERS, POLY_TYPE_NOT_FLAGGERS,
+    POLY_TYPE_NON_FLAGGER_COLLIDES];
+  {$ENDIF}
   IDX: array[0..5] of Integer = (0, 1, 2, 2, 3, 0);
 type
   TEdge = record
@@ -698,6 +710,23 @@ begin
           Cmd.Count := 0;
         end;
 
+        {$IFDEF SPECTATOR}
+        if (Level = 1) and (Poly.PolyType in COVERPOLY) then
+        begin
+          n := Length(mg.Cover);
+          if (n = 0) or (mg.Cover[n - 1].Texture <> Cmd.Texture) or
+            (mg.Cover[n - 1].Offset + mg.Cover[n - 1].Count <> vbIndex) then
+          begin
+            SetLength(mg.Cover, n + 1);
+            mg.Cover[n].Texture := Cmd.Texture;
+            mg.Cover[n].Offset := vbIndex;
+            mg.Cover[n].Count := 0;
+            Inc(n);
+          end;
+          Inc(mg.Cover[n - 1].Count, 3);
+        end;
+        {$ENDIF}
+
         for j := 1 to 3 do
         begin
           vb[vbIndex].x := Poly.Vertices[j].x;
@@ -961,6 +990,9 @@ begin
   MapGfx.Edges[1] := nil;
   MapGfx.Polys[0] := nil;
   MapGfx.Polys[1] := nil;
+  {$IFDEF SPECTATOR}
+  MapGfx.Cover := nil;
+  {$ENDIF}
 
   FillChar(MapGfx, sizeof(MapGfx), 0);
 end;

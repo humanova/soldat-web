@@ -37,6 +37,7 @@
   <symbol id="i-back" viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-prev" viewBox="0 0 20 20"><path d="M12 5 7 10l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-next" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 20 20"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.6" fill="currentColor"/></symbol>
   <symbol id="i-full" viewBox="0 0 20 20"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-sound" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mute" viewBox="0 0 20 20"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="m13 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -200,6 +201,19 @@
       <div class="volume">
         <input id="volume" type="range" min="0" max="100" step="5" aria-label="Volume">
         <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
+      </div>
+      <!-- what is drawn over the match (the game's spec_* settings, js/spectate/main.js: visuals) -->
+      <div class="visuals">
+        <button id="visuals-btn" type="button" class="icon-btn" aria-label="What is shown (V)" aria-expanded="false" aria-controls="visuals"><svg><use href="#i-eye"/></svg></button>
+        <div id="visuals" class="visuals-menu" role="group" aria-labelledby="visuals-title" hidden>
+          <p id="visuals-title" class="visuals-title">Show</p>
+          <label><input type="checkbox" data-cvar="spec_names"> Names</label>
+          <label><input type="checkbox" data-cvar="spec_health"> Health bars</label>
+          <label><input type="checkbox" data-cvar="spec_silhouettes"> Players behind scenery</label>
+          <label><input type="checkbox" data-cvar="spec_tracers"> Bullet tracers</label>
+          <label><input type="checkbox" data-cvar="spec_deaths"> Where players died</label>
+          <label><input type="checkbox" data-cvar="spec_trails"> Flag carrier's path</label>
+        </div>
       </div>
       <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
     </div>

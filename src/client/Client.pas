@@ -121,6 +121,15 @@ var
   r_forcebg_color2: TColorCvar;
   r_renderui: TBooleanCvar;
   r_zoom: TSingleCvar;
+  {$IFDEF SPECTATOR}
+  // the spectator's overlays (SpectatorGraphics; the page sets them)
+  spec_silhouettes: TBooleanCvar;
+  spec_tracers: TBooleanCvar;
+  spec_deaths: TBooleanCvar;
+  spec_names: TBooleanCvar;
+  spec_health: TBooleanCvar;
+  spec_trails: TBooleanCvar;
+  {$ENDIF}
   r_msaa: TIntegerCVar;
 
   ui_playerindicator: TBooleanCvar;

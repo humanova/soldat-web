@@ -228,7 +228,7 @@ export function createSDL(rt, canvas, hooks = {}) {
     SDL_GL_CreateContext: () => {
       if (!gl) {
         gl = canvas.getContext('webgl2', {
-          alpha: false, antialias: false, depth: false, stencil: false,
+          alpha: false, antialias: false, depth: false, stencil: !!hooks.stencil,
           preserveDrawingBuffer: false, powerPreference: 'high-performance',
         });
       }
