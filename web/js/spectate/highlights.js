@@ -1,13 +1,20 @@
 // The highlights of a recorded match, found in its messages (a demo as parseDemo in replay.js
 // reads it): runs of kills, two quick kills with a weapon switch, very long shots, long knife
 // throws, flag carriers stopped just short of scoring, and the captures. The page plays them
-// as a reel; the hub lists how many a demo has (relay/lib/recorder.mjs), counted the same way.
+// as a reel of clips; the hub lists how many a demo has (relay/lib/recorder.mjs), counted the
+// same way.
 //
-// A highlight: { type, tick (the moment), from, to (the clip), slot, name and team (who made
-// it), cams (whom the camera follows from when), label, score (how good it is, to rank them) }.
-// A shot across the screen also has shot: { killer, victim, tick, fired (the tick the shot
-// left), back (more kills follow: the camera goes back to the killer, not on to the victim) },
-// for the camera to show both; a clip of several kills has wide (zoom out by that much).
+// A play: { type, tick (the moment), from, to (what to show of it), slot, name and team (who
+// made it), cams (whom the camera follows from when), label, score (how good it is, to rank
+// them) }. A shot across the screen also has shot: { killer, victim, tick, fired (the tick the
+// shot left), back (more kills follow: the camera goes back to the killer, not on to the
+// victim) }, for the camera to show both; a play of several kills has wide (zoom out by that
+// much).
+//
+// A clip: plays whose times overlap are one, so the reel shows no moment twice. { from, to,
+// parts (its plays in order, each with start and end: the part of the clip that is theirs),
+// wide (the most of its parts), score (theirs added up), and the best part's type, tick,
+// slot, name, team and label }.
 
 const TICKS = 60;
 const MSG = { MapChange: 8, ThingSnapshot: 9, ThingTaken: 12, SpriteDeath: 13, PlayersList: 16, NewPlayer: 17,
@@ -26,6 +33,8 @@ const WIDE = 0.26;                                  // a clip of several kills: 
 const SAVE_NEAR = 0.25;                             // of the way between the bases
 const BEFORE = 3 * TICKS, AFTER = 1.5 * TICKS;
 const CAPTURE_RUN = 12 * TICKS;                     // at most this much of the run before a capture
+const MERGE_GAP = TICKS / 2;                        // clips closer than this are one
+const SHOWN = 0.75 * TICKS, LEAD = 1.5 * TICKS;     // in a clip: of one play after it, of the next before it
 
 export const HIGHLIGHT_TYPES = ['multi', 'combo', 'long', 'knife', 'save', 'cap'];
 
@@ -218,12 +227,94 @@ export function findHighlights(demo, end = demo.ticks) {
     out.push(clip({ type: 'cap', tick: c.tick, slot: c.slot, by: c.by, score: 1, label: 'Capture' }, from, c.tick + 2 * TICKS));
   }
 
-  return out.filter((h) => h.tick <= end).sort((a, b) => a.from - b.from || a.tick - b.tick);
+  return clips(out.filter((h) => h.tick <= end));
 }
 
-// { multi, combo, long, knife, save, cap }: how many of each
+// plays whose times overlap (or nearly) as one clip each
+function clips(plays) {
+  plays.sort((a, b) => a.from - b.from || a.tick - b.tick);
+  const groups = [];
+  for (const p of plays) {
+    const g = groups[groups.length - 1];
+    if (g && p.from < g.to + MERGE_GAP) { g.parts.push(p); g.to = Math.max(g.to, p.to); }
+    else groups.push({ from: p.from, to: p.to, parts: [p] });
+  }
+  return groups.map(({ from, to, parts }) => {
+    parts.sort((a, b) => a.tick - b.tick);
+    // each part has the clip until the next one's: from where that one's own clip begins,
+    // but after a moment of this one's outcome and with a lead into that one's
+    let start = from;
+    parts = parts.map((p, i) => {
+      const next = parts[i + 1];
+      let end = to;
+      if (next) {
+        const lo = p.tick + SHOWN, hi = next.tick - LEAD;
+        end = lo <= hi ? Math.min(hi, Math.max(lo, next.from)) : Math.round((p.tick + next.tick) / 2);
+        end = Math.max(end, start + 1);
+      }
+      const part = { ...p, start, end };
+      start = end;
+      return part;
+    });
+    const best = parts.reduce((a, b) => (b.score > a.score ? b : a));
+    return { type: best.type, tick: best.tick, slot: best.slot, name: best.name, team: best.team, label: best.label,
+      from, to, parts, wide: Math.max(0, ...parts.map((p) => p.wide || 0)), score: parts.reduce((a, p) => a + p.score, 0) };
+  });
+}
+
+// How good a match is to watch, 0 to 100: { rating, action, contest, and what they are of }.
+//   action (up to 60): the plays' scores (but the captures') in 10 minutes, times 1.5;
+//   contest (up to 40): how close it was: the final margin (16 for 0 or 1, 10 for 2, 5 for
+//   3), 6 a change of the lead (up to 12), 6 for a win from 2 or more behind, and 0.5 a
+//   capture (up to 6).
+// clips: findHighlights's; seconds: how long the match is; scores: the final [Alpha, Bravo]
+// (by default the captures it has).
+export function rateMatch(clips, seconds, scores) {
+  const plays = clips.flatMap((c) => c.parts).sort((a, b) => a.tick - b.tick);
+  const points = plays.reduce((n, p) => n + (p.type === 'cap' ? 0 : p.score), 0);
+  // a short match is not rated up for a play or two
+  const perTen = (points * 600) / Math.max(seconds, 300);
+  const action = Math.min(60, perTen * 1.5);
+  // the score as it went
+  const caps = plays.filter((p) => p.type === 'cap');
+  const now = [0, 0, 0];
+  const behind = [0, 0, 0];
+  let leader = 0, leadChanges = 0;
+  for (const c of caps) {
+    if (c.team !== 1 && c.team !== 2) continue;
+    now[c.team]++;
+    const l = now[1] > now[2] ? 1 : now[2] > now[1] ? 2 : 0;
+    if (l && leader && l !== leader) leadChanges++;
+    if (l) leader = l;
+    behind[1] = Math.max(behind[1], now[2] - now[1]);
+    behind[2] = Math.max(behind[2], now[1] - now[2]);
+  }
+  const [a, b] = scores && scores.length >= 2 ? scores : [now[1], now[2]];
+  const margin = Math.abs(a - b);
+  const winner = a > b ? 1 : b > a ? 2 : 0;
+  const comeback = winner ? behind[winner] : 0;
+  const close = margin <= 1 ? 16 : margin === 2 ? 10 : margin === 3 ? 5 : 0;
+  // a match without captures (or no team game) has no contest to rate
+  const contest = caps.length ? close + Math.min(12, 6 * leadChanges) + (comeback >= 2 ? 6 : 0) + Math.min(6, caps.length / 2) : 0;
+  const round = (x) => Math.round(x * 10) / 10;
+  return { rating: Math.round(action + contest), action: Math.round(action), contest: Math.round(contest),
+    points: round(points), perTen: round(perTen), margin, leadChanges, comeback, caps: caps.length };
+}
+
+// what a rating is of, in lines: "Action 40 of 60: 26.9 play points in 10 minutes", ...
+export function ratingText(r) {
+  const s = (n, one, more) => `${n} ${n === 1 ? one : more}`;
+  const contest = [r.margin ? `won by ${r.margin}` : 'a draw'];
+  if (r.leadChanges) contest.push(s(r.leadChanges, 'change of the lead', 'changes of the lead'));
+  if (r.comeback >= 2) contest.push(`a win from ${r.comeback} behind`);
+  contest.push(s(r.caps, 'capture', 'captures'));
+  return [`Rating ${r.rating} of 100`, `Action ${r.action} of 60: ${r.perTen} play points in 10 minutes`,
+    r.caps ? `Contest ${r.contest} of 40: ${contest.join(', ')}` : 'Contest: no captures'];
+}
+
+// { multi, combo, long, knife, save, cap }: how many plays of each, in a list of clips
 export function countHighlights(list) {
   const n = Object.fromEntries(HIGHLIGHT_TYPES.map((t) => [t, 0]));
-  for (const h of list) n[h.type]++;
+  for (const c of list) for (const p of c.parts) n[p.type]++;
   return n;
 }

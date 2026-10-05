@@ -6,7 +6,7 @@ import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
-import { countHighlights } from './highlights.js';
+import { countHighlights, rateMatch, ratingText, HIGHLIGHT_TYPES } from './highlights.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -14,8 +14,11 @@ const debug = params.has('debug');
 const TITLE = document.title;
 // a recorded match's address, /replay?id=<demo>
 const replayId = location.pathname.endsWith('/replay') ? params.get('id') : null;
+// a reel of several recorded matches' highlights, /replay?reel=<id>,<id>...[&only=<types>][&player=<name>]
+const reelIds = location.pathname.endsWith('/replay') && !replayId && params.get('reel')
+  ? params.get('reel').split(',').filter(Boolean).slice(0, 100) : null;
 // a server's own address, /<id> (older links: ?watch=<id>)
-const directId = replayId ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
+const directId = replayId || reelIds ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
 
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
@@ -185,10 +188,9 @@ function watch(ch) {
   document.querySelector('.tally').textContent = ch.replay ? 'REPLAY' : 'LIVE';
   document.querySelector('.tally').classList.toggle('replay', !!ch.replay);
   if (ch.replay) {
-    $('ch-name').textContent = `${ch.name} · ${replay.meta.map} · ${when(replay.meta.start)}`;
     if (ch.local) history.replaceState(null, '', './' + (debug ? '?debug' : '') + '#demo');
     else history.replaceState(null, '', './replay?id=' + encodeURIComponent(replay.meta.id) + (debug ? '&debug' : ''));
-    document.title = `Replay: ${replay.meta.map} on ${ch.name} · Soldat TV`;
+    showReplayTitle(ch);
     showBar();
   } else {
     history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
@@ -210,6 +212,12 @@ function watch(ch) {
   canvas.focus();
 }
 
+function showReplayTitle(ch) {
+  const name = replay.meta.serverName || ch.name;
+  $('ch-name').textContent = `${name} · ${replay.meta.map} · ${when(replay.meta.start)}`;
+  document.title = `Replay: ${replay.meta.map} on ${name} · Soldat TV`;
+}
+
 // what happened in the match until now: the flag news, the vote, the game's chat
 function clearNews() {
   $('banners').textContent = '';
@@ -225,6 +233,7 @@ function clearNews() {
 function showGuide() {
   watching = null;
   replay = null;
+  reelSet = null;
   game.al.hold(false);
   $('watch').classList.remove('replaying');
   $('replaybar').hidden = true;
@@ -316,7 +325,7 @@ function viewZoom() {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + extra));
 }
 
-// the reel's clip (null: the reel stopped): its own zoom, and no shot yet
+// the reel's clip (null: the reel stopped): its own zoom (the most its plays want), and no shot yet
 function reelClip(h) {
   reelCam.wide = h && h.wide ? h.wide : 0;
   reelCam.shot = 0;
@@ -1339,37 +1348,51 @@ function when(ms) {
 
 const demoUrl = (id) => httpBase() + '/demos/' + encodeURIComponent(id) + '.sdm';
 
+// a recorded match: { meta (the hub's listing), demo (parseDemo's) }; progress(got, of) as it loads
+async function loadRecording(id, progress = () => {}) {
+  const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id), { cache: 'no-store' });
+  const meta = res.ok ? (await res.json()).demos[0] : null;
+  if (!meta) throw new Error('This recording is not available (any more).');
+  const file = await fetch(demoUrl(id));
+  if (!file.ok) throw new Error(`The recording did not load (HTTP ${file.status}).`);
+  const reader = file.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    progress(got, meta.rawBytes);
+  }
+  const buf = new Uint8Array(got);
+  let o = 0;
+  for (const c of chunks) { buf.set(c, o); o += c.length; }
+  return { meta, demo: parseDemo(buf) };
+}
+
+function loadingProgress(what) {
+  const text = $('loading-text'), meter = $('loading-bar');
+  text.textContent = `Loading ${what}...`;
+  meter.style.width = '0%';
+  return (got, of) => {
+    const mb = (n) => (n / 1048576).toFixed(1);
+    text.textContent = `Loading ${what}... ${mb(got)} of ${mb(of)} MB`;
+    meter.style.width = `${Math.min(100, (100 * got) / of)}%`;
+  };
+}
+
+const replayChannel = (meta) => ({ id: meta.server, name: meta.serverName, group: meta.group, replay: true });
+
 async function openReplay(id) {
   if (tuning) return;
   tuning = true;
   $('guide').hidden = true;
   $('loading').hidden = false;
-  const text = $('loading-text'), meter = $('loading-bar');
   try {
     await started;
-    text.textContent = 'Loading the recording...';
-    meter.style.width = '0%';
-    const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id), { cache: 'no-store' });
-    const meta = res.ok ? (await res.json()).demos[0] : null;
-    if (!meta) throw new Error('This recording is not available (any more).');
-    const file = await fetch(demoUrl(id));
-    if (!file.ok) throw new Error(`The recording did not load (HTTP ${file.status}).`);
-    const reader = file.body.getReader();
-    const chunks = [];
-    let got = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      got += value.length;
-      const mb = (n) => (n / 1048576).toFixed(1);
-      text.textContent = `Loading the recording... ${mb(got)} of ${mb(meta.rawBytes)} MB`;
-      meter.style.width = `${Math.min(100, (100 * got) / meta.rawBytes)}%`;
-    }
-    const buf = new Uint8Array(got);
-    let o = 0;
-    for (const c of chunks) { buf.set(c, o); o += c.length; }
-    playDemo(parseDemo(buf), meta, { id: meta.server, name: meta.serverName, group: meta.group, replay: true });
+    const { meta, demo } = await loadRecording(id, loadingProgress('the recording'));
+    playDemo(demo, meta, replayChannel(meta));
   } catch (e) {
     $('loading').hidden = true;
     $('guide').hidden = false;
@@ -1381,24 +1404,129 @@ async function openReplay(id) {
 }
 
 function playDemo(demo, meta, ch) {
-  replay = new Replay(demo, meta, {
+  replay = makeReplay(demo, meta);
+  $('loading').hidden = true;
+  watch(ch);
+}
+
+function makeReplay(demo, meta) {
+  const r = new Replay(demo, meta, {
     call: (name, ...args) => call(name, ...args),
     onFollow: (slot) => onHubMessage({ type: 'follow', slot }),
     onHold: (held) => game.al.hold(held),
     onTime: () => { barKey = ''; renderBar(); },
-    onEnd: () => { barKey = ''; renderBar(); wake(); },
+    onEnd: () => {
+      barKey = '';
+      renderBar();
+      wake();
+      // a reel of several matches goes on to the next one's highlights
+      if (reelSet && replay && replay.reel && replay.reel.done) reelMatch(1);
+    },
     onClip: (h) => {
       reelClip(h);
       if (!h) return;
       clearNews();
-      showClip(h);
+      showClip(h.parts[0]);
       barKey = '';
       renderBar();
     },
+    onPart: (p) => { reelCam.fit = null; showClip(p); },
     onShot: (shot) => reelShot(shot),
   });
-  $('loading').hidden = true;
-  watch(ch);
+  // a reel of several matches: the clips it asks for, from the first play asked for to the last
+  if (reelSet) {
+    r.highlights = r.highlights.flatMap((c) => {
+      const first = c.parts.findIndex(reelSet.wants), last = c.parts.findLastIndex(reelSet.wants);
+      if (first < 0) return [];
+      // each end as that play's own clip has it
+      const parts = c.parts.slice(first, last + 1);
+      const from = Math.min(parts[0].start, parts[0].from), to = Math.max(parts[parts.length - 1].end, parts[parts.length - 1].to);
+      parts[0] = { ...parts[0], start: from };
+      parts[parts.length - 1] = { ...parts[parts.length - 1], end: to };
+      return [{ ...c, parts, from, to }];
+    });
+  }
+  return r;
+}
+
+// ---------- a reel of several matches (/replay?reel=...: the stats page's selection): their
+// highlights one after another, in one connection of the game (Replay.takeOver)
+
+let reelSet = null;  // { ids, i (the match playing), wants(play), loads (the matches loaded or loading, by index: the last few) }
+
+async function openReel(ids) {
+  tuning = true;
+  $('guide').hidden = true;
+  $('loading').hidden = false;
+  const only = new Set((params.get('only') || '').split(',').filter((t) => HIGHLIGHT_TYPES.includes(t)));
+  const player = (params.get('player') || '').trim().toLowerCase();
+  // a play of the kind and by the player asked for
+  const wants = (p) => (!only.size || only.has(p.type)) && (!player || p.name.toLowerCase() === player);
+  reelSet = { ids, i: -1, wants, loads: new Map(), address: location.pathname + location.search };
+  try {
+    await started;
+    if (!(await reelMatch(1))) throw new Error('These matches have no such highlights (or are not available any more).');
+  } catch (e) {
+    reelSet = null;
+    $('loading').hidden = true;
+    $('guide').hidden = false;
+    setStatus(e && e.message ? e.message : String(e), true);
+    showTabAddress();
+  } finally {
+    tuning = false;
+  }
+}
+
+// match i of the reel, loaded once (the last few are kept, for going back)
+function reelLoad(set, i, progress) {
+  if (!set.loads.has(i)) {
+    set.loads.set(i, loadRecording(set.ids[i], progress));
+    for (const k of set.loads.keys()) if (set.loads.size > 3 && k !== i) set.loads.delete(k);
+  }
+  return set.loads.get(i);
+}
+
+// the next (step 1) or previous (-1) match of the reel that has clips to show; from its last
+// clip when asked. False when there is none.
+let reelBusy = false;
+async function reelMatch(step, last = false) {
+  if (!reelSet || reelBusy) return false;
+  reelBusy = true;
+  const set = reelSet;
+  try {
+    for (let j = set.i + step; j >= 0 && j < set.ids.length; j += step) {
+      let got;
+      try {
+        got = await reelLoad(set, j, replay ? undefined : loadingProgress(`match ${j + 1} of ${set.ids.length}`));
+      } catch (_) {
+        continue;  // gone: the next one
+      }
+      if (reelSet !== set) return false;
+      const r = makeReplay(got.demo, got.meta);
+      if (!r.highlights.length) continue;
+      set.i = j;
+      if (replay && replay.sock) {
+        r.takeOver(replay);
+        replay = r;
+        clearNews();
+        showReplayTitle(watching);
+        showBar();
+      } else {
+        replay = r;
+        $('loading').hidden = true;
+        watch(replayChannel(got.meta));
+      }
+      history.replaceState(null, '', set.address);
+      if (mode !== 'auto') setMode('auto', true);
+      replay.playReel(last ? replay.highlights.length - 1 : 0);
+      // the one after loads meanwhile
+      if (j + 1 < set.ids.length) reelLoad(set, j + 1).catch(() => {});
+      return true;
+    }
+    return false;
+  } finally {
+    reelBusy = false;
+  }
 }
 
 function showBar() {
@@ -1409,7 +1537,7 @@ function showBar() {
     bar.marks.append(i);
   }
   // the captures have their marks already
-  for (const h of replay.highlights) {
+  for (const h of plays()) {
     if (h.type === 'cap') continue;
     const i = el('i', 'hl');
     i.style.left = `${(100 * h.tick) / replay.length}%`;
@@ -1451,6 +1579,9 @@ function renderBar() {
   bar.hlPrev.hidden = bar.hlNext.hidden = clip < 0;
 }
 
+// the replay's plays (its clips have one or more)
+const plays = () => replay.highlights.flatMap((c) => c.parts);
+
 // "2 multi-kills, 1 long shot, 3 saves, 9 captures"
 const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], combo: ['weapon combo', 'weapon combos'],
   long: ['long shot', 'long shots'], knife: ['knife throw', 'knife throws'], save: ['save', 'saves'],
@@ -1467,7 +1598,8 @@ function showClip(h) {
   box.textContent = '';
   const who = el('span', 'by', h.name);
   who.style.color = teamColor({ team: h.team }, true);
-  box.append(el('span', 'n', `${replay.reel.i + 1} / ${replay.highlights.length}`), el('b', '', h.label), who);
+  const n = `${replay.reel.i + 1} / ${replay.highlights.length}`;
+  box.append(el('span', 'n', reelSet ? `Match ${reelSet.i + 1}/${reelSet.ids.length} · ${n}` : n), el('b', '', h.label), who);
   box.classList.remove('gone');
   box.hidden = false;
   clearTimeout(clipTimer);
@@ -1498,6 +1630,7 @@ function stepHighlight(d) {
   if (replay.reel) {
     const i = replay.reel.i + d;
     if (i >= 0 && i < list.length) replay.playReel(i);
+    else if (reelSet) reelMatch(d, d < 0);
     return;
   }
   const t = replay.time;
@@ -1553,7 +1686,7 @@ function showTip(x) {
   const tick = tickAt(x);
   const close = (t) => Math.abs(t - tick) <= replay.length * 0.006;
   const near = !scrub && replay.markers.find(m => close(m.tick));
-  const play = !scrub && !near && replay.highlights.find(h => h.type !== 'cap' && close(h.tick));
+  const play = !scrub && !near && plays().find(h => h.type !== 'cap' && close(h.tick));
   bar.tip.textContent = near ? `${timeText(near.tick, true)} · ${TEAMS[near.team]} scores${near.name ? ': ' + near.name : ''}`
     : play ? `${timeText(play.tick, true)} · ${play.label}: ${play.name}` : timeText(tick, true);
   bar.tip.hidden = false;
@@ -1708,10 +1841,15 @@ function renderDemos() {
     const score = scoreOf(d);
     if (score) sub.append(' · ', score.cloneNode(true));
     if (playsOf(d.highlights)) sub.append(' · ', highlightCount(d.highlights));
+    if (d.rating) sub.append(' · ', ratingBadge(d.rating));
     main.append(sub);
     const sc = el('span', 'ch-mode num');
     sc.append(score || '—');
-    b.append(main, el('span', 'ch-map', d.map), sc, el('span', 'ch-players num', `${Math.max(1, Math.round(d.seconds / 60))} min`));
+    // wide screens: with the map (narrow ones have them on the line under the match)
+    const map = el('span', 'ch-map', d.map);
+    if (playsOf(d.highlights)) map.append(' ', highlightCount(d.highlights));
+    if (d.rating) map.append(' ', ratingBadge(d.rating));
+    b.append(main, map, sc, el('span', 'ch-players num', `${Math.max(1, Math.round(d.seconds / 60))} min`));
     b.addEventListener('click', () => openReplay(d.id));
     const dl = el('a', 'peek icon-btn dl');
     dl.href = demoUrl(d.id);
@@ -1731,6 +1869,13 @@ function renderDemos() {
 function highlightCount(n) {
   const s = el('span', 'hl-count', `★ ${playsOf(n)}`);
   s.title = highlightsText(n);
+  return s;
+}
+
+// how good the match is to watch (highlights.js rateMatch), what it is of on hover
+function ratingBadge(r) {
+  const s = el('span', 'rating', String(r.rating));
+  s.title = ratingText(r).join('\n');
   return s;
 }
 
@@ -1793,12 +1938,13 @@ async function openFile(file) {
     const start = demo.start > 0 ? demo.start * 1000 : file.lastModified;
     const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
     if (i >= 0) opened.splice(i, 1);
-    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, highlights: null };
+    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, highlights: null, rating: null };
     opened.unshift(entry);
     opened.length = Math.min(opened.length, 8);
     playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size },
       { id: null, name, group: null, replay: true, local: true });
     entry.highlights = countHighlights(replay.highlights);
+    entry.rating = rateMatch(replay.highlights, replay.length / TICKS);
     renderOpened();
   } catch (e) {
     $('loading').hidden = true;
@@ -1827,6 +1973,7 @@ function renderOpened() {
     title.append(el('span', 'ch-label', o.name), el('span', 'chip', when(o.start)));
     const sub = el('span', 'ch-sub', o.map);
     if (playsOf(o.highlights)) sub.append(' · ', highlightCount(o.highlights));
+    if (o.rating) sub.append(' · ', ratingBadge(o.rating));
     main.append(title, sub);
     b.append(main, el('span', 'ch-map', o.map), el('span', 'ch-mode num', sizeText(o.file.size)),
       el('span', 'ch-players num', `${Math.max(1, Math.round(o.ticks / TICKS / 60))} min`));
@@ -2093,7 +2240,7 @@ async function tuneIn(ch) {
 
 async function boot() {
   const direct = directId;
-  if (direct || replayId) { $('guide').hidden = true; $('loading').hidden = false; }
+  if (direct || replayId || reelIds) { $('guide').hidden = true; $('loading').hidden = false; }
   document.documentElement.classList.remove('direct');
   // a link with the server's password (/<id>?password=...): kept, but not shown
   if (direct && params.get('password')) {
@@ -2118,6 +2265,7 @@ async function boot() {
   refreshDemos();
   $('guide').hidden = false;
   if (replayId) await openReplay(replayId);
+  else if (reelIds) await openReel(reelIds);
   else if (ch) await tuneIn(ch);
   else $('loading').hidden = true;
 }

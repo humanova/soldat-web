@@ -162,12 +162,24 @@ game's own multi-kill count), two kills within 2 s with a weapon switch (a knife
 something else), kills from 55 m or more, knife throws from 20 m or more, flag carriers
 killed close to scoring, and the captures. For a shot from off the screen the camera zooms
 out to show the shooter and the victim while it flies, then in on the victim (the viewer's
-own zoom ends that for the clip). `[` and `]` go to the previous and next one. Demos are
-kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with fewer
-than two players, and removes the oldest after `keepDays` or once all of them take more
-than `maxGB`. A match is published once it ends (plus the server's broadcast delay).
-`node relay/fix-scores.mjs [--config relay/spectator.json] [--dry-run]` recounts the scores
-and highlights of the demos already saved (from before a fix to how they are counted);
+own zoom ends that for the clip). Plays whose clips overlap are one clip, so no moment is
+shown twice. `[` and `]` go to the previous and next one.
+
+Each match also has a rating from 0 to 100, how good it is to watch (hover it for how it adds
+up). Action, up to 60, is the plays' scores in 10 minutes. Contest, up to 40, is how close the
+match was: the final margin, changes of the lead, a comeback and the captures
+(`rateMatch` in `web/js/spectate/highlights.js`).
+
+`/replay?reel=<demo>,<demo>...` plays the highlights of several matches one after another
+(the stats page links there with the matches picked on it). `only=<types>` keeps some kinds
+of plays (`multi`, `combo`, `long`, `knife`, `save`, `cap`), and `player=<name>` keeps one
+player's.
+
+Demos are kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with
+fewer than two players, and removes the oldest after `keepDays` or once all of them take
+more than `maxGB`. A match is published once it ends (plus the server's broadcast delay).
+`node relay/fix-scores.mjs [--config relay/spectator.json] [--dry-run]` recounts the scores,
+highlights and ratings of the demos already saved (from before a fix to how they are counted);
 restart the hub after.
 
 The Demos tab plays a demo from the viewer's own computer the same way: pick or drop a

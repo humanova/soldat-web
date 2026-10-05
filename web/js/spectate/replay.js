@@ -260,8 +260,9 @@ class MatchState {
 export class Replay {
   // demo: parseDemo's; meta: the hub's listing of it; hooks: call(export, ...args) into the
   // game, onFollow(slot) (the director's pick), onHold(held) (paused or not), onTime()
-  // (moved), onEnd(), onClip(highlight) (the reel goes on to it; null: the reel stopped),
-  // onShot(shot) (shotAt, each frame while it has one, then once null)
+  // (moved), onEnd(), onClip(clip) (the reel goes on to it; null: the reel stopped),
+  // onPart(play) (the clip goes on to its next play), onShot(shot) (shotAt, each frame
+  // while it has one, then once null)
   constructor(demo, meta, hooks) {
     this.demo = demo;
     this.meta = meta;
@@ -273,7 +274,7 @@ export class Replay {
     this.markers = [];
     this.scan();
     this.highlights = findHighlights(demo, this.end);
-    this.reel = null;        // highlights only: { i (the clip), done, shotOff (no shot camera in it) }
+    this.reel = null;        // highlights only: { i (the clip), part (the play in it), done, shotOff (no shot camera in it) }
     this.shooting = false;   // onShot had a shot last
     this.following = 0;      // the reel's camera
     this.jump(0);
@@ -332,14 +333,23 @@ export class Replay {
   // the clip of the reel
   get clip() { return this.reel ? this.highlights[this.reel.i] : null; }
 
+  // the play of the reel's clip at `tick`
+  partAt(tick) {
+    const parts = this.clip.parts;
+    let i = 0;
+    while (i + 1 < parts.length && parts[i + 1].start <= tick) i++;
+    return i;
+  }
+
   camAt(tick) {
     const clip = this.clip;
     if (clip) {
-      // the shot camera stays on the killer until it is on the victim (or back on the killer)
-      const s = this.reel.shotOff ? null : clip.shot;
-      if (s) return tick < s.tick + SHOT_HOLD + SHOT_IN || s.back ? s.killer : s.victim;
-      let slot = clip.slot;
-      for (const c of clip.cams) if (c.tick <= tick) slot = c.slot;
+      const p = clip.parts[this.partAt(tick)];
+      // the shot camera is on the killer until it is on the victim (or back on the killer)
+      const s = this.reel.shotOff ? null : p.shot;
+      if (s && tick >= s.fired - SHOT_OUT) return tick < s.tick + SHOT_HOLD + SHOT_IN || s.back ? s.killer : s.victim;
+      let slot = p.slot;
+      for (const c of p.cams) if (c.tick <= tick) slot = c.slot;
       return slot;
     }
     let slot = 0;
@@ -350,7 +360,7 @@ export class Replay {
   // the clip's shot from afar at `tick`: { a (the killer), b (the victim), mix (how far from a
   // to b the camera aims), out (how far zoomed out to show both, 0 to 1) }, or null
   shotAt(tick) {
-    const clip = this.clip, s = clip && !this.reel.shotOff ? clip.shot : null;
+    const clip = this.clip, s = clip && !this.reel.shotOff ? clip.parts[this.partAt(tick)].shot : null;
     if (!s) return null;
     const t0 = s.fired - SHOT_OUT, t1 = s.fired, t2 = s.tick + SHOT_HOLD, t3 = t2 + SHOT_IN;
     if (tick < t0 || tick >= t3) return null;
@@ -369,7 +379,7 @@ export class Replay {
   // the clip goes on without its shot camera (the viewer zoomed, or the players are too far
   // apart to show both)
   dropShot() {
-    if (!this.reel || this.reel.shotOff || !this.clip.shot) return;
+    if (!this.reel || this.reel.shotOff || !this.clip.parts.some((p) => p.shot)) return;
     this.reel.shotOff = true;
     this.following = -1;
     if (this.shooting) { this.shooting = false; this.hooks.onShot(null); }
@@ -401,10 +411,22 @@ export class Replay {
     this.hooks.onTime();
   }
 
+  // the next match of a reel of several: this one takes over the game's connection from the
+  // one before (the jump of playReel or seek then brings the client to this match's map, as
+  // a jump does)
+  takeOver(prev) {
+    const sock = prev.sock;
+    prev.sock = null;
+    prev.reel = null;
+    if (!sock) return;
+    sock.replay = this;
+    this.sock = sock;
+  }
+
   // highlights only: the clips one after another, the camera on whoever made each
   playReel(i = 0) {
     if (!this.highlights.length) return;
-    this.reel = { i: Math.max(0, Math.min(this.highlights.length - 1, i)), done: false, shotOff: false };
+    this.reel = { i: Math.max(0, Math.min(this.highlights.length - 1, i)), part: 0, done: false, shotOff: false };
     this.shooting = false;
     this.following = -1;
     this.playing = true;
@@ -465,6 +487,7 @@ export class Replay {
     if (!this.sock || this.joining) return;
     if (this.speedDue) { this.speedDue = false; this.applySpeed(); }
     if (this.followDue != null) { this.hooks.onFollow(this.followDue); this.followDue = null; }
+    if (this.partDue) { this.partDue = false; if (this.reel) this.hooks.onPart(this.clip.parts[this.reel.part]); }
     const rate = this.rate();
     if (!rate) return;
     let pos = this.pos + (dt * TICKS * rate) / 1000;
@@ -477,6 +500,7 @@ export class Replay {
     if (clip && this.target == null && pos >= clip.to && !this.reel.done) {
       if (this.reel.i + 1 < this.highlights.length) {
         this.reel.i++;
+        this.reel.part = 0;
         this.reel.shotOff = false;
         this.shooting = false;
         this.following = -1;
@@ -506,6 +530,8 @@ export class Replay {
       this.sock.deliver(setHash(Uint8Array.of(MSG.Ping, 0, 0, 0, 0)));
     }
     if (this.reel) {
+      const part = this.partAt(pos);
+      if (part !== this.reel.part) { this.reel.part = part; this.hooks.onPart(this.clip.parts[part]); }
       const slot = this.camAt(pos);
       if (slot !== this.following) { this.following = slot; this.hooks.onFollow(slot); }
       const shot = this.shotAt(pos);
@@ -537,6 +563,8 @@ export class Replay {
       // inside the game's call, which this is)
       this.followDue = this.following = this.camAt(this.pos);
       this.speedDue = true;
+      // the reel's clip is on screen from now: its play again (the page's caption)
+      if (this.reel) this.partDue = true;
     }
   }
 }

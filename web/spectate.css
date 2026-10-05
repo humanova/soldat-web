@@ -403,7 +403,9 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .clipcap b { font-weight: 700; }
 .clipcap .by { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .clipcap.gone { opacity: 0; }
-.ch-sub .hl-count { color: var(--orange); }
+.ch-sub .hl-count, .ch-map .hl-count { color: var(--orange); }
+.ch-sub .rating, .ch-map .rating { padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--text); font-size: 12px;
+  font-variant-numeric: tabular-nums; }
 .rp-tip { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); padding: 3px 7px; background: var(--deep);
   border: 1px solid var(--line); color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
   pointer-events: none; }
