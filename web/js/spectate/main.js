@@ -599,6 +599,8 @@ window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
   // Enter and Space on a button press it
   if ((e.code === 'Enter' || e.code === 'Space') && e.target.closest && e.target.closest('button, a, label')) return;
+  // a choice in the menu takes its own arrow keys
+  if (e.target.matches && e.target.matches('select')) return;
   const keys = {
     ...(replay && replayKeys),
     ArrowLeft: () => cycle(-1), ArrowRight: () => cycle(1),
@@ -629,21 +631,31 @@ function sayKey() {
   $('tvchat').querySelector('.say-text').focus();
 }
 
-// ---------- what is shown over the match: the game's spec_* settings (all on at first),
-// switched in the menu under the eye and kept in prefs.visuals
+// ---------- what is shown over the match: the game's spec_* settings (all on at first; a
+// choice starts at its selected option), switched in the menu under the eye and kept in
+// prefs.visuals
 
 const visuals = (prefs.visuals && typeof prefs.visuals === 'object') ? prefs.visuals : (prefs.visuals = {});
-const visualBoxes = [...$('visuals').querySelectorAll('input[data-cvar]')];
+const visualControls = [...$('visuals').querySelectorAll('[data-cvar]')];
 
-function applyVisuals() {
-  for (const box of visualBoxes) setCvar(box.dataset.cvar, visuals[box.dataset.cvar] === false ? '0' : '1');
+// the setting's value for the game ('0', '1', ... ; a choice kept as on/off before is 1 or 0)
+function visualValue(el) {
+  const v = visuals[el.dataset.cvar];
+  if (el.type === 'checkbox') return v === false ? '0' : '1';
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  const values = [...el.options].map(o => o.value);
+  return values.includes(v) ? v : el.querySelector('option[selected]').value;
 }
-for (const box of visualBoxes) {
-  box.checked = visuals[box.dataset.cvar] !== false;
-  box.addEventListener('change', () => {
-    visuals[box.dataset.cvar] = box.checked;
+function applyVisuals() {
+  for (const el of visualControls) setCvar(el.dataset.cvar, visualValue(el));
+}
+for (const el of visualControls) {
+  if (el.type === 'checkbox') el.checked = visualValue(el) === '1';
+  else el.value = visualValue(el);
+  el.addEventListener('change', () => {
+    visuals[el.dataset.cvar] = el.type === 'checkbox' ? el.checked : el.value;
     savePrefs();
-    if (game.running) setCvar(box.dataset.cvar, box.checked ? '1' : '0');
+    if (game.running) setCvar(el.dataset.cvar, visualValue(el));
   });
 }
 function toggleVisuals(open = $('visuals').hidden) {

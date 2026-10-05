@@ -1601,7 +1601,7 @@ end;
 {$ENDIF}
 
 {$IFDEF SPECTATOR}
-// Players off the screen (spec_offscreen): an arrow in their team's colour at its edge,
+// Players off the screen (spec_offscreen 1): an arrow in their team's colour at its edge,
 // pointing at them, a bigger one with the flag for a carrier. The frame they sit on leaves
 // room for the page's bars at the top and the bottom.
 procedure RenderOffscreenArrows(Width, Height: Single);
@@ -1612,7 +1612,7 @@ var
   x0, y0, x1, y1: Single;
   FlagIcon: PGfxSprite;
 begin
-  if not spec_offscreen.Value then
+  if spec_offscreen.Value <> 1 then
     Exit;
   FlagIcon := Textures[GFX_INTERFACE_FLAG];
   x0 := 8 * _rscala.x;
@@ -2011,7 +2011,8 @@ begin
 end;
 
 // Right under the player's feet their health bar, and their name under it. Both move with the
-// player; one off the screen has neither (an arrow at the edge: RenderOffscreenArrows).
+// player. One off the screen has neither: an arrow at the screen's edge (spec_offscreen 1,
+// RenderOffscreenArrows) or only the name, kept at the edge (spec_offscreen 2).
 procedure RenderPlayerName(Width, Height: Single; i: Integer; OnlyOffscreen: Boolean);
 const
   FEET = 15;  // from the skeleton's point 7 to just under the feet, in the world's units
@@ -2019,6 +2020,7 @@ var
   Alpha: Byte;
   rc: TGfxRect;
   x, y, w, h, Bar: Single;
+  Off: Boolean;
 begin
   if (i = CameraFollowSprite) or (CarriesFlag(i) > 0) then
     Alpha := 255
@@ -2029,15 +2031,16 @@ begin
 
   x := ((Sprite[i].Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
   y := ((Sprite[i].Skeleton.Pos[7].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
-  if (x < 0) or (x > Width) or (y < 0) or (y > Height) then
+  Off := (x < 0) or (x > Width) or (y < 0) or (y > Height);
+  if Off and (spec_offscreen.Value <> 2) then
     Exit;
   y := y + FEET / ViewScale * _rscala.y;
 
   Bar := 0;
-  if spec_health.Value and not Sprite[i].DeadMeat then
+  if spec_health.Value and not Sprite[i].DeadMeat and not Off then
     Bar := RenderHealthBar(x, y, i, Alpha) + 1.5 * _rscala.y;
 
-  if not spec_names.Value then
+  if not spec_names.Value and not Off then
     Exit;
   rc := GfxTextMetrics(WideString(Sprite[i].Player.Name));
   w := RectWidth(rc);

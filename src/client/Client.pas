@@ -129,7 +129,7 @@ var
   spec_names: TBooleanCvar;
   spec_health: TBooleanCvar;
   spec_trails: TBooleanCvar;
-  spec_offscreen: TBooleanCvar;
+  spec_offscreen: TIntegerCvar;  // 0: nothing, 1: an arrow, 2: the name at the edge
   {$ENDIF}
   r_msaa: TIntegerCVar;
 

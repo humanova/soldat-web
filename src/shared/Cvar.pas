@@ -768,7 +768,7 @@ begin
   spec_names := TBooleanCvar.Add('spec_names', 'Shows the names under the players', True, True, [CVAR_CLIENT], nil);
   spec_health := TBooleanCvar.Add('spec_health', 'Shows health bars under the players', True, True, [CVAR_CLIENT], nil);
   spec_trails := TBooleanCvar.Add('spec_trails', 'Draws the path of a flag carrier', True, True, [CVAR_CLIENT], nil);
-  spec_offscreen := TBooleanCvar.Add('spec_offscreen', 'Shows arrows at the screen''s edge to players off it', True, True, [CVAR_CLIENT], nil);
+  spec_offscreen := TIntegerCvar.Add('spec_offscreen', 'Players off the screen: 0 nothing, 1 an arrow at its edge, 2 their name at its edge', 1, 1, [CVAR_CLIENT], nil, 0, 2);
   {$ENDIF}
   r_msaa := TIntegerCVar.Add('r_msaa', 'Sets the number of samples for anti-aliasing (MSAA).', 0, 0, [CVAR_CLIENT, CVAR_INITONLY], nil, 0, 32);
 
