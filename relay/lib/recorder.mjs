@@ -16,6 +16,9 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { MSG, setHash } from './soldat171.mjs';
+// the page's own: the highlights a demo is listed with are the ones its replay shows
+import { parseDemo } from '../../web/js/spectate/replay.js';
+import { findHighlights, countHighlights } from '../../web/js/spectate/highlights.js';
 
 const HEADER_SIZE = 180;
 const TICKS_PER_SECOND = 60;
@@ -145,6 +148,15 @@ export function demoScore(demo, newMap) {
   return score.value;
 }
 
+// how many highlights of each kind a demo file (uncompressed) has; null if it can't tell
+export function demoHighlights(demo) {
+  try {
+    return countHighlights(findHighlights(parseDemo(demo)));
+  } catch (_) {
+    return null;
+  }
+}
+
 class Recording {
   constructor(store, info, at, opening) {
     this.store = store;
@@ -235,6 +247,7 @@ class Recording {
       header.writeInt32LE(this.tick, 176);
       const fh = await fsp.open(this.part, 'r+');
       try { await fh.write(header, 0, HEADER_SIZE, 0); } finally { await fh.close(); }
+      const highlights = demoHighlights(await fsp.readFile(this.part));
       const gz = path.join(store.dir, this.id + '.sdm.gz');
       await pipeline(fs.createReadStream(this.part), zlib.createGzip({ level: 9 }), fs.createWriteStream(gz + '.tmp'));
       await fsp.rename(gz + '.tmp', gz);
@@ -244,7 +257,7 @@ class Recording {
         map: this.info.map, mode: this.info.mode ?? null, start: this.start,
         end: this.start + Math.round((this.tick * 1000) / TICKS_PER_SECOND), seconds: Math.round(seconds),
         players: [...this.players.values()],
-        scores: this.score.value, delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
+        scores: this.score.value, highlights, delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
       };
       await fsp.writeFile(path.join(store.dir, this.id + '.json.tmp'), JSON.stringify(meta));
       await fsp.rename(path.join(store.dir, this.id + '.json.tmp'), path.join(store.dir, this.id + '.json'));

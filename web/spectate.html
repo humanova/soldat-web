@@ -44,6 +44,7 @@
   <symbol id="i-chat" viewBox="0 0 20 20"><path d="M3 4.5h14v9H8.5L5 16.5v-3H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-talk" viewBox="0 0 20 20"><path d="M2.5 3.5h10v7H7l-3 2.5v-2.5H2.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 7.5h3v7H16V17l-3-2.5H8.5v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-file" viewBox="0 0 20 20"><path d="M5 2.5h6.5L15.5 6.5v11h-10.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 2.5v4.5h4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 9.5v5l4-2.5z" fill="currentColor"/></symbol>
+  <symbol id="i-star" viewBox="0 0 20 20"><path d="m10 2.5 2.3 4.9 5.2.6-3.9 3.6 1.1 5.2L10 14.2l-4.7 2.6 1.1-5.2L2.5 8l5.2-.6z" fill="currentColor"/></symbol>
   <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -202,8 +203,8 @@
 
   <div id="notice" class="notice" hidden></div>
 
-  <!-- a recorded match: play, the time, the timeline (captures marked), speed, the file
-       (js/spectate/main.js: replays) -->
+  <!-- a recorded match: play, the time, the timeline (captures and highlights marked), the
+       highlights only, speed, the file (js/spectate/main.js: replays) -->
   <div id="replaybar" class="replaybar ui" hidden>
     <button id="rp-play" type="button" class="icon-btn" aria-label="Pause (Space)"><svg><use href="#i-pause"/></svg></button>
     <span id="rp-time" class="rp-time">0:00 / 0:00</span>
@@ -213,9 +214,15 @@
       <i class="rp-thumb"></i>
       <span class="rp-tip" hidden></span>
     </div>
+    <button id="rp-hl-prev" type="button" class="icon-btn" aria-label="Previous highlight ([)" hidden><svg><use href="#i-prev"/></svg></button>
+    <button id="rp-hl" type="button" class="rp-hl" aria-pressed="false" title="Highlights only (H)"><svg><use href="#i-star"/></svg><span></span></button>
+    <button id="rp-hl-next" type="button" class="icon-btn" aria-label="Next highlight (])" hidden><svg><use href="#i-next"/></svg></button>
     <button id="rp-speed" type="button" class="rp-speed" title="Speed">1×</button>
     <a id="rp-download" class="icon-btn" aria-label="Download the demo"><svg><use href="#i-download"/></svg></a>
   </div>
+
+  <!-- the highlight being played: what, by whom, which one of how many -->
+  <div id="clipcap" class="clipcap" aria-live="polite" hidden></div>
 
   <div id="dock" class="dock ui move" data-move="dock">
     <i class="grip handle" title="Drag to move (double-click: back)"></i>

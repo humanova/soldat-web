@@ -153,17 +153,23 @@ carries them all. Viewers pick a nickname, with no account. The hub keeps the la
 minutes in memory and allows one line every 1.5 seconds per address.
 
 Servers with `record` get their matches recorded while Soldat TV watches them, one demo
-per map. Their tab lists the recorded matches (map, score, length, players): each one plays
-on the site at `/replay?id=<demo>`, with pause, speed (¼× to 4×) and a timeline to drag
-through the match (captures are marked on it), and downloads as a `.sdm` file. Demos are
+per map. Their tab lists the recorded matches (map, score, highlights, length, players):
+each one plays on the site at `/replay?id=<demo>`, with pause, speed (¼× to 4×) and a
+timeline to drag through the match (captures and highlights are marked on it), and
+downloads as a `.sdm` file. Highlights (H, or the ★ button) plays only the highlights, one
+clip after another with the camera on whoever made each: runs of three kills or more (the
+game's own multi-kill count), kills from 55 m or more, flag carriers killed close to scoring,
+and the captures. `[` and `]` go to the previous and next one. Demos are
 kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with fewer
 than two players, and removes the oldest after `keepDays` or once all of them take more
 than `maxGB`. A match is published once it ends (plus the server's broadcast delay).
 `node relay/fix-scores.mjs [--config relay/spectator.json] [--dry-run]` recounts the scores
-of the demos already saved (from before a fix to how they are counted); restart the hub after.
+and highlights of the demos already saved (from before a fix to how they are counted);
+restart the hub after.
 
 The Demos tab plays a demo from the viewer's own computer the same way: pick or drop a
-`.sdm` (or a gzipped `.sdm.gz`). The file is read in the browser and never uploaded.
+`.sdm` (or a gzipped `.sdm.gz`). The file is read in the browser and never uploaded; its
+highlights are found there too.
 
 | Setting | Default | What it does |
 |---|---|---|

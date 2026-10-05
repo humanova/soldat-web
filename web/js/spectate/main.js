@@ -6,6 +6,7 @@ import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
+import { countHighlights } from './highlights.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -227,6 +228,7 @@ function showGuide() {
   game.al.hold(false);
   $('watch').classList.remove('replaying');
   $('replaybar').hidden = true;
+  $('clipcap').hidden = true;
   clearInterval(pollTimer);
   notice('');
   closeRoster();
@@ -1259,12 +1261,14 @@ function renderRoster(s) {
 // ================================================================= replays
 
 // A recorded match plays in the same view: the bar at the bottom has play/pause, the time,
-// the timeline (drag it: the picture follows; captures are marked on it) and the speed.
+// the timeline (drag it: the picture follows; captures and highlights are marked on it), the
+// highlights only (highlights.js: a reel of clips, the camera on whoever made each) and the speed.
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const bar = {
   play: $('rp-play'), time: $('rp-time'), line: $('rp-line'), speed: $('rp-speed'),
   done: document.querySelector('.rp-done'), thumb: document.querySelector('.rp-thumb'),
   tip: document.querySelector('.rp-tip'), marks: document.querySelector('.rp-marks'),
+  hl: $('rp-hl'), hlPrev: $('rp-hl-prev'), hlNext: $('rp-hl-next'),
 };
 let scrub = null;   // a drag on the timeline: { tick, playing, seeked, at, timer }
 let barKey = '';
@@ -1338,6 +1342,7 @@ function playDemo(demo, meta, ch) {
     onHold: (held) => game.al.hold(held),
     onTime: () => { barKey = ''; renderBar(); },
     onEnd: () => { barKey = ''; renderBar(); wake(); },
+    onClip: (h) => { clearNews(); showClip(h); barKey = ''; renderBar(); },
   });
   $('loading').hidden = true;
   watch(ch);
@@ -1350,6 +1355,16 @@ function showBar() {
     i.style.left = `${(100 * m.tick) / replay.length}%`;
     bar.marks.append(i);
   }
+  // the captures have their marks already
+  for (const h of replay.highlights) {
+    if (h.type === 'cap') continue;
+    const i = el('i', 'hl');
+    i.style.left = `${(100 * h.tick) / replay.length}%`;
+    bar.marks.append(i);
+  }
+  bar.hl.hidden = !replay.highlights.length;
+  bar.hl.title = `Highlights only (H): ${highlightsText(countHighlights(replay.highlights))}`;
+  $('clipcap').hidden = true;
   bar.line.setAttribute('aria-valuemax', String(Math.round(replay.length / TICKS)));
   // a demo from the viewer's computer is theirs already
   $('rp-download').hidden = !replay.meta.id;
@@ -1377,10 +1392,70 @@ function renderBar() {
   bar.play.querySelector('use').setAttribute('href', playing ? '#i-pause' : '#i-play');
   bar.play.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
   bar.speed.textContent = `${replay.speed}×`;
+  const clip = replay.reel ? replay.reel.i : -1;
+  bar.hl.setAttribute('aria-pressed', String(clip >= 0));
+  bar.hl.querySelector('span').textContent = clip >= 0 ? `${clip + 1} / ${replay.highlights.length}` : String(replay.highlights.length);
+  bar.hlPrev.hidden = bar.hlNext.hidden = clip < 0;
+}
+
+// "2 multi-kills, 1 long shot, 3 saves, 9 captures"
+const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], long: ['long shot', 'long shots'], save: ['save', 'saves'],
+  cap: ['capture', 'captures'] };
+function highlightsText(n) {
+  return Object.entries(HIGHLIGHT_NAMES).filter(([k]) => n[k]).map(([k, [one, more]]) => `${n[k]} ${n[k] === 1 ? one : more}`).join(', ') || 'none';
+}
+// what a match is listed with: the plays, not the captures (the score has those)
+const playsOf = (n) => (n ? n.multi + n.long + n.save : 0);
+
+let clipTimer = 0;
+function showClip(h) {
+  const box = $('clipcap');
+  box.textContent = '';
+  const who = el('span', 'by', h.name);
+  who.style.color = teamColor({ team: h.team }, true);
+  box.append(el('span', 'n', `${replay.reel.i + 1} / ${replay.highlights.length}`), el('b', '', h.label), who);
+  box.classList.remove('gone');
+  box.hidden = false;
+  clearTimeout(clipTimer);
+  clipTimer = setTimeout(() => {
+    box.classList.add('gone');
+    clipTimer = setTimeout(() => { box.hidden = true; }, 600);
+  }, 3500);
+}
+
+function toggleHighlights() {
+  if (!replay || !replay.highlights.length) return;
+  if (replay.reel) {
+    replay.stopReel();
+    $('clipcap').hidden = true;
+    return;
+  }
+  // the reel follows whoever made the play
+  if (mode !== 'auto') setMode('auto', true);
+  // from the next one on, when the match is under way
+  const i = replay.highlights.findIndex(h => h.to > replay.time + TICKS);
+  replay.playReel(replay.time > TICKS && i >= 0 ? i : 0);
+}
+
+// the next or previous highlight: in the reel its clip, in the match a jump to it
+function stepHighlight(d) {
+  if (!replay || !replay.highlights.length) return;
+  const list = replay.highlights;
+  if (replay.reel) {
+    const i = replay.reel.i + d;
+    if (i >= 0 && i < list.length) replay.playReel(i);
+    return;
+  }
+  const t = replay.time;
+  const h = d > 0 ? list.find(x => x.from > t + TICKS / 2) : [...list].reverse().find(x => x.from < t - 2 * TICKS);
+  if (h) seekTo(h.from);
 }
 
 function seekTo(tick) {
   if (!replay) return;
+  // a jump of the viewer's own: the whole match again
+  replay.stopReel();
+  $('clipcap').hidden = true;
   clearNews();
   replay.seek(tick);
   wake();
@@ -1400,9 +1475,13 @@ const replayKeys = {
   KeyJ: () => step(-10), KeyL: () => step(10),
   Comma: () => step(-1), Period: () => step(1),
   Home: () => seekTo(0), End: () => replay && seekTo(replay.length),
+  KeyH: toggleHighlights, BracketLeft: () => stepHighlight(-1), BracketRight: () => stepHighlight(1),
 };
 
 bar.play.addEventListener('click', togglePlay);
+bar.hl.addEventListener('click', toggleHighlights);
+bar.hlPrev.addEventListener('click', () => stepHighlight(-1));
+bar.hlNext.addEventListener('click', () => stepHighlight(1));
 bar.speed.addEventListener('click', () => {
   if (!replay) return;
   replay.setSpeed(SPEEDS[(SPEEDS.indexOf(replay.speed) + 1) % SPEEDS.length]);
@@ -1418,9 +1497,11 @@ function showTip(x) {
   if (!replay) return;
   const r = bar.line.getBoundingClientRect();
   const tick = tickAt(x);
-  const near = replay.markers.find(m => Math.abs(m.tick - tick) <= replay.length * 0.006);
-  bar.tip.textContent = timeText(near && !scrub ? near.tick : tick, true) +
-    (near && !scrub ? ` · ${TEAMS[near.team]} scores${near.name ? ': ' + near.name : ''}` : '');
+  const close = (t) => Math.abs(t - tick) <= replay.length * 0.006;
+  const near = !scrub && replay.markers.find(m => close(m.tick));
+  const play = !scrub && !near && replay.highlights.find(h => h.type !== 'cap' && close(h.tick));
+  bar.tip.textContent = near ? `${timeText(near.tick, true)} · ${TEAMS[near.team]} scores${near.name ? ': ' + near.name : ''}`
+    : play ? `${timeText(play.tick, true)} · ${play.label}: ${play.name}` : timeText(tick, true);
   bar.tip.hidden = false;
   const w = bar.tip.offsetWidth;
   bar.tip.style.left = `${Math.min(r.width - w / 2, Math.max(w / 2, x - r.left))}px`;
@@ -1572,6 +1653,7 @@ function renderDemos() {
     const sub = el('span', 'ch-sub', d.map);
     const score = scoreOf(d);
     if (score) sub.append(' · ', score.cloneNode(true));
+    if (playsOf(d.highlights)) sub.append(' · ', highlightCount(d.highlights));
     main.append(sub);
     const sc = el('span', 'ch-mode num');
     sc.append(score || '—');
@@ -1592,6 +1674,13 @@ function renderDemos() {
 }
 
 $('demos-more').addEventListener('click', () => { demosLimit += 40; refreshDemos(); });
+
+// ★ 5: the match's plays (multi-kills, long shots, saves)
+function highlightCount(n) {
+  const s = el('span', 'hl-count', `★ ${playsOf(n)}`);
+  s.title = highlightsText(n);
+  return s;
+}
 
 function meterText(text, error = false) {
   const t = $('meter').querySelector('.meter-text');
@@ -1652,11 +1741,13 @@ async function openFile(file) {
     const start = demo.start > 0 ? demo.start * 1000 : file.lastModified;
     const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
     if (i >= 0) opened.splice(i, 1);
-    opened.unshift({ file, name, map: demo.map, start, ticks: demo.ticks });
+    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, highlights: null };
+    opened.unshift(entry);
     opened.length = Math.min(opened.length, 8);
-    renderOpened();
     playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size },
       { id: null, name, group: null, replay: true, local: true });
+    entry.highlights = countHighlights(replay.highlights);
+    renderOpened();
   } catch (e) {
     $('loading').hidden = true;
     $('guide').hidden = false;
@@ -1682,7 +1773,9 @@ function renderOpened() {
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
     title.append(el('span', 'ch-label', o.name), el('span', 'chip', when(o.start)));
-    main.append(title, el('span', 'ch-sub', o.map));
+    const sub = el('span', 'ch-sub', o.map);
+    if (playsOf(o.highlights)) sub.append(' · ', highlightCount(o.highlights));
+    main.append(title, sub);
     b.append(main, el('span', 'ch-map', o.map), el('span', 'ch-mode num', sizeText(o.file.size)),
       el('span', 'ch-players num', `${Math.max(1, Math.round(o.ticks / TICKS / 60))} min`));
     b.addEventListener('click', () => openFile(o.file));

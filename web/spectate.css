@@ -382,6 +382,25 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .rp-marks .mark { position: absolute; width: 3px; height: 14px; margin-left: -1.5px; transform: translateY(-50%);
   background: var(--alpha-text); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
 .rp-marks .mark.t2 { background: var(--bravo-text); }
+.rp-marks .hl { position: absolute; top: -12px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%;
+  background: var(--orange); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
+.rp-hl { flex: none; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; background: var(--tab); border: 0;
+  color: var(--text); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-hl svg { width: 15px; height: 15px; color: var(--orange); }
+.rp-hl:hover { background: var(--row-hover); }
+.rp-hl[aria-pressed="true"] { background: var(--orange); color: #1b1f27; }
+.rp-hl[aria-pressed="true"] svg { color: inherit; }
+/* the highlight being played: a lower third over the match */
+.clipcap { position: absolute; left: 50%; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 104px); transform: translateX(-50%);
+  z-index: 1; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px); padding: 4px 12px 4px 0;
+  background: rgba(44, 51, 65, .85); border-left: 3px solid var(--orange); font-size: 15px; white-space: nowrap;
+  text-shadow: 1px 1px 0 #000; pointer-events: none; animation: fade-in .2s ease-out; transition: opacity .6s; }
+.clipcap .n { align-self: stretch; display: flex; align-items: center; padding: 0 8px; background: var(--deep); color: var(--muted);
+  font-size: 12px; font-variant-numeric: tabular-nums; text-shadow: none; }
+.clipcap b { font-weight: 700; }
+.clipcap .by { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clipcap.gone { opacity: 0; }
+.ch-sub .hl-count { color: var(--orange); }
 .rp-tip { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); padding: 3px 7px; background: var(--deep);
   border: 1px solid var(--line); color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
   pointer-events: none; }
@@ -522,6 +541,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   .chat { top: 46px; width: 280px; max-height: 45%; }
   .replaybar { height: 44px; }
   .rp-time { min-width: 0; font-size: 12px; }
+  .rp-hl { padding: 0 7px; }
+  .clipcap { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 104px); font-size: 13px; }
   #watch.replaying .dock:not(.placed) { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 52px); }
   .tvchat { top: auto; bottom: 60px; }
   .roster { top: 46px; max-height: calc(100% - 110px); width: 220px; }

@@ -5,6 +5,8 @@
 // seconds), the client forgets its world and joins again (soldat_spectator_rewind), and the
 // two seconds before the moment run at high speed so that everyone is where they were.
 
+import { findHighlights } from './highlights.js';
+
 const MSG = {
   HeartBeat: 2, ServerSpriteSnapshot: 3, ThingSnapshot: 9, ThingTaken: 12, RequestGame: 14,
   PlayerInfo: 15, PlayersList: 16, NewPlayer: 17, ServerDisconnect: 18, PlayerDisconnect: 19, DeltaMovement: 21,
@@ -254,7 +256,7 @@ class MatchState {
 export class Replay {
   // demo: parseDemo's; meta: the hub's listing of it; hooks: call(export, ...args) into the
   // game, onFollow(slot) (the director's pick), onHold(held) (paused or not), onTime()
-  // (moved), onEnd()
+  // (moved), onEnd(), onClip(highlight) (the reel goes on to it)
   constructor(demo, meta, hooks) {
     this.demo = demo;
     this.meta = meta;
@@ -265,6 +267,9 @@ export class Replay {
     this.checkpoints = [];
     this.markers = [];
     this.scan();
+    this.highlights = findHighlights(demo, this.end);
+    this.reel = null;        // highlights only: { i (the clip), done }
+    this.following = 0;      // the reel's camera
     this.jump(0);
   }
 
@@ -318,7 +323,16 @@ export class Replay {
     return { state: s, next: i };
   }
 
+  // the clip of the reel
+  get clip() { return this.reel ? this.highlights[this.reel.i] : null; }
+
   camAt(tick) {
+    const clip = this.clip;
+    if (clip) {
+      let slot = clip.slot;
+      for (const c of clip.cams) if (c.tick <= tick) slot = c.slot;
+      return slot;
+    }
     let slot = 0;
     for (const c of this.demo.cams) { if (c.tick > tick) break; slot = c.slot; }
     return slot;
@@ -350,7 +364,29 @@ export class Replay {
     this.hooks.onTime();
   }
 
+  // highlights only: the clips one after another, the camera on whoever made each
+  playReel(i = 0) {
+    if (!this.highlights.length) return;
+    this.reel = { i: Math.max(0, Math.min(this.highlights.length - 1, i)), done: false };
+    this.following = -1;
+    this.playing = true;
+    this.seek(this.clip.from);
+    this.applySpeed();
+    this.hooks.onClip(this.clip);
+  }
+
+  // back to the whole match, the director's camera where it is
+  stopReel() {
+    if (!this.reel) return;
+    this.reel = null;
+    this.cam = this.demo.cams.findIndex(c => c.tick > this.pos);
+    if (this.cam < 0) this.cam = this.demo.cams.length;
+    if (this.sock && !this.joining) this.followDue = this.camAt(this.pos);
+    this.hooks.onTime();
+  }
+
   play() {
+    if (this.reel && this.reel.done) { this.playReel(0); return; }
     if (this.time >= this.length) this.seek(0);
     this.playing = true;
     this.applySpeed();
@@ -397,6 +433,22 @@ export class Replay {
       this.target = null;
       this.speedDue = true;
     }
+    const clip = this.clip;
+    if (clip && this.target == null && pos >= clip.to && !this.reel.done) {
+      if (this.reel.i + 1 < this.highlights.length) {
+        this.reel.i++;
+        this.following = -1;
+        this.seek(this.clip.from);
+        this.hooks.onClip(this.clip);
+        return;
+      }
+      // the last one: the reel stops on it
+      pos = clip.to;
+      this.reel.done = true;
+      this.playing = false;
+      this.speedDue = true;
+      this.hooks.onEnd();
+    }
     if (pos >= this.length) {
       pos = this.length;
       if (this.playing) { this.playing = false; this.speedDue = true; this.hooks.onEnd(); }
@@ -411,7 +463,12 @@ export class Replay {
       this.pinged = pos;
       this.sock.deliver(setHash(Uint8Array.of(MSG.Ping, 0, 0, 0, 0)));
     }
-    while (this.cam < cams.length && cams[this.cam].tick <= pos) this.hooks.onFollow(cams[this.cam++].slot);
+    if (this.reel) {
+      const slot = this.camAt(pos);
+      if (slot !== this.following) { this.following = slot; this.hooks.onFollow(slot); }
+    } else {
+      while (this.cam < cams.length && cams[this.cam].tick <= pos) this.hooks.onFollow(cams[this.cam++].slot);
+    }
     this.pos = pos;
   }
 
@@ -434,7 +491,7 @@ export class Replay {
       for (const m of this.state.joinBundle(this.pos)) this.sock.deliver(m);
       // the game takes these in its next frame; camera and speed are set before it (not from
       // inside the game's call, which this is)
-      this.followDue = this.camAt(this.pos);
+      this.followDue = this.following = this.camAt(this.pos);
       this.speedDue = true;
     }
   }
