@@ -367,7 +367,10 @@ const endPointer = (e) => {
 };
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('dblclick', () => { if (mode !== 'overview') setZoom(0); });
+// a double tap resets the zoom; a mouse's clicks hold it for the free camera (below)
+let pressedBy = '';
+canvas.addEventListener('pointerdown', (e) => { pressedBy = e.pointerType; });
+canvas.addEventListener('dblclick', () => { if (mode !== 'overview' && pressedBy !== 'mouse') setZoom(0); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function centroid() {
@@ -417,12 +420,9 @@ canvas.addEventListener('click', (e) => {
   downAt = null;
   if (!at || !watching || mouseHeld() || Math.hypot(e.clientX - at.x, e.clientY - at.y) > 5) return;
   if (mode !== 'free') setMode('free');
-  try {
-    const p = canvas.requestPointerLock({ unadjustedMovement: true });
-    if (p && p.catch) p.catch(() => { try { canvas.requestPointerLock(); } catch (_) {} });
-  } catch (_) {
-    try { canvas.requestPointerLock(); } catch (_) {}
-  }
+  // raw movement where the browser has it; a refusal (no gesture, a frame) is no error
+  const lock = (opts) => { try { return Promise.resolve(canvas.requestPointerLock(opts)); } catch (e) { return Promise.reject(e); } };
+  lock({ unadjustedMovement: true }).catch(() => lock()).catch(() => {});
 });
 
 const mouseHeld = () => document.pointerLockElement === canvas;
