@@ -408,6 +408,11 @@ begin
     //UDP.FlushMsg;
   end;  // Client
 
+  {$IFDEF SPECTATOR}
+  // a replay's jump may join in a frame without a tick: the camera stays where it was
+  SpectatorKeepCamera;
+  {$ENDIF}
+
   // this shouldn't happen but still done for safety
   if FrameTiming.PrevRenderTime > CurrentTime then
     FrameTiming.PrevRenderTime := CurrentTime - FrameTiming.MinDeltaTime;

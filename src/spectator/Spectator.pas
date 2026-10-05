@@ -62,7 +62,8 @@ procedure SpectatorSpeed(Speed: Single);
 procedure SpectatorRewind;
 // a tick of a paused replay: the camera follows its player (ClientGame.GameLoop)
 procedure SpectatorCameraTick;
-// each tick, before the game's update: the camera the page chose (ClientGame.GameLoop)
+// each tick, before the game's update, and before each picture: the camera the page chose
+// (ClientGame.GameLoop)
 procedure SpectatorKeepCamera;
 
 const
@@ -262,9 +263,14 @@ begin
     StopVote;
   Events := '';
   LastEvent := '';
+  // a jump while the last one still rejoins keeps the place from before that one (the
+  // camera may be at the map's origin until the next tick)
+  if not KeepPlace then
+  begin
+    KeptX := CameraX;
+    KeptY := CameraY;
+  end;
   KeepPlace := True;
-  KeptX := CameraX;
-  KeptY := CameraY;
   RequestingGame := True;
   RequestGameRetryTicks := 3 * 60;
 end;
