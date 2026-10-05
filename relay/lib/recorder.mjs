@@ -101,6 +101,50 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
   };
 }
 
+// The score a demo is listed with, from the server's heartbeats. Scores that only went down
+// keep the ones before until the next cap: the server zeroes them (team by team) before the
+// countdown to the next map is over, and gathers zero them mid-map after an !ffr, with the
+// clock still running.
+export class Score {
+  constructor() {
+    this.value = [0, 0, 0, 0];
+    this.last = null;          // of the last heartbeat
+  }
+
+  see(m) {
+    const n = HEARTBEATS.get(m[0]);
+    if (!n || m.length < 15 + 7 * n) return;
+    const scores = [0, 1, 2, 3].map((i) => m.readUInt16LE(7 + 7 * n + 2 * i));
+    const last = this.last;
+    this.last = scores;
+    if (!last || scores.some((v, i) => v > last[i])) this.value = scores;
+  }
+
+  // after the opening of a demo that starts a map: it may still have the scores the last
+  // map ended with
+  newMap() {
+    this.value = [0, 0, 0, 0];
+  }
+}
+
+// the score of a demo file (uncompressed); newMap: it starts a map
+export function demoScore(demo, newMap) {
+  const score = new Score();
+  let opening = true;
+  for (let o = HEADER_SIZE; o + 2 <= demo.length;) {
+    const size = demo.readUInt16LE(o);
+    o += 2;
+    if (size === 1) {
+      if (opening && newMap) score.newMap();
+      opening = false;
+      continue;
+    }
+    score.see(demo.subarray(o, o + size));
+    o += size;
+  }
+  return score.value;
+}
+
 class Recording {
   constructor(store, info, at, opening) {
     this.store = store;
@@ -115,12 +159,10 @@ class Recording {
     this.bytes = HEADER_SIZE;
     this.players = new Map();  // slot and name -> { name, team }, everyone who played
     this.mostPlaying = 0;
-    this.scores = [0, 0, 0, 0];
-    this.lastScores = null;    // of the last heartbeat
+    this.score = new Score();
     this.finished = null;
     for (const m of opening) this.add(m, at);
-    // a new map's opening may still have the scores the last one ended with
-    if (info.newMap) this.scores = [0, 0, 0, 0];
+    if (info.newMap) this.score.newMap();
   }
 
   // moves the clock to `at`: one size-1 record per tick
@@ -151,16 +193,7 @@ class Recording {
     if (m.length < 3 || SKIPPED.has(m[0])) return;
     this.advance(at);
     this.record(m);
-    // Scores that only went down keep the ones before until the next cap: the server zeroes
-    // them (team by team) before the countdown to the next map is over, and gathers zero
-    // them mid-map after an !ffr, with the clock still running.
-    const n = HEARTBEATS.get(m[0]);
-    if (n && m.length >= 15 + 7 * n) {
-      const scores = [0, 1, 2, 3].map((i) => m.readUInt16LE(7 + 7 * n + 2 * i));
-      const last = this.lastScores;
-      this.lastScores = scores;
-      if (!last || scores.some((v, i) => v > last[i])) this.scores = scores;
-    }
+    this.score.see(m);
   }
 
   // who plays now: [{ slot, name, team }] (no spectators)
@@ -211,7 +244,7 @@ class Recording {
         map: this.info.map, mode: this.info.mode ?? null, start: this.start,
         end: this.start + Math.round((this.tick * 1000) / TICKS_PER_SECOND), seconds: Math.round(seconds),
         players: [...this.players.values()],
-        scores: this.scores, delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
+        scores: this.score.value, delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
       };
       await fsp.writeFile(path.join(store.dir, this.id + '.json.tmp'), JSON.stringify(meta));
       await fsp.rename(path.join(store.dir, this.id + '.json.tmp'), path.join(store.dir, this.id + '.json'));
