@@ -996,16 +996,20 @@ begin
 end;
 
 {$IFDEF SPECTATOR}
-function GfxStencilClear: Boolean;
 var
-  Bits: GLint;
+  StencilBits: GLint = -1;  // asked once: the canvas and the render target both have one
+
+function GfxStencilClear: Boolean;
 begin
   glStencilMask($FF);
   glClearStencil(0);
   glClear(GL_STENCIL_BUFFER_BIT);
-  Bits := 0;
-  glGetIntegerv(GL_STENCIL_BITS, @Bits);
-  Result := Bits > 0;
+  if StencilBits < 0 then
+  begin
+    StencilBits := 0;
+    glGetIntegerv(GL_STENCIL_BITS, @StencilBits);
+  end;
+  Result := StencilBits > 0;
 end;
 
 procedure GfxStencil(Mode: TGfxStencil);

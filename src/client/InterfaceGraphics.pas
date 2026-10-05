@@ -1600,6 +1600,76 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF SPECTATOR}
+// Players off the screen (spec_offscreen): an arrow in their team's colour at its edge,
+// pointing at them, a bigger one with the flag for a carrier. The frame they sit on leaves
+// room for the page's bars at the top and the bottom.
+procedure RenderOffscreenArrows(Width, Height: Single);
+var
+  i, Flag: Integer;
+  Sp: PSprite;
+  cx, cy, x, y, dx, dy, l, t, Len, Half, o, s: Single;
+  x0, y0, x1, y1: Single;
+  FlagIcon: PGfxSprite;
+begin
+  if not spec_offscreen.Value then
+    Exit;
+  FlagIcon := Textures[GFX_INTERFACE_FLAG];
+  x0 := 8 * _rscala.x;
+  x1 := Width - 8 * _rscala.x;
+  y0 := 34 * _rscala.y;
+  y1 := Height - 40 * _rscala.y;
+  cx := Width / 2;
+  cy := Height / 2;
+  o := 1.3 * _rscala.y;  // the dark rim
+  for i := 1 to MAX_SPRITES do
+  begin
+    Sp := @Sprite[i];
+    if not Sp.Active or Sp.IsSpectator or Sp.DeadMeat or
+      ((sv_realisticmode.Value) and (Sp.Visible = 0)) then
+      Continue;
+    x := ((Sp.Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
+    y := ((Sp.Skeleton.Pos[7].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
+    if (x >= 0) and (x <= Width) and (y >= 0) and (y <= Height) then
+      Continue;
+    dx := x - cx;
+    dy := y - cy;
+    l := Sqrt(dx * dx + dy * dy);
+    dx := dx / l;
+    dy := dy / l;
+    // where the line from the middle to the player meets the frame
+    t := MaxSingle;
+    if dx > 0 then
+      t := Min(t, (x1 - cx) / dx)
+    else if dx < 0 then
+      t := Min(t, (x0 - cx) / dx);
+    if dy > 0 then
+      t := Min(t, (y1 - cy) / dy)
+    else if dy < 0 then
+      t := Min(t, (y0 - cy) / dy);
+    x := cx + dx * t;
+    y := cy + dy * t;
+
+    Flag := CarriesFlag(i);
+    if Flag > 0 then
+      Len := 11 * _rscala.y
+    else
+      Len := 8 * _rscala.y;
+    Half := 0.5 * Len;
+    DrawArrow(x + dx * 1.6 * o, y + dy * 1.6 * o, dx, dy, Len + 2.6 * o, Half + 1.3 * o, RGBA(0, 150));
+    DrawArrow(x, y, dx, dy, Len, Half, RGBA(SpectatorTeamColor(i, False), 235));
+    if Flag > 0 then
+    begin
+      // the flag behind the arrow, toward the middle
+      s := 12 * _rscala.y / (FlagIcon.Height * FlagIcon.Scale);
+      GfxDrawSprite(FlagIcon, x - dx * (Len + 9 * _rscala.y) - FlagIcon.Width * FlagIcon.Scale * s / 2,
+        y - dy * (Len + 9 * _rscala.y) - FlagIcon.Height * FlagIcon.Scale * s / 2, s, s,
+        RGBA(SpectatorFlagColor(Flag), 255));
+    end;
+  end;
+end;
+{$ENDIF}
+
 procedure RenderChatTexts;
 var
   i: Integer;
@@ -1941,7 +2011,7 @@ begin
 end;
 
 // Right under the player's feet their health bar, and their name under it. Both move with the
-// player; one off the screen keeps the name at the screen's edge (without the bar).
+// player; one off the screen has neither (an arrow at the edge: RenderOffscreenArrows).
 procedure RenderPlayerName(Width, Height: Single; i: Integer; OnlyOffscreen: Boolean);
 const
   FEET = 15;  // from the skeleton's point 7 to just under the feet, in the world's units
@@ -1958,7 +2028,10 @@ begin
     Exit;
 
   x := ((Sprite[i].Skeleton.Pos[7].x - CameraX) / ViewScale + 0.5 * GameWidth) * _rscala.x;
-  y := ((Sprite[i].Skeleton.Pos[7].y + FEET - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
+  y := ((Sprite[i].Skeleton.Pos[7].y - CameraY) / ViewScale + 0.5 * GameHeight) * _rscala.y;
+  if (x < 0) or (x > Width) or (y < 0) or (y > Height) then
+    Exit;
+  y := y + FEET / ViewScale * _rscala.y;
 
   Bar := 0;
   if spec_health.Value and not Sprite[i].DeadMeat then
@@ -2479,6 +2552,7 @@ begin
 
     {$IFDEF SPECTATOR}
     RenderSpectatorMarkers(TimeElapsed);
+    RenderOffscreenArrows(Width, Height);
     {$ENDIF}
 
     // Player indicator

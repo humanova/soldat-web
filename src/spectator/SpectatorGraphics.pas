@@ -39,6 +39,9 @@ procedure SpectatorGraphicsClear;  // a replay's jump: the match starts again he
 procedure DrawSegment(ax, ay, bx, by, Width: Single; CA, CB: TGfxColor);
 procedure DrawRect(x0, y0, x1, y1: Single; Color: TGfxColor);
 procedure DrawCross(x, y, Size, Width: Single; Color: TGfxColor);
+// an arrowhead (notched at the back) with its tip at (x, y), pointing along (dx, dy) (a unit
+// vector), Len long and 2 Half wide
+procedure DrawArrow(x, y, dx, dy, Len, Half: Single; Color: TGfxColor);
 
 // in the world's transform, in a batch (GfxBegin)
 procedure RenderFlagTrails;     // before the players
@@ -256,6 +259,20 @@ begin
   DrawSegment(x - Size, y + Size, x + Size, y - Size, Width, Color, Color);
 end;
 
+procedure DrawArrow(x, y, dx, dy, Len, Half: Single; Color: TGfxColor);
+var
+  bx, by: Single;
+begin
+  bx := x - dx * Len;
+  by := y - dy * Len;
+  // the tip, a back corner, the notch, the other back corner
+  GfxDrawQuad(nil,
+    GfxVertex(x, y, 0, 0, Color),
+    GfxVertex(bx - dy * Half, by + dx * Half, 0, 0, Color),
+    GfxVertex(x - dx * 0.7 * Len, y - dy * 0.7 * Len, 0, 0, Color),
+    GfxVertex(bx + dy * Half, by - dx * Half, 0, 0, Color));
+end;
+
 procedure RenderTrail(const T: TTrail);
 var
   i, j, k: Integer;
@@ -366,13 +383,44 @@ begin
     WorldUnits(1.2), RGBA(Color, 0), RGBA(Color, Alpha));
 end;
 
+// a player's box (the head, the feet and room for the arms and the gun) meets one of the
+// boxes around the cover (MapGfx.CoverBoxes)
+function AtCover(i: Integer): Boolean;
+var
+  k: Integer;
+  x0, x1, y0, y1: Single;
+begin
+  Result := False;
+  with Sprite[i].Skeleton do
+  begin
+    x0 := Min(Pos[12].X, Min(Pos[1].X, Pos[2].X)) - 16;
+    x1 := Max(Pos[12].X, Max(Pos[1].X, Pos[2].X)) + 16;
+    y0 := Min(Pos[12].Y, Min(Pos[1].Y, Pos[2].Y)) - 12;
+    y1 := Max(Pos[12].Y, Max(Pos[1].Y, Pos[2].Y)) + 6;
+  end;
+  for k := 0 to High(MapGfx.CoverBoxes) do
+    with MapGfx.CoverBoxes[k] do
+      if (x1 > Left) and (x0 < Right) and (y1 > Top) and (y0 < Bottom) then
+        Exit(True);
+end;
+
 procedure RenderSilhouettes;
 var
-  i: Integer;
+  i, n: Integer;
+  Hidden: array[1..MAX_SPRITES] of Boolean;
 begin
-  if not spec_silhouettes.Value or (MapGfx.VertexBuffer = nil) then
+  if not spec_silhouettes.Value or (MapGfx.VertexBuffer = nil) or (Length(MapGfx.CoverBoxes) = 0) then
     Exit;
-  if not GfxStencilClear then
+  // only the players at some cover (most frames: none, and nothing is done)
+  n := 0;
+  for i := 1 to MAX_SPRITES do
+  begin
+    Hidden[i] := Sprite[i].Active and not Sprite[i].DeadMeat and Sprite[i].IsNotSpectator and
+      not (sv_realisticmode.Value and (Sprite[i].Visible = 0)) and AtCover(i);
+    if Hidden[i] then
+      Inc(n);
+  end;
+  if (n = 0) or not GfxStencilClear then
     Exit;
 
   // where the front scenery covers: only its solid parts, and nothing is drawn
@@ -383,10 +431,10 @@ begin
   RenderProps(1);
   RenderProps(2);
 
-  // the players there, flat in their team's colour (the realistic mode's hidden ones are not)
+  // those players there, flat in their team's colour
   GfxStencil(GFX_STENCIL_INSIDE);
   for i := 1 to MAX_SPRITES do
-    if Sprite[i].Active and not Sprite[i].DeadMeat and Sprite[i].IsNotSpectator then
+    if Hidden[i] then
     begin
       GfxFlat(1, RGBA(SpectatorTeamColor(i, True), iif(i = CameraFollowSprite, 170, 120)), 0.3);
       GfxBegin;

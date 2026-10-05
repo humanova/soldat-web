@@ -129,6 +129,7 @@ var
   spec_names: TBooleanCvar;
   spec_health: TBooleanCvar;
   spec_trails: TBooleanCvar;
+  spec_offscreen: TBooleanCvar;
   {$ENDIF}
   r_msaa: TIntegerCVar;
 

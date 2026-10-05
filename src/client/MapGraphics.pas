@@ -29,6 +29,7 @@ type
     Polys: array[0..1] of array of TGfxDrawCommand;
     {$IFDEF SPECTATOR}
     Cover: array of TGfxDrawCommand;  // the front polygons a player can be in (silhouettes)
+    CoverBoxes: array of TGfxRect;    // around each of those and the front scenery
     {$ENDIF}
   end;
 
@@ -170,6 +171,36 @@ begin
 
   Result := Min(1, Max(Scale.x, Scale.y));
 end;
+
+{$IFDEF SPECTATOR}
+// the box around N vertices that can hide a player (the silhouettes are drawn only for
+// players in one; a see-through piece never hides anyone)
+procedure AddCoverBox(var mg: TMapGraphics; v: PGfxVertex; n: Integer);
+var
+  i: Integer;
+  r: TGfxRect;
+  Alpha: Byte;
+begin
+  r.Left := v.x;
+  r.Right := v.x;
+  r.Top := v.y;
+  r.Bottom := v.y;
+  Alpha := 0;
+  for i := 1 to n do
+  begin
+    r.Left := Min(r.Left, v.x);
+    r.Right := Max(r.Right, v.x);
+    r.Top := Min(r.Top, v.y);
+    r.Bottom := Max(r.Bottom, v.y);
+    Alpha := Max(Alpha, v.Color.a);
+    Inc(v);
+  end;
+  if Alpha <= 128 then
+    Exit;
+  SetLength(mg.CoverBoxes, Length(mg.CoverBoxes) + 1);
+  mg.CoverBoxes[High(mg.CoverBoxes)] := r;
+end;
+{$ENDIF}
 
 {$PUSH}
 {$WARN 4056 off : Conversion between ordinals and pointers is not portable}
@@ -568,6 +599,10 @@ begin
 
       GfxSpriteVertices(Sprite, Prop.x, Prop.y, Prop.Width, Prop.Height,
         Prop.ScaleX, Prop.ScaleY, 0, 1, -Prop.Rotation, Color, @vb[vbIndex]);
+      {$IFDEF SPECTATOR}
+      if Level > 0 then
+        AddCoverBox(mg^, @vb[vbIndex], 4);
+      {$ENDIF}
 
       for j := 0 to 5 do
         ib[ibIndex + j] := vbIndex + IDX[j];
@@ -738,6 +773,10 @@ begin
         end;
 
         Inc(Cmd.Count, 3);
+        {$IFDEF SPECTATOR}
+        if (Level = 1) and (Poly.PolyType in COVERPOLY) then
+          AddCoverBox(mg^, @vb[vbIndex - 3], 3);
+        {$ENDIF}
       end;
     end;
   end;
@@ -992,6 +1031,7 @@ begin
   MapGfx.Polys[1] := nil;
   {$IFDEF SPECTATOR}
   MapGfx.Cover := nil;
+  MapGfx.CoverBoxes := nil;
   {$ENDIF}
 
   FillChar(MapGfx, sizeof(MapGfx), 0);
