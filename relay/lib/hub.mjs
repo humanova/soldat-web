@@ -46,7 +46,7 @@ export class Hub {
     this.playerName = opts.playerName;
     this.hwid = makeHwid(opts.playerName + '@' + cfg.id);
     this.delayMs = Math.max(0, (cfg.delaySeconds ?? opts.delaySeconds ?? 0) * 1000);
-    this.lingerMs = opts.lingerMs ?? 60_000;
+    this.lingerMs = opts.lingerMs ?? 20_000;
     this.recordings = cfg.record ? opts.recordings : null;
     this.recording = null;
     this.log = (...a) => opts.log(`[${cfg.id}]`, ...a);

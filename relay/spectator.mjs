@@ -83,7 +83,7 @@ for (const s of config.servers || []) {
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
   hubs.set(s.id, new Hub({ ...s, name: s.name || s.id }, {
     playerName: PLAYER_NAME, delaySeconds: config.delaySeconds ?? 0, log,
-    lingerMs: (config.lingerSeconds ?? 60) * 1000, recordings,
+    lingerMs: (config.lingerSeconds ?? 20) * 1000, recordings,
   }));
 }
 

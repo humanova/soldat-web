@@ -1,7 +1,7 @@
 {
   "playerName": "[soldat.live] Soldat TV",
   "delaySeconds": 0,
-  "lingerSeconds": 60,
+  "lingerSeconds": 20,
   "maxViewers": 500,
   "maxViewersPerIp": 3,
   "trustProxy": false,
