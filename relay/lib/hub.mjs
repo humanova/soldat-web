@@ -37,6 +37,10 @@ const PL_ENCRYPTED = [[1580, 4], [19, 1], [1584, 4]];
 const GAME_STYLES = ['DM', 'PM', 'TM', 'CTF', 'RM', 'INF', 'HTF'];
 const FLAG_STYLES = new Set([1, 2, 3]);  // alpha, bravo and pointmatch flag
 
+function newStats() {
+  return { since: Date.now(), in: 0, inBytes: 0, out: 0, outBytes: 0, dropped: 0 };
+}
+
 export class Hub {
   constructor(cfg, opts) {
     this.cfg = cfg;               // { id, name, host, port, password, askPassword }
@@ -57,6 +61,7 @@ export class Hub {
     this.failures = 0;
     this.timers = new Set();
     this.queue = [];              // delayed items: { at, dgram } or { at, json }
+    this.stats = newStats();
     this.resetMatch();
   }
 
@@ -76,7 +81,7 @@ export class Hub {
   }
 
   addViewer(v) {
-    // v: { send(buf), sendText(obj), close(code), buffered }
+    // v: { send(buf), sendText(obj), cork(), uncork(), close(code), buffered }
     this.viewers.add(v);
     v.joined = false;
     v.greeted = false;
@@ -141,7 +146,9 @@ export class Hub {
       case MSG.PlayerInfo:
         if (v.joined) return;
         v.joined = true;
+        v.cork();
         for (const m of this.joinBundle()) v.send(m);
+        v.uncork();
         break;
       case MSG.RequestMap:
         if (now - v.lastRequest < 1000) return;
@@ -313,6 +320,8 @@ export class Hub {
       if (this.state === 'joining' && this.match.base) this.track(m);
     }
     if (!wasLive || this.state !== 'live') return;
+    this.stats.in++;
+    this.stats.inBytes += data.length;
     if (this.delayMs > 0) this.queue.push({ at: Date.now() + this.delayMs, dgram: data, msgs });
     else this.deliver(data, msgs, Date.now());
   }
@@ -418,6 +427,18 @@ export class Hub {
 
   flush() {
     const now = Date.now();
+    if (!this.queue.length || this.queue[0].at > now) return;
+    // what is due goes to each viewer in one write
+    const corked = [...this.viewers];
+    for (const v of corked) v.cork();
+    try {
+      this.flushDue(now);
+    } finally {
+      for (const v of corked) v.uncork();
+    }
+  }
+
+  flushDue(now) {
     while (this.queue.length && this.queue[0].at <= now) {
       const item = this.queue.shift();
       if (item.json) {
@@ -438,8 +459,24 @@ export class Hub {
     }
     if (this.recording && this.recording.full(at)) this.startRecording(at);
     for (const v of this.viewers) {
-      if (v.joined && v.buffered < 1 << 20) v.send(dgram);  // too slow: dropped like UDP
+      if (!v.joined) continue;
+      if (v.buffered >= 1 << 20) { this.stats.dropped++; continue; }  // too slow: dropped like UDP
+      v.send(dgram);
+      this.stats.out++;
+      this.stats.outBytes += dgram.length;
     }
+  }
+
+  // the stream since the last call, a line for the log (null: nothing came)
+  takeStats() {
+    const s = this.stats;
+    this.stats = newStats();
+    if (!s.in) return null;
+    const secs = (Date.now() - s.since) / 1000;
+    const kb = (n) => (n / secs / 1024).toFixed(1);
+    return `in ${(s.in / secs).toFixed(1)} datagrams/s, ${kb(s.inBytes)} KB/s; out to ${this.viewers.size} ` +
+      `viewers ${(s.out / secs).toFixed(1)} datagrams/s, ${kb(s.outBytes)} KB/s` +
+      (s.dropped ? `; ${s.dropped} dropped for slow viewers` : '');
   }
 
   broadcastText(obj) {

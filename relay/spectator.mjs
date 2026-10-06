@@ -36,10 +36,11 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { log, makeArg, originChecker, clientIpOf, requestUrl } from './lib/util.mjs';
 import { serveStatic } from './lib/static.mjs';
-import { acceptWebSocket } from './lib/ws.mjs';
+import { acceptWebSocket, wsFrame } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
@@ -152,10 +153,26 @@ function handleWatch(req, socket, head) {
   };
 }
 
+// A hub sends a datagram or message to all its viewers in a row: the frame is built for the
+// first and reused for the others. It is kept until the end of the turn only, so a buffer
+// changed later is framed again.
+let lastPayload = null, lastFrame = null;
+function frameOf(op, payload) {
+  if (payload !== lastPayload) {
+    if (lastPayload === null) queueMicrotask(() => { lastPayload = lastFrame = null; });
+    lastPayload = payload;
+    lastFrame = wsFrame(op, op === 0x1
+      ? Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload)) : payload);
+  }
+  return lastFrame;
+}
+
 function watch(ws, ip, hub, password) {
   const viewer = {
-    send: (buf) => ws.sendBinary(buf),
-    sendText: (obj) => ws.sendText(obj),
+    send: (buf) => ws.sendRaw(frameOf(0x2, buf)),
+    sendText: (obj) => ws.sendRaw(frameOf(0x1, obj)),
+    cork: () => ws.cork(),
+    uncork: () => ws.uncork(),
     close: (code) => ws.close(code),
     get buffered() { return ws.buffered; },
     password,
@@ -240,6 +257,24 @@ async function resolveAll() {
 }
 resolveAll();
 setInterval(resolveAll, 10 * 60_000).unref();
+
+// the load, in the log every few minutes: what each hub passed on, and how late the
+// event loop ran
+const STATS_MS = 5 * 60_000;
+const LOOP_SAMPLE_MS = 10;
+const loopDelay = monitorEventLoopDelay({ resolution: LOOP_SAMPLE_MS });
+loopDelay.enable();
+setInterval(() => {
+  // the histogram holds whole sampling intervals: the delay is what is over
+  const ms = (ns) => Math.max(0, ns / 1e6 - LOOP_SAMPLE_MS).toFixed(1);
+  log(`event loop delay: p50 ${ms(loopDelay.percentile(50))} ms, p99 ${ms(loopDelay.percentile(99))} ms,` +
+    ` max ${ms(loopDelay.max)} ms (${viewerCount} viewers)`);
+  loopDelay.reset();
+  for (const h of hubs.values()) {
+    const line = h.takeStats();
+    if (line) h.log(line);
+  }
+}, STATS_MS).unref();
 
 // The watchable servers, busiest first: what the hub knows when it watches, else what
 // the lobby reports (servers outside the lobby show only their name until watched).

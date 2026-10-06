@@ -87,15 +87,14 @@ export class WsConn {
     }
   }
 
-  sendFrame(op, payload) {
-    if (this.closed) return;
-    const len = payload.length;
-    let header;
-    if (len < 126) header = Buffer.from([0x80 | op, len]);
-    else if (len < 65536) { header = Buffer.alloc(4); header[0] = 0x80 | op; header[1] = 126; header.writeUInt16BE(len, 2); }
-    else { header = Buffer.alloc(10); header[0] = 0x80 | op; header[1] = 127; header.writeUInt32BE(0, 2); header.writeUInt32BE(len, 6); }
-    this.socket.write(Buffer.concat([header, payload]));
-  }
+  sendFrame(op, payload) { this.sendRaw(wsFrame(op, payload)); }
+
+  // a frame from wsFrame: the same one may go to many connections
+  sendRaw(frame) { if (!this.closed) this.socket.write(frame); }
+
+  // the frames sent in between leave in one write
+  cork() { this.socket.cork(); }
+  uncork() { this.socket.uncork(); }
 
   sendText(obj) { this.sendFrame(0x1, Buffer.from(typeof obj === 'string' ? obj : JSON.stringify(obj))); }
   sendBinary(buf) { this.sendFrame(0x2, buf); }
@@ -110,6 +109,19 @@ export class WsConn {
   }
 
   get buffered() { return this.socket.writableLength; }
+}
+
+// a whole unmasked frame (server to client)
+export function wsFrame(op, payload) {
+  const len = payload.length;
+  const head = len < 126 ? 2 : len < 65536 ? 4 : 10;
+  const f = Buffer.allocUnsafe(head + len);
+  f[0] = 0x80 | op;
+  if (len < 126) f[1] = len;
+  else if (len < 65536) { f[1] = 126; f.writeUInt16BE(len, 2); }
+  else { f[1] = 127; f.writeUInt32BE(0, 2); f.writeUInt32BE(len, 6); }
+  payload.copy(f, head);
+  return f;
 }
 
 export function acceptWebSocket(req, socket, head) {
