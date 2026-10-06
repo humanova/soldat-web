@@ -631,9 +631,9 @@ function sayKey() {
   $('tvchat').querySelector('.say-text').focus();
 }
 
-// ---------- what is shown over the match: the game's spec_* settings (all on at first; a
-// choice starts at its selected option), switched in the menu under the eye and kept in
-// prefs.visuals
+// ---------- what is shown over the match: the game's spec_* settings (a box starts as it is
+// checked in the page, a choice at its selected option), switched in the menu under the eye
+// and kept in prefs.visuals
 
 const visuals = (prefs.visuals && typeof prefs.visuals === 'object') ? prefs.visuals : (prefs.visuals = {});
 const visualControls = [...$('visuals').querySelectorAll('[data-cvar]')];
@@ -641,7 +641,7 @@ const visualControls = [...$('visuals').querySelectorAll('[data-cvar]')];
 // the setting's value for the game ('0', '1', ... ; a choice kept as on/off before is 1 or 0)
 function visualValue(el) {
   const v = visuals[el.dataset.cvar];
-  if (el.type === 'checkbox') return v === false ? '0' : '1';
+  if (el.type === 'checkbox') return (typeof v === 'boolean' ? v : el.defaultChecked) ? '1' : '0';
   if (typeof v === 'boolean') return v ? '1' : '0';
   const values = [...el.options].map(o => o.value);
   return values.includes(v) ? v : el.querySelector('option[selected]').value;
