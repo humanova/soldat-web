@@ -7,6 +7,7 @@ import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
 import { countHighlights, rateMatch, ratingText, weaponName, HIGHLIGHT_TYPES } from './highlights.js';
+import { directDemo, DIRECTOR_VERSION } from './director.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -208,6 +209,7 @@ function watch(ch) {
     setStatus('Could not start watching.', true);
     return;
   }
+  syncAuto(true);
   showSound();  // opened from a link: no sound until a click
   clearInterval(pollTimer);
   pollTimer = setInterval(poll, 250);
@@ -259,6 +261,7 @@ function showGuide() {
 function setMode(m, quiet) {
   const was = mode;
   mode = m;
+  syncAuto();
   $('auto').setAttribute('aria-pressed', String(m === 'auto'));
   $('map').setAttribute('aria-pressed', String(m === 'overview'));
   if (match) renderTarget(match);
@@ -271,10 +274,28 @@ function setMode(m, quiet) {
     setZoom(z, 0.5, 0.5);
     return;
   }
-  if (was === 'overview' && m !== 'free') setZoom(zoomBeforeMap, 0.5, 0.5);
+  // Auto zooms by itself
+  if (was === 'overview' && m !== 'free' && m !== 'auto') setZoom(zoomBeforeMap, 0.5, 0.5);
   if (m === 'auto') follow(director || firstPlayer());
   else if (m === 'player') follow((match && match.follow) || firstPlayer());
   else if (m === 'free') call('soldat_spectator_follow', 0);
+}
+
+// Auto's camera (Spectator.pas SpectatorAuto): it frames, zooms and cuts by itself, the
+// viewer's zoom on top of its own. A reel of highlights has a camera of its own.
+let autoCam = false;
+function syncAuto(force) {
+  const on = mode === 'auto' && !(replay && replay.reel);
+  if (on === autoCam && !force) return;
+  autoCam = on;
+  if (on) {
+    zoom = 0;
+    call('soldat_spectator_auto', 1, viewZoom());
+  } else {
+    // another mode: the picture stays as the camera had it (a reel has a zoom of its own)
+    const z = call('soldat_spectator_auto', 0, 0);
+    if (!force && mode !== 'auto') zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+  }
 }
 
 function follow(slot) {
@@ -330,6 +351,7 @@ function viewZoom() {
 
 // the reel's clip (null: the reel stopped): its own zoom (the most its plays want), and no shot yet
 function reelClip(h) {
+  syncAuto();
   reelCam.wide = h && h.wide ? h.wide : 0;
   reelCam.shot = 0;
   reelCam.fit = null;
@@ -831,7 +853,7 @@ function poll() {
     lostAt = 0;
   }
   // joining resets the zoom
-  if (Math.abs(s.zoom - viewZoom()) > 0.01 && performance.now() - joinedAt < 5000) applyZoom();
+  if (!autoCam && Math.abs(s.zoom - viewZoom()) > 0.01 && performance.now() - joinedAt < 5000) applyZoom();
   renderScorebug(s);
   renderVote(s);
   renderTarget(s);
@@ -1515,6 +1537,8 @@ function playDemo(demo, meta, ch) {
 }
 
 function makeReplay(demo, meta) {
+  // recorded before the hub's director: its picks worked out again
+  if (!(meta && meta.director >= DIRECTOR_VERSION)) demo.cams = directDemo(demo);
   const r = new Replay(demo, meta, {
     call: (name, ...args) => call(name, ...args),
     onFollow: (slot) => onHubMessage({ type: 'follow', slot }),

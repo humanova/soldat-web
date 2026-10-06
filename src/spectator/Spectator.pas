@@ -84,11 +84,25 @@ const
 // was after the other calls centered it.
 procedure SpectatorMouse(DX, DY: Single; Held: LongInt);
 
+// The auto camera (the page's Auto). The hub's director picks whom to follow; this frames
+// them and the enemies they fight, zooms to show them, leads where they run, eases its moves
+// and cuts (a quick fade through black) to a pick far from the picture. On: Bias is the
+// viewer's own zoom, on top of the camera's (SpectatorZoom changes it). Off: the zoom stays
+// where the camera had it. Returns the zoom.
+function SpectatorAuto(On: LongInt; Bias: Single): Single;
+// whether the auto camera moves the camera this tick (Update_Frame: in place of following)
+function SpectatorOperating: Boolean;
+procedure SpectatorOperate;
+// each frame: the auto camera's zoom eases on, Dt seconds after the last
+procedure SpectatorFrameZoom(Dt: Single);
+// how dark a cut has the picture (0 to 1)
+function SpectatorFade: Single;
+
 implementation
 
 uses
   SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Bullets, Sparks, Constants, Cvar, Net,
-  InterfaceGraphics, SpectatorGraphics;
+  Vector, InterfaceGraphics, SpectatorGraphics;
 
 var
   Events: AnsiString = '';
@@ -101,6 +115,17 @@ var
   FrameA: Integer = 0;         // SpectatorFrame
   FrameB: Integer = 0;
   FrameMix: Single = 0;
+  // the auto camera
+  AutoOn: Boolean = False;
+  AutoBias: Single = 0;      // the viewer's zoom on top
+  AutoSlot: Integer = 0;     // whom it framed last tick (0: no one yet, a new start)
+  AutoZoom: Single = 0;      // its own zoom, eased each frame towards GoalZ
+  GoalX, GoalY, GoalZ: Single;  // where the springs pull; the dead zones hold them still
+  VelX, VelY, VelZ: Single;  // the springs' speeds
+  LeadX, LeadY: Single;      // the followed player's velocity, smoothed
+  CutTicks: Integer = 0;     // a cut: down through the fade, the jump when it is black
+  Shown: array[1..MAX_SPRITES] of Boolean;  // the enemies in the picture with the followed player
+  ZoomInWait: Integer = 0;   // ticks the picture could have been closer
 
 procedure SpectatorInit;
 begin
@@ -256,6 +281,11 @@ begin
   SpectatorKeepCamera;
   CameraPrev.X := CameraX;
   CameraPrev.Y := CameraY;
+  if SpectatorOperating then
+  begin
+    SpectatorOperate;
+    Exit;
+  end;
   // as Update_Frame, with the mouse in the middle
   if (CameraFollowSprite > 0) and (CameraFollowSprite <= MAX_SPRITES) and
     Sprite[CameraFollowSprite].Active then
@@ -339,6 +369,11 @@ var
 begin
   CenterMouse;
   Z := EnsureRange(Z, MIN_ZOOM, MAX_ZOOM);
+  if AutoOn then
+  begin
+    AutoBias := Z;
+    Exit;
+  end;
   Old := r_zoom.Value;
   r_zoom.SetValue(Z);
   if CameraFollowSprite = 0 then
@@ -354,6 +389,7 @@ begin
   CenterMouse;
   FrameA := 0;
   Wanted := 0;
+  AutoOn := False;
   CameraFollowSprite := 0;
   CameraX := CameraX + DX * exp(r_zoom.Value) * GameWidth;
   CameraY := CameraY + DY * exp(r_zoom.Value) * GameHeight;
@@ -379,6 +415,7 @@ begin
   CenterMouse;
   FrameA := 0;
   Wanted := 0;
+  AutoOn := False;
   CameraFollowSprite := 0;
   CameraX := (MinX + MaxX) / 2;
   CameraY := (MinY + MaxY) / 2;
@@ -522,6 +559,246 @@ begin
   HeldY := Max(0, Min(GameHeight, HeldY + DY * cl_sensitivity.Value));
   mx := HeldX;
   my := HeldY;
+end;
+
+// ---------------------------------------------------------------- the auto camera
+
+const
+  AUTO_MARGIN_X = 150;       // room around each player in the picture
+  AUTO_MARGIN_Y = 130;
+  AUTO_FOCUS = 0.35;         // the middle of the picture is this much nearer the followed player
+  AUTO_ENGAGE_X = 750;       // enemies this close to the followed player are shown too
+  AUTO_ENGAGE_Y = 420;
+  AUTO_ENGAGE_OUT = 1.25;    // ...and stay in it until this much farther
+  AUTO_ZOOM_IN_WAIT = 90;    // ticks the picture could be closer before it gets closer
+  AUTO_NEAR = 0.15;          // the zoom for one player standing
+  AUTO_RUN = 0.3;            // ... running or flying at RUN_SPEED and faster
+  AUTO_RUN_SPEED = 6;
+  // the widest: about the area around the followed player that the server tells in detail
+  AUTO_FAR = 0.7;
+  AUTO_LEAD = 30;            // the picture is this many ticks ahead of where they run
+  AUTO_LEAD_MAX = 0.22;      // at the most, of the picture
+  AUTO_DEAD_ZONE = 0.05;     // of the picture: a move this small leaves the camera still
+  AUTO_ZOOM_DEAD = 0.05;
+  AUTO_PAN_TIME = 0.35;      // seconds, about, for the camera to get there
+  AUTO_PAN_SPEED = 2.5;      // pictures a second at the most
+  AUTO_ZOOM_IN_TIME = 1.8;   // slow in, quicker out: a fight that starts is in the picture
+  AUTO_ZOOM_OUT_TIME = 0.55;
+  AUTO_ZOOM_SPEED = 1.5;     // per second at the most
+  AUTO_CUT_AT = 1.0;         // a pick farther than this (pictures) from the picture: a cut
+  CUT_OUT = 7;               // ticks of the fade to black, then from black
+  CUT_IN = 12;
+
+function SpectatorAuto(On: LongInt; Bias: Single): Single;
+begin
+  Result := r_zoom.Value;
+  AutoOn := On <> 0;
+  AutoBias := EnsureRange(Bias, MIN_ZOOM, MAX_ZOOM);
+  AutoSlot := 0;
+  CutTicks := 0;
+  if AutoOn then
+  begin
+    CenterMouse;
+    FrameA := 0;
+    AutoZoom := r_zoom.Value - AutoBias;
+    GoalZ := AutoZoom;
+    VelX := 0;
+    VelY := 0;
+    VelZ := 0;
+  end;
+end;
+
+function SpectatorOperating: Boolean;
+begin
+  Result := AutoOn and not KeepPlace and (Wanted > 0) and (CameraFollowSprite = Wanted) and
+    Followable(Wanted);
+end;
+
+// a critically damped spring: Cur gets to Goal in about Time seconds, at most MaxSpeed a
+// second, its speed kept in Vel
+function Spring(Cur, Goal: Single; var Vel: Single; Time, MaxSpeed, Dt: Single): Single;
+var
+  Omega, X, E, Change, Limit, Temp: Single;
+begin
+  Omega := 2 / Time;
+  X := Omega * Dt;
+  E := 1 / (1 + X + 0.48 * X * X + 0.235 * X * X * X);
+  Limit := MaxSpeed * Time;
+  Change := EnsureRange(Cur - Goal, -Limit, Limit);
+  Temp := (Vel + Omega * Change) * Dt;
+  Vel := (Vel - Omega * Temp) * E;
+  Result := Cur - Change + (Change + Temp) * E;
+  // no overshoot
+  if (Goal - Cur > 0) = (Result > Goal) then
+  begin
+    Result := Goal;
+    Vel := 0;
+  end;
+end;
+
+function Enemies(i, j: Integer): Boolean;
+begin
+  Result := (Sprite[i].Player.Team = TEAM_NONE) or (Sprite[i].Player.Team <> Sprite[j].Player.Team);
+end;
+
+// the picture for Slot: its middle and zoom. The enemies close to them are in it too, the
+// followed player nearer the middle than the rest.
+procedure AutoFrame(Slot: Integer; out CX, CY, Z: Single);
+var
+  j, Others: Integer;
+  P: TVector2;
+  MinX, MinY, MaxX, MaxY, Dx, Dy, Speed, LX, LY, HX, HY: Single;
+begin
+  P := SpriteParts.Pos[Slot];
+  MinX := P.X;
+  MaxX := P.X;
+  MinY := P.Y;
+  MaxY := P.Y;
+  Others := 0;
+  for j := 1 to MAX_SPRITES do
+    if (j <> Slot) and Followable(j) and not Sprite[j].DeadMeat and Enemies(Slot, j) then
+    begin
+      Dx := SpriteParts.Pos[j].X - P.X;
+      Dy := SpriteParts.Pos[j].Y - P.Y;
+      // in when this close, out only when a good deal farther
+      Shown[j] := (Abs(Dx) < AUTO_ENGAGE_X * IfThen(Shown[j], AUTO_ENGAGE_OUT, 1)) and
+        (Abs(Dy) < AUTO_ENGAGE_Y * IfThen(Shown[j], AUTO_ENGAGE_OUT, 1));
+      if Shown[j] then
+      begin
+        MinX := Min(MinX, SpriteParts.Pos[j].X);
+        MaxX := Max(MaxX, SpriteParts.Pos[j].X);
+        MinY := Min(MinY, SpriteParts.Pos[j].Y);
+        MaxY := Max(MaxY, SpriteParts.Pos[j].Y);
+        Inc(Others);
+      end;
+    end;
+  // the room ahead of where they run (less of it when others are in the picture too)
+  LX := EnsureRange(LeadX * AUTO_LEAD, -AUTO_LEAD_MAX * GameWidth, AUTO_LEAD_MAX * GameWidth);
+  LY := EnsureRange(LeadY * AUTO_LEAD, -AUTO_LEAD_MAX * GameHeight, AUTO_LEAD_MAX * GameHeight);
+  if Others > 0 then
+  begin
+    LX := LX / 2;
+    LY := LY / 2;
+  end;
+  CX := (MinX + MaxX) / 2 * (1 - AUTO_FOCUS) + P.X * AUTO_FOCUS + LX;
+  CY := (MinY + MaxY) / 2 * (1 - AUTO_FOCUS) + P.Y * AUTO_FOCUS + LY;
+  // as far out as it takes for all of them to fit around that middle
+  HX := Max(MaxX - CX, CX - MinX) + AUTO_MARGIN_X;
+  HY := Max(MaxY - CY, CY - MinY) + AUTO_MARGIN_Y;
+  Speed := Sqrt(Sqr(LeadX) + Sqr(LeadY));
+  Z := Ln(Max(2 * HX / GameWidth, 2 * HY / GameHeight));
+  Z := Min(AUTO_FAR, Max(Z, AUTO_NEAR + (AUTO_RUN - AUTO_NEAR) * Min(1, Speed / AUTO_RUN_SPEED)));
+  // too far apart for all: the followed player stays in the picture
+  CX := EnsureRange(CX, P.X - exp(Z) * GameWidth * 0.38, P.X + exp(Z) * GameWidth * 0.38);
+  CY := EnsureRange(CY, P.Y - exp(Z) * GameHeight * 0.36, P.Y + exp(Z) * GameHeight * 0.36);
+end;
+
+procedure SpectatorOperate;
+const
+  DT = 1 / DEFAULT_GOALTICKS;
+var
+  Slot: Integer;
+  CX, CY, Z, W, H: Single;
+  V: TVector2;
+begin
+  Slot := CameraFollowSprite;
+  V := SpriteParts.Velocity[Slot];
+  if Slot <> AutoSlot then
+  begin
+    LeadX := V.X;
+    LeadY := V.Y;
+    FillChar(Shown, SizeOf(Shown), 0);
+  end
+  else
+  begin
+    LeadX := LeadX + (V.X - LeadX) * 0.08;
+    LeadY := LeadY + (V.Y - LeadY) * 0.08;
+  end;
+  AutoFrame(Slot, CX, CY, Z);
+  W := exp(r_zoom.Value) * GameWidth;
+  H := exp(r_zoom.Value) * GameHeight;
+
+  // someone else: far from the picture a cut, else the camera goes over
+  if Slot <> AutoSlot then
+  begin
+    if AutoSlot = 0 then
+    begin
+      GoalX := CameraX;
+      GoalY := CameraY;
+    end;
+    if (Max(Abs(CX - CameraX) / W, Abs(CY - CameraY) / H) > AUTO_CUT_AT) and (CutTicks <= CUT_IN) then
+      CutTicks := CUT_OUT + CUT_IN;
+    AutoSlot := Slot;
+  end;
+  if CutTicks > 0 then
+  begin
+    Dec(CutTicks);
+    // to black: the camera holds
+    if CutTicks > CUT_IN then
+      Exit;
+    // black: the jump
+    if CutTicks = CUT_IN then
+    begin
+      CameraX := CX;
+      CameraY := CY;
+      CameraPrev.X := CX;
+      CameraPrev.Y := CY;
+      GoalX := CX;
+      GoalY := CY;
+      GoalZ := Z;
+      AutoZoom := Z;
+      VelX := 0;
+      VelY := 0;
+      VelZ := 0;
+      Exit;
+    end;
+  end;
+
+  // the dead zones: small moves leave the goals where they are
+  if CX > GoalX + AUTO_DEAD_ZONE * W then
+    GoalX := CX - AUTO_DEAD_ZONE * W
+  else if CX < GoalX - AUTO_DEAD_ZONE * W then
+    GoalX := CX + AUTO_DEAD_ZONE * W;
+  if CY > GoalY + AUTO_DEAD_ZONE * H then
+    GoalY := CY - AUTO_DEAD_ZONE * H
+  else if CY < GoalY - AUTO_DEAD_ZONE * H then
+    GoalY := CY + AUTO_DEAD_ZONE * H;
+  // out at once (a fight begins), in after a while (it may go on)
+  if Z > GoalZ + AUTO_ZOOM_DEAD then
+  begin
+    GoalZ := Z - AUTO_ZOOM_DEAD;
+    ZoomInWait := 0;
+  end
+  else if (Z < GoalZ - AUTO_ZOOM_DEAD) and not Sprite[Slot].DeadMeat then
+  begin
+    Inc(ZoomInWait);
+    if ZoomInWait > AUTO_ZOOM_IN_WAIT then
+      GoalZ := Z + AUTO_ZOOM_DEAD;
+  end
+  else
+    ZoomInWait := 0;
+
+  CameraX := Spring(CameraX, GoalX, VelX, AUTO_PAN_TIME, AUTO_PAN_SPEED * W, DT);
+  CameraY := Spring(CameraY, GoalY, VelY, AUTO_PAN_TIME, AUTO_PAN_SPEED * H, DT);
+end;
+
+procedure SpectatorFrameZoom(Dt: Single);
+begin
+  if not AutoOn or (AutoSlot = 0) or KeepPlace then
+    Exit;
+  if (CutTicks = 0) or (CutTicks < CUT_IN) then
+    AutoZoom := Spring(AutoZoom, GoalZ, VelZ, IfThen(GoalZ > AutoZoom, AUTO_ZOOM_OUT_TIME,
+      AUTO_ZOOM_IN_TIME), AUTO_ZOOM_SPEED, EnsureRange(Dt, 0.001, 0.1));
+  if not SameValue(r_zoom.Value, EnsureRange(AutoZoom + AutoBias, MIN_ZOOM, MAX_ZOOM)) then
+    r_zoom.SetValue(EnsureRange(AutoZoom + AutoBias, MIN_ZOOM, MAX_ZOOM));
+end;
+
+function SpectatorFade: Single;
+begin
+  if CutTicks > CUT_IN then
+    Result := (CUT_OUT + CUT_IN - CutTicks) / CUT_OUT
+  else
+    Result := CutTicks / CUT_IN;
 end;
 
 end.

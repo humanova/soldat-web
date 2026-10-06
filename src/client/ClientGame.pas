@@ -415,6 +415,7 @@ begin
   {$IFDEF SPECTATOR}
   // a replay's jump may join in a frame without a tick: the camera stays where it was
   SpectatorKeepCamera;
+  SpectatorFrameZoom(FrameTime);
   {$ENDIF}
 
   // this shouldn't happen but still done for safety

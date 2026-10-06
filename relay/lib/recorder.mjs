@@ -260,6 +260,7 @@ class Recording {
         end: this.start + Math.round((this.tick * 1000) / TICKS_PER_SECOND), seconds: Math.round(seconds),
         players: [...this.players.values()],
         scores: this.score.value, highlights, rating, delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
+        ...(this.info.director ? { director: this.info.director } : {}),
       };
       await fsp.writeFile(path.join(store.dir, this.id + '.json.tmp'), JSON.stringify(meta));
       await fsp.rename(path.join(store.dir, this.id + '.json.tmp'), path.join(store.dir, this.id + '.json'));

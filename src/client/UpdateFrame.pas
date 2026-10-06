@@ -321,6 +321,11 @@ begin
   end;  // bullettime off
 
   // MOVE -=CAMERA=-
+  {$IFDEF SPECTATOR}
+  if SpectatorOperating then
+    SpectatorOperate
+  else
+  {$ENDIF}
   if (CameraFollowSprite > 0) and (CameraFollowSprite < MAX_SPRITES + 1) then
   begin
     if Sprite[CameraFollowSprite].Active and Sprite[CameraFollowSprite].IsNotSpectator() then

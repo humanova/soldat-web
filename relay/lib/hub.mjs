@@ -15,13 +15,14 @@ import {
   MSG, TEAM_SPECTATOR, MAX_PLAYERS, PLAYERS_LIST_SIZE, SessionCipher, splitDatagram, setHash,
   fixedString, writeFixed, makeHwid,
 } from './soldat171.mjs';
+// the page's own: Auto follows whom it picks
+import { Director, DIRECTOR_VERSION, LEAD_MS as DIRECTOR_LEAD_MS } from '../../web/js/spectate/director.js';
 
 const JOIN_RETRY_MS = 3000;
 const JOIN_TIMEOUT_MS = 20_000;
 const SILENCE_MS = 15_000;          // no datagram for this long: the connection is gone
 const CAMERA_MS = 500;              // spectators report their camera twice a second
 const RECONNECT_MS = [5_000, 15_000, 30_000, 60_000];
-const DIRECTOR_HOLD_MS = 8_000;     // keep a camera target at least this long
 const PASSWORD_HOLD_MS = 10_000;    // after a wrong password, no new one for this long
 const TICKS_PER_SECOND = 60;
 
@@ -492,7 +493,7 @@ export class Hub {
       vars: null, gravity: null, weaponActive: new Map(), things: new Map(), heartbeat: null,
       sync: null, syncAt: 0, mapChange: null, mapChangeAt: 0, ticks: 0, ticksAt: 0,
     };
-    this.director = { target: 0, since: 0, carriers: new Map(), lastKill: { killer: 0, at: 0 } };
+    this.director = new Director();
     this.liveList = null;
   }
 
@@ -689,7 +690,7 @@ export class Hub {
     setHash(list);
     this.recording = this.recordings.start({
       server: this.cfg.id, serverName: this.cfg.name, group: this.cfg.group || null, map: s.map,
-      mode: GAME_STYLES[style] ?? null, delay: this.delayMs / 1000, newMap,
+      mode: GAME_STYLES[style] ?? null, delay: this.delayMs / 1000, newMap, director: DIRECTOR_VERSION,
     }, at, [list, ...this.joinBundle()]);
     this.recording.roster(this.playing());
     this.recording.camera(this.director.target || 0, at);
@@ -721,41 +722,32 @@ export class Hub {
   // ------------------------------------------------------------ director
 
   // The server sends frequent updates (and bullets) only around a spectator's camera
-  // target, so the hub picks one for everybody: a flag carrier, else whoever just
-  // scored a kill, else the best player; held for a few seconds.
+  // target, so the hub's director (web/js/spectate/director.js) picks one for everybody.
   directorSee(m) {
-    const d = this.director;
-    const id = m[0];
-    if ((id === MSG.ThingSnapshot || id === MSG.ThingMustSnapshot) && FLAG_STYLES.has(m[5])) {
-      if (m[6]) d.carriers.set(m[3], m[6]); else d.carriers.delete(m[3]);
-    } else if (id === MSG.SpriteDeath && m[4] && m[4] !== m[3]) {
-      d.lastKill = { killer: m[4], at: Date.now() };
-    } else if (id === MSG.PlayerDisconnect && d.target === m[3]) {
-      d.target = 0;
-    }
+    this.director.see(m, Date.now());
   }
 
   directorTick() {
-    const d = this.director;
     const now = Date.now();
     const roster = this.match.roster;
-    const valid = (n) => n && roster[n] && roster[n].team !== TEAM_SPECTATOR && n !== this.match.own;
-    let want = 0;
-    for (const holder of d.carriers.values()) if (valid(holder)) { want = holder; break; }
-    if (!want && now - d.lastKill.at < 4000 && valid(d.lastKill.killer)) want = d.lastKill.killer;
-    if (!valid(d.target) || (want && want !== d.target && now - d.since > DIRECTOR_HOLD_MS)) {
-      if (!want) want = roster.findIndex((p, i) => valid(i));
-      if (want > 0 && want !== d.target) {
-        d.target = want;
-        d.since = now;
-        const item = { type: 'follow', slot: want };
-        if (this.delayMs > 0) {
-          this.queue.push({ at: now + this.delayMs, json: item });
-        } else {
-          this.broadcastText(item);
-          if (this.recording) this.recording.camera(want, now);
-        }
-      }
+    const players = [];
+    for (let i = 1; i <= MAX_PLAYERS; i++) {
+      if (roster[i] && roster[i].team !== TEAM_SPECTATOR && i !== this.match.own) players.push({ slot: i, team: roster[i].team });
+    }
+    const was = this.director.target;
+    const want = this.director.pick(now, players);
+    if (!want || want === was) return;
+    const item = { type: 'follow', slot: want };
+    if (this.delayMs > 0) {
+      // in the delayed stream's order, a little before the pick's time: the camera gets
+      // there as their part begins
+      const at = now + this.delayMs - Math.min(DIRECTOR_LEAD_MS, this.delayMs / 2);
+      let i = this.queue.length;
+      while (i > 0 && this.queue[i - 1].at > at) i--;
+      this.queue.splice(i, 0, { at, json: item });
+    } else {
+      this.broadcastText(item);
+      if (this.recording) this.recording.camera(want, now);
     }
   }
 

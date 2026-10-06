@@ -51,7 +51,7 @@ uses
   Client, SysUtils, Types, TraceLog,
   Game, Math, Calc, Version, Util, PolyMap,
   Demo, Weapons, GameStrings, Net, GameMenus, Gfx, GameRendering, PhysFS,
-  ClientGame, Console, MapGraphics, Steam{$IFDEF SPECTATOR}, SpectatorGraphics{$ENDIF};
+  ClientGame, Console, MapGraphics, Steam{$IFDEF SPECTATOR}, SpectatorGraphics, Spectator{$ENDIF};
 
 {$IFDEF SPECTATOR}
 const
@@ -2556,6 +2556,9 @@ begin
     {$IFDEF SPECTATOR}
     RenderSpectatorMarkers(TimeElapsed);
     RenderOffscreenArrows(Width, Height);
+    // the auto camera's cut
+    if SpectatorFade > 0 then
+      DrawRect(0, 0, Width, Height, RGBA(0, 0, 0, Round(255 * SpectatorFade)));
     {$ENDIF}
 
     // Player indicator

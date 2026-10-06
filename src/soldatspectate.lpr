@@ -75,7 +75,13 @@ begin
   SpectatorMouse(DX, DY, Held);
 end;
 
+function soldat_spectator_auto(On: LongInt; Bias: Single): Single; cdecl;
+begin
+  Result := SpectatorAuto(On, Bias);
+end;
+
 exports
+  soldat_spectator_auto,
   soldat_spectator_speed,
   soldat_spectator_rewind,
   soldat_spectator_events,
