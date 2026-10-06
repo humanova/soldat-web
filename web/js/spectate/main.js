@@ -1712,9 +1712,10 @@ function renderBar() {
 const plays = () => replay.highlights.flatMap((c) => c.parts);
 
 // "2 multi-kills, 1 long shot, 3 saves, 9 captures"
-const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], combo: ['weapon combo', 'weapon combos'],
-  long: ['long shot', 'long shots'], knife: ['knife throw', 'knife throws'], save: ['save', 'saves'],
-  carry: ['fought capture', 'fought captures'], cap: ['capture', 'captures'] };
+const HIGHLIGHT_NAMES = { multi: ['multi-kill', 'multi-kills'], double: ['one-shot double', 'one-shot doubles'],
+  combo: ['weapon combo', 'weapon combos'], long: ['long shot', 'long shots'], knife: ['knife throw', 'knife throws'],
+  save: ['save', 'saves'], clutch: ['late capture', 'late captures'], carry: ['fought capture', 'fought captures'],
+  cap: ['capture', 'captures'] };
 function highlightsText(n) {
   return Object.entries(HIGHLIGHT_NAMES).filter(([k]) => n[k]).map(([k, [one, more]]) => `${n[k]} ${n[k] === 1 ? one : more}`).join(', ') || 'none';
 }

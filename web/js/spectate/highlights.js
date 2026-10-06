@@ -1,7 +1,8 @@
 // The highlights of a recorded match, found in its messages (a demo as parseDemo in replay.js
-// reads it): runs of kills, two quick kills with a weapon switch, very long shots, long knife
-// throws, flag carriers stopped just short of scoring, carriers who killed their way home to
-// score, and the captures. The page plays them
+// reads it): runs of kills, two kills with one shot, two quick kills with a weapon switch, very
+// long shots, long knife throws, flag carriers stopped just short of scoring, captures that
+// level the match or put a team ahead in its last two minutes, carriers who killed their way home
+// to score, and the captures. The page plays them
 // as a reel of clips; the hub lists how many a demo has (relay/lib/recorder.mjs), counted the
 // same way.
 //
@@ -19,10 +20,11 @@
 // slot, name, team, label and caption }.
 
 const TICKS = 60;
-const MSG = { MapChange: 8, ThingSnapshot: 9, ThingTaken: 12, SpriteDeath: 13, PlayersList: 16, NewPlayer: 17,
-  FlagInfo: 32, ThingMustSnapshot: 33 };
+const MSG = { HeartBeat: 2, MapChange: 8, ThingSnapshot: 9, ThingTaken: 12, SpriteDeath: 13, PlayersList: 16, NewPlayer: 17,
+  FlagInfo: 32, ThingMustSnapshot: 33, HeartBeat16: 35, HeartBeat8: 36, ServerSyncMsg: 54 };
+const HEARTBEAT_SLOTS = { [MSG.HeartBeat]: 32, [MSG.HeartBeat16]: 16, [MSG.HeartBeat8]: 8 };
 const MAX_PLAYERS = 32, NAME_LEN = 24;
-const PL_NAME = 108, PL_TEAM = 1516;
+const PL_NAME = 108, PL_TEAM = 1516, PL_TIME_LEFT = 2140;
 const ALPHA_FLAG = 1, BRAVO_FLAG = 2;               // thing styles; a flag of team n is style n
 const CAPTURE_STYLES = new Set([3, 4]);             // FlagInfo: CAPTURERED, CAPTUREBLUE
 const MULTIKILL_GAP = 180;                          // Constants.pas MULTIKILLINTERVAL: the game's own count
@@ -36,11 +38,13 @@ const SAVE_NEAR = 0.25;                             // of the way between the ba
 const BEFORE = 3 * TICKS, AFTER = 1.5 * TICKS;
 const CAPTURE_RUN = 12 * TICKS;                     // at most this much of the run before a capture
 const CARRY_KILLS = 2;                              // a carrier who kills this many on the way home: about 1 capture in 12
+const LATE = 120 * TICKS;                           // a capture this close to the end that levels or leads: about 1 in 50 minutes
+const ENDED = TICKS / 2;                            // a capture the match ends this soon after: the one that won it (the capture limit)
 const MERGE_GAP = TICKS / 2;                        // clips closer than this are one
 const SHOWN = 0.75 * TICKS, LEAD = 1.5 * TICKS;     // in a clip: of one play after it, of the next before it
 const RATED = 180;                                  // s: a shorter match (a map left early, a recording's end) is not rated
 
-export const HIGHLIGHT_TYPES = ['multi', 'combo', 'long', 'knife', 'save', 'carry', 'cap'];
+export const HIGHLIGHT_TYPES = ['multi', 'double', 'combo', 'long', 'knife', 'save', 'clutch', 'carry', 'cap'];
 
 const MULTIKILL_NAMES = { 3: 'Triple kill', 4: 'Multi kill', 5: 'Multi kill ×2', 6: 'Serial kill', 7: 'Insane kills' };
 const WEAPONS = {
@@ -49,6 +53,7 @@ const WEAPONS = {
   211: 'knife', 212: 'chainsaw', 222: 'grenade', 224: 'LAW', 225: 'M2',
 };
 const KNIFE = 211, LAW = 224;
+const THROWN = new Set([222, 210]);
 // what a kill was made with, as far as switching goes: the two grenades are one, as are
 // the guns (a grenade and a gun need no switch); a combo takes a knife or a LAW
 const weaponKind = (w) => (w === 222 || w === 210 ? 'grenade' : w <= 10 ? 'gun' : String(w));
@@ -72,6 +77,10 @@ export function findHighlights(demo, end = demo.ticks) {
   const flagPos = { [ALPHA_FLAG]: null, [BRAVO_FLAG]: null };
   const resting = { [ALPHA_FLAG]: new Map(), [BRAVO_FLAG]: new Map() };  // where a flag lies: its base, mostly
   const kills = [], carrierKills = [], caps = [];
+  // the score (Alpha, Bravo: the heartbeats', with the captures since) and the clock (ticks left, null
+  // paused or untimed, at when)
+  const score = [0, 0];
+  let clock = null, mapChanged = false;
 
   for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], t = at[i];
@@ -83,6 +92,15 @@ export function findHighlights(demo, end = demo.ticks) {
           const name = fixedString(m, PL_NAME + (s - 1) * NAME_LEN, NAME_LEN);
           players[s] = name && name !== '0 ' ? { name, team: m[PL_TEAM + s - 1] } : null;
         }
+        if (m.length >= PL_TIME_LEFT + 4) clock = { left: dv(m).getInt32(PL_TIME_LEFT, true), at: t };
+        break;
+      case MSG.HeartBeat: case MSG.HeartBeat16: case MSG.HeartBeat8: {
+        const n = HEARTBEAT_SLOTS[m[0]];
+        if (m.length >= 15 + 7 * n) for (const i of [0, 1]) score[i] = dv(m).getUint16(7 + 7 * n + 2 * i, true);
+        break;
+      }
+      case MSG.ServerSyncMsg:
+        if (m.length >= 8) clock = m[7] ? null : { left: dv(m).getInt32(3, true), at: t };
         break;
       case MSG.NewPlayer:
         if (m[3] >= 1 && m[3] <= MAX_PLAYERS && m.length >= 61) players[m[3]] = { name: fixedString(m, 7, NAME_LEN), team: m[51] };
@@ -112,7 +130,12 @@ export function findHighlights(demo, end = demo.ticks) {
       case MSG.FlagInfo:
         if (CAPTURE_STYLES.has(m[3]) && m[4] >= 1 && m[4] <= MAX_PLAYERS) {
           const flag = m[3] === 3 ? BRAVO_FLAG : ALPHA_FLAG;   // Alpha scores with Bravo's flag
-          caps.push({ tick: t, slot: m[4], by: players[m[4]], since: grabbed[flag] });
+          const team = m[3] === 3 ? 1 : 2;
+          // the scoring team's lead before it
+          const lead = score[team - 1] - score[2 - team];
+          score[team - 1]++;
+          const left = clock && clock.left > 0 ? Math.max(0, clock.left - (t - clock.at)) : null;
+          caps.push({ tick: t, slot: m[4], by: players[m[4]], since: grabbed[flag], team, lead, left });
           holder[flag] = 0;
         }
         break;
@@ -134,12 +157,13 @@ export function findHighlights(demo, end = demo.ticks) {
         }
         if (enemy) {
           kills.push({ tick: t, slot: killer, by: k, victim, weapon: m[5], dist: d.getFloat32(271, true),
-            life: d.getFloat32(275, true) });
+            fired: t - Math.max(0, Math.round(d.getFloat32(275, true) * TICKS)) });
         }
         break;
       }
       case MSG.MapChange:
         // the scoreboard: what happens on it does not count
+        if (t <= end) mapChanged = true;
         end = Math.min(end, t);
         break;
     }
@@ -169,11 +193,19 @@ export function findHighlights(demo, end = demo.ticks) {
     const switched = kinds.size > 1 && weapons.some((w) => w === KNIFE || w === LAW);
     const names = [...new Set(weapons.map(weaponName))];
     const used = [...new Map(weapons.map((w) => [weaponName(w), w])).values()];
+    // two of them from one shot (a grenade, a shell, a bullet through both): the same weapon, fired at the same tick
+    const one = r.kills.find((a, i) => r.kills.slice(i + 1).some((b) => b.weapon === a.weapon && Math.abs(b.fired - a.fired) <= 1));
+    const oneShot = one && (THROWN.has(one.weapon) ? 'two with one throw' : 'two with one shot');
+    const oneLabel = one && `two with one ${weaponName(one.weapon)}${THROWN.has(one.weapon) ? '' : ' shot'}`;
     let h = null;
     if (n >= MULTIKILL_MIN) {
-      h = clip({ type: 'multi', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 2 ** (n - 2) * (switched ? 1.5 : 1),
-        label: MULTIKILL_NAMES[Math.min(7, n)] + (switched ? ` · ${names.join(', ')}` : ''),
-        caption: [MULTIKILL_NAMES[Math.min(7, n)], ...(switched ? used : [])], wide: WIDE },
+      h = clip({ type: 'multi', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 2 ** (n - 2) * (switched ? 1.5 : 1) + (one ? 1 : 0),
+        label: MULTIKILL_NAMES[Math.min(7, n)] + (switched ? ` · ${names.join(', ')}` : '') + (one ? ` · ${oneLabel}` : ''),
+        caption: [MULTIKILL_NAMES[Math.min(7, n)], ...(switched ? used : []), ...(one ? [`· ${oneShot}`] : [])], wide: WIDE },
+      r.first - BEFORE, r.last + AFTER);
+    } else if (n === 2 && one) {
+      h = clip({ type: 'double', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 2,
+        label: capital(oneLabel), caption: [one.weapon, oneShot], wide: WIDE },
       r.first - BEFORE, r.last + AFTER);
     } else if (n === 2 && switched && r.last - r.first <= COMBO_GAP) {
       h = clip({ type: 'combo', tick: r.last, slot: r.slot, by: r.by, kills: n, score: 1.5,
@@ -191,7 +223,7 @@ export function findHighlights(demo, end = demo.ticks) {
     if (k.dist < (knife ? KNIFE_THROW : LONG_SHOT)) continue;
     const m = Math.round(k.dist);
     const score = knife ? 1 + (k.dist - KNIFE_THROW) / 4 : 1 + (k.dist - LONG_SHOT) / 10;
-    const shot = { killer: k.slot, victim: k.victim, tick: k.tick, fired: k.tick - Math.max(0, Math.round(k.life * TICKS)), back: false };
+    const shot = { killer: k.slot, victim: k.victim, tick: k.tick, fired: k.fired, back: false };
     const r = runOf.get(k);
     if (r) {
       // the run's clip shows it (its first such shot)
@@ -229,14 +261,31 @@ export function findHighlights(demo, end = demo.ticks) {
     }
   }
 
+  // who won: the final score
+  const won = score[0] > score[1] ? 1 : score[1] > score[0] ? 2 : 0;
+  // a lead taken is the winning one when nobody levels after it
+  const winning = (c) => c.lead === 0 && won === c.team && !caps.some((o) => o.tick > c.tick && o.team !== c.team && o.lead === -1);
   for (const c of caps) {
     if (c.tick > end) continue;
     // the run from the grab (at least the last few seconds of it)
     let from = Math.min(c.tick - 2 * BEFORE, Math.max(c.tick - CAPTURE_RUN, c.since - TICKS));
     // a carrier who fought their way home: the run from their first kill on it
     const fought = kills.filter((k) => k.slot === c.slot && k.tick >= c.since && k.tick <= c.tick);
+    if (fought.length >= CARRY_KILLS) from = Math.min(from, fought[0].tick - BEFORE);
+    // late in the match, from level or one behind: two minutes or less on the clock, or the capture
+    // that ended it (the capture limit). Not by the end of the demo: a map voted or changed early
+    // ends a match, a gather restarted (!ffr) starts one.
+    const limit = c.lead === 0 && mapChanged && end - c.tick <= ENDED;
+    if ((c.lead === 0 || c.lead === -1) && (limit || (c.left !== null && c.left <= LATE))) {
+      const s = limit ? 0 : Math.max(1, Math.round(c.left / TICKS));
+      const label = (c.lead === -1 ? 'Equaliser' : winning(c) ? 'Winning capture' : 'Lead taken') + (s ? ` with ${s} s left` : '') +
+        (fought.length >= CARRY_KILLS ? ` · ${fought.length} kills on the way` : '');
+      out.push(clip({ type: 'clutch', tick: c.tick, slot: c.slot, by: c.by, kills: fought.length,
+        score: 2 + 2 * (1 - s * TICKS / LATE) + (fought.length >= CARRY_KILLS ? fought.length - 0.5 : 0),
+        label, caption: [label], wide: fought.length >= CARRY_KILLS ? WIDE : 0 }, from, c.tick + 2 * TICKS));
+      continue;
+    }
     if (fought.length >= CARRY_KILLS) {
-      from = Math.min(from, fought[0].tick - BEFORE);
       const label = `Capture with ${fought.length} kills on the way`;
       out.push(clip({ type: 'carry', tick: c.tick, slot: c.slot, by: c.by, kills: fought.length, score: 0.5 + fought.length,
         label, caption: [label], wide: WIDE }, from, c.tick + 2 * TICKS));
@@ -293,13 +342,14 @@ export function rateMatch(clips, seconds, scores) {
   const plays = clips.flatMap((c) => c.parts).sort((a, b) => a.tick - b.tick);
   // too short to say, or nothing happened (nobody playing)
   if (seconds < RATED || !plays.length) return null;
-  // a fought capture's kills are action; its capture counts in the contest
-  const points = plays.reduce((n, p) => n + (p.type === 'cap' ? 0 : p.type === 'carry' ? p.score - 1 : p.score), 0);
+  // a capture counts in the contest; the kills a carrier made on the way home are action
+  const captures = new Set(['cap', 'carry', 'clutch']);
+  const points = plays.reduce((n, p) => n + (!captures.has(p.type) ? p.score : p.kills >= CARRY_KILLS ? p.kills - 0.5 : 0), 0);
   // a short match is not rated up for a play or two
   const perTen = (points * 600) / Math.max(seconds, 300);
   const action = Math.min(60, perTen * 1.5);
   // the score as it went
-  const caps = plays.filter((p) => p.type === 'cap' || p.type === 'carry');
+  const caps = plays.filter((p) => captures.has(p.type));
   const now = [0, 0, 0];
   const behind = [0, 0, 0];
   let leader = 0, leadChanges = 0;
@@ -335,7 +385,7 @@ export function ratingText(r) {
     r.caps ? `Contest ${r.contest} of 40: ${contest.join(', ')}` : 'Contest: no captures'];
 }
 
-// { multi, combo, long, knife, save, carry, cap }: how many plays of each, in a list of clips
+// { multi, double, combo, long, knife, save, clutch, carry, cap }: how many plays of each, in a list of clips
 export function countHighlights(list) {
   const n = Object.fromEntries(HIGHLIGHT_TYPES.map((t) => [t, 0]));
   for (const c of list) for (const p of c.parts) n[p.type]++;
