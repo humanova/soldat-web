@@ -1,5 +1,11 @@
 User-agent: *
 Allow: /
+# sign-in, the JSON behind the pages, demo files and the live connections: nothing to index
 Disallow: /auth/
+Disallow: /api/
+Disallow: /demos/
+Disallow: /watch
+Disallow: /chat
+Disallow: /relay
 
 Sitemap: https://soldat.live/sitemap.xml
