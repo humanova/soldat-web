@@ -255,6 +255,30 @@ class MatchState {
   }
 }
 
+// Where a replay ends. A demo ends where the next map begins: the replay stops on the
+// scoreboard just before, and before the server zeroes the scores on it. Its highlights are
+// found up to there, by the page, the hub and the stats page alike (a link to a clip is its
+// number among them).
+export function matchEnd(demo) {
+  const { msgs, at } = demo;
+  let change = 0;
+  let scores = null;
+  let zeroed = 0;  // past the map change: where the server zeroes the scores
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m[0] === MSG.MapChange && m.length >= 5) { change = at[i] + dv(m).getInt16(3, true); zeroed = 0; }
+    const n = HEARTBEAT_SLOTS[m[0]];
+    if (n && m.length >= 15 + 7 * n) {
+      const now = [0, 1, 2, 3].map((k) => dv(m).getUint16(7 + 7 * n + 2 * k, true));
+      if (change && !zeroed && scores && now.some((v, k) => v < scores[k])) zeroed = at[i];
+      scores = now;
+    }
+  }
+  const t = demo.ticks;
+  const last = Math.min(t, change - TICKS / 2, zeroed ? zeroed - 1 : Infinity);
+  return change && change >= t - TICKS && change <= t + TICKS ? Math.max(0, last) : t;
+}
+
 // ---------------------------------------------------------------- the player
 
 export class Replay {
@@ -288,22 +312,12 @@ export class Replay {
   scan() {
     const { msgs, at } = this.demo;
     const s = new MatchState();
-    let change = 0;
-    let scores = null;
-    let zeroed = 0;  // past the map change: where the server zeroes the scores
     for (let i = 0; i < msgs.length; i++) {
       while (this.checkpoints.length * CHECKPOINT < at[i]) {
         this.checkpoints.push({ tick: this.checkpoints.length * CHECKPOINT, index: i, state: s.clone() });
       }
       const m = msgs[i];
       s.apply(m, at[i]);
-      if (m[0] === MSG.MapChange && m.length >= 5) { change = at[i] + dv(m).getInt16(3, true); zeroed = 0; }
-      const n = HEARTBEAT_SLOTS[m[0]];
-      if (n && m.length >= 15 + 7 * n) {
-        const now = [0, 1, 2, 3].map((k) => dv(m).getUint16(7 + 7 * n + 2 * k, true));
-        if (change && !zeroed && scores && now.some((v, k) => v < scores[k])) zeroed = at[i];
-        scores = now;
-      }
       if (m[0] === MSG.FlagInfo && (m[3] === 3 || m[3] === 4)) {
         const p = s.roster[m[4]];
         this.markers.push({ tick: at[i], team: m[3] - 2, name: p ? p.name : '' });
@@ -313,11 +327,7 @@ export class Replay {
     if (!s.base) throw new Error('This demo has no player list to start from: it was not recorded by Soldat TV or a Soldat 1.7.1 client.');
     if (!this.checkpoints.length) this.checkpoints.push({ tick: 0, index: 0, state: new MatchState() });
     this.ownName = s.ownNewPlayer ? fixedString(s.ownNewPlayer, 7, NAME_LEN) : '';
-    // a demo ends where the next map begins: the replay stops on the scoreboard just before,
-    // and before the server zeroes the scores on it
-    const t = this.demo.ticks;
-    const last = Math.min(t, change - TICKS / 2, zeroed ? zeroed - 1 : Infinity);
-    this.end = change && change >= t - TICKS && change <= t + TICKS ? Math.max(0, last) : t;
+    this.end = matchEnd(this.demo);
   }
 
   // the match at `tick` (messages up to and with it), and the index of the next message

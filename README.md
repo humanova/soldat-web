@@ -165,7 +165,9 @@ that level the match or put a team ahead with two minutes or less on the clock (
 the capture limit), carriers who killed two or more on the way home to score, and the
 captures. For a shot from off the screen the camera zooms out to show the shooter and the
 victim while it flies, then in on the victim (the viewer's own zoom ends that for the clip). Plays whose clips overlap are one clip, so no moment is
-shown twice. `[` and `]` go to the previous and next one.
+shown twice. `[` and `]` go to the previous and next one. While the highlights play, the
+address is a link to the clip on screen: `/replay?id=<demo>&clip=<n>` opens the match's
+highlights at its nth clip.
 
 Each match also has a rating from 0 to 100, how good it is to watch (hover it for how it adds
 up). Action, up to 60, is the plays' scores in 10 minutes. Contest, up to 40, is how close the
@@ -176,7 +178,8 @@ or without a play is not rated.
 `/replay?reel=<demo>,<demo>...` plays the highlights of several matches one after another
 (the stats page links there with the matches picked on it). `only=<types>` keeps some kinds
 of plays (`multi`, `double`, `combo`, `long`, `knife`, `save`, `clutch`, `carry`, `cap`), and
-`player=<name>` keeps one player's.
+`player=<name>` keeps one player's. A match given as `<demo>:<n>` plays its nth clip alone (the
+stats page's top 10 of the week is a reel of those).
 
 Demos are kept gzipped in `recordings.dir`; the hub drops ones shorter than a minute or with
 fewer than two players, and removes the oldest after `keepDays` or once all of them take

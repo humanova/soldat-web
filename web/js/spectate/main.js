@@ -13,11 +13,16 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
 const TITLE = document.title;
-// a recorded match's address, /replay?id=<demo>
+// a recorded match's address, /replay?id=<demo>[&clip=<n>] (its highlights from the nth clip on)
 const replayId = location.pathname.endsWith('/replay') ? params.get('id') : null;
-// a reel of several recorded matches' highlights, /replay?reel=<id>,<id>...[&only=<types>][&player=<name>]
+const replayClip = replayId ? Math.max(0, parseInt(params.get('clip'), 10) || 0) : 0;
+// a reel of several recorded matches' highlights, /replay?reel=<id>,<id>...[&only=<types>][&player=<name>];
+// <id>:<n> is that match's nth clip alone
 const reelIds = location.pathname.endsWith('/replay') && !replayId && params.get('reel')
-  ? params.get('reel').split(',').filter(Boolean).slice(0, 100) : null;
+  ? params.get('reel').split(',').filter(Boolean).slice(0, 100).map((e) => {
+    const [id, n] = e.split(':');
+    return { id, clip: Math.max(0, parseInt(n, 10) || 0) };
+  }) : null;
 // a server's own address, /<id> (older links: ?watch=<id>)
 const directId = replayId || reelIds ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
 
@@ -1520,6 +1525,11 @@ async function openReplay(id) {
     await started;
     const { meta, demo } = await loadRecording(id, loadingProgress('the recording'));
     playDemo(demo, meta, replayChannel(meta));
+    // a link to a clip: the highlights from it on, the camera on whoever made each
+    if (replayClip && replay.highlights.length) {
+      if (mode !== 'auto') setMode('auto', true);
+      replay.playReel(replayClip - 1);
+    }
   } catch (e) {
     $('loading').hidden = true;
     $('guide').hidden = false;
@@ -1536,7 +1546,8 @@ function playDemo(demo, meta, ch) {
   watch(ch);
 }
 
-function makeReplay(demo, meta) {
+// clip: a reel's match asked for its nth clip alone
+function makeReplay(demo, meta, clip = 0) {
   // recorded before the hub's director: its picks worked out again
   if (!(meta && meta.director >= DIRECTOR_VERSION)) demo.cams = directDemo(demo);
   const r = new Replay(demo, meta, {
@@ -1553,6 +1564,10 @@ function makeReplay(demo, meta) {
     },
     onClip: (h) => {
       reelClip(h);
+      // a match's own highlights: the address is a link to the clip playing (?clip=<n>)
+      if (!reelSet && meta && meta.id) {
+        history.replaceState(null, '', './replay?id=' + encodeURIComponent(meta.id) + (h ? `&clip=${r.reel.i + 1}` : '') + (debug ? '&debug' : ''));
+      }
       if (!h) return;
       clearNews();
       showClip(h.parts[0]);
@@ -1562,8 +1577,10 @@ function makeReplay(demo, meta) {
     onPart: (p) => { reelCam.fit = null; showClip(p); },
     onShot: (shot) => reelShot(shot),
   });
-  // a reel of several matches: the clips it asks for, from the first play asked for to the last
-  if (reelSet) {
+  // a reel of several matches: the clip it asks for, or the clips with the plays it asks for,
+  // from the first of them to the last
+  if (reelSet && clip) r.highlights = r.highlights.slice(clip - 1, clip);
+  else if (reelSet) {
     r.highlights = r.highlights.flatMap((c) => {
       const first = c.parts.findIndex(reelSet.wants), last = c.parts.findLastIndex(reelSet.wants);
       if (first < 0) return [];
@@ -1581,7 +1598,7 @@ function makeReplay(demo, meta) {
 // ---------- a reel of several matches (/replay?reel=...: the stats page's selection): their
 // highlights one after another, in one connection of the game (Replay.takeOver)
 
-let reelSet = null;  // { ids, i (the match playing), wants(play), loads (the matches loaded or loading, by index: the last few) }
+let reelSet = null;  // { ids ({ id, clip }), i (the match playing), wants(play), loads (the matches loaded or loading, by index: the last few) }
 
 async function openReel(ids) {
   tuning = true;
@@ -1609,7 +1626,7 @@ async function openReel(ids) {
 // match i of the reel, loaded once (the last few are kept, for going back)
 function reelLoad(set, i, progress) {
   if (!set.loads.has(i)) {
-    set.loads.set(i, loadRecording(set.ids[i], progress));
+    set.loads.set(i, loadRecording(set.ids[i].id, progress));
     for (const k of set.loads.keys()) if (set.loads.size > 3 && k !== i) set.loads.delete(k);
   }
   return set.loads.get(i);
@@ -1631,7 +1648,7 @@ async function reelMatch(step, last = false) {
         continue;  // gone: the next one
       }
       if (reelSet !== set) return false;
-      const r = makeReplay(got.demo, got.meta);
+      const r = makeReplay(got.demo, got.meta, set.ids[j].clip);
       if (!r.highlights.length) continue;
       set.i = j;
       if (replay && replay.sock) {
@@ -1742,7 +1759,9 @@ function showClip(h) {
       part.replaceWith(img);
     });
   }
-  box.append(el('span', 'n', reelSet ? `Match ${reelSet.i + 1}/${reelSet.ids.length} · ${n}` : n), what, who);
+  // in a reel of several: the match (or, for a match's one clip, the clip) of how many
+  const of = reelSet && (reelSet.ids[reelSet.i].clip ? `${reelSet.i + 1} / ${reelSet.ids.length}` : `Match ${reelSet.i + 1}/${reelSet.ids.length} · ${n}`);
+  box.append(el('span', 'n', of || n), what, who);
   box.classList.remove('gone');
   box.hidden = false;
   clearTimeout(clipTimer);

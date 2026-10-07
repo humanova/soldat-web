@@ -17,7 +17,7 @@ import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { MSG, setHash } from './soldat171.mjs';
 // the page's own: the highlights a demo is listed with are the ones its replay shows
-import { parseDemo } from '../../web/js/spectate/replay.js';
+import { parseDemo, matchEnd } from '../../web/js/spectate/replay.js';
 import { findHighlights, countHighlights, rateMatch } from '../../web/js/spectate/highlights.js';
 
 const HEADER_SIZE = 180;
@@ -148,11 +148,13 @@ export function demoScore(demo, newMap) {
   return score.value;
 }
 
-// how many highlights of each kind a demo file (uncompressed) has, and how good the match is
-// to watch (rateMatch; seconds: its length, scores: its final scores); nulls if it can't tell
+// how many highlights of each kind a demo file (uncompressed) has, as its replay has them, and
+// how good the match is to watch (rateMatch; seconds: its length, scores: its final scores);
+// nulls if it can't tell
 export function demoPlays(demo, seconds, scores) {
   try {
-    const clips = findHighlights(parseDemo(demo));
+    const d = parseDemo(demo);
+    const clips = findHighlights(d, matchEnd(d));
     return { highlights: countHighlights(clips), rating: rateMatch(clips, seconds, scores) };
   } catch (_) {
     return { highlights: null, rating: null };
