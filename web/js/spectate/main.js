@@ -13,7 +13,10 @@ import { directDemo, DIRECTOR_VERSION } from './director.js';
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
-const TITLE = document.title;
+// the demo player has its own address, /demo (older links: #demo), and its own title
+const demoPage = /\/demo$/.test(location.pathname);
+const TITLES = { live: 'Soldat TV · Watch live Soldat matches in your browser',
+  demo: 'Soldat demo player · Watch .sdm demos of any version in your browser' };
 // a recorded match's address, /replay?id=<demo>[&clip=<n>] (its highlights from the nth clip on)
 const replayId = location.pathname.endsWith('/replay') ? params.get('id') : null;
 const replayClip = replayId ? Math.max(0, parseInt(params.get('clip'), 10) || 0) : 0;
@@ -25,7 +28,7 @@ const reelIds = location.pathname.endsWith('/replay') && !replayId && params.get
     return { id, clip: Math.max(0, parseInt(n, 10) || 0) };
   }) : null;
 // a server's own address, /<id> (older links: ?watch=<id>)
-const directId = replayId || reelIds ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
+const directId = replayId || reelIds || demoPage ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
 
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
@@ -196,7 +199,7 @@ function watch(ch) {
   document.querySelector('.tally').textContent = ch.replay ? 'REPLAY' : 'LIVE';
   document.querySelector('.tally').classList.toggle('replay', !!ch.replay);
   if (ch.replay) {
-    if (ch.local) history.replaceState(null, '', './' + (debug ? '?debug' : '') + '#demo');
+    if (ch.local) history.replaceState(null, '', './demo' + (debug ? '?debug' : ''));
     else history.replaceState(null, '', './replay?id=' + encodeURIComponent(replay.meta.id) + (debug ? '&debug' : ''));
     showReplayTitle(ch);
     showBar();
@@ -258,7 +261,6 @@ function showGuide() {
   listen();
   renderGuideChat();
   showTabAddress();
-  document.title = TITLE;
   refresh();
 }
 
@@ -2180,6 +2182,8 @@ $('demo-file').addEventListener('change', (e) => {
 });
 for (const a of document.querySelectorAll('.open-demo')) a.addEventListener('click', (e) => { e.preventDefault(); setViewer(); });
 $('viewer-back').addEventListener('click', () => setTab(tab));
+$('ribbon').hidden = !!prefs.ribbonClosed;
+$('ribbon-close').addEventListener('click', () => { $('ribbon').hidden = true; prefs.ribbonClosed = true; savePrefs(); });
 
 // a file dropped anywhere on the guide opens (on a match: nothing; the browser would leave the page for it)
 const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -2213,7 +2217,8 @@ document.addEventListener('drop', (e) => {
 const slug = (group) => group.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 function showTabAddress() {
-  history.replaceState(null, '', './' + (debug ? '?debug' : '') + (viewer ? '#demo' : tab ? '#' + slug(tab) : ''));
+  history.replaceState(null, '', (viewer ? './demo' : './') + (debug ? '?debug' : '') + (!viewer && tab ? '#' + slug(tab) : ''));
+  document.title = viewer ? TITLES.demo : TITLES.live;
 }
 
 function setTab(group) {
@@ -2439,7 +2444,8 @@ async function boot() {
   setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
   const ch = direct && channels.find(c => c.id === direct);
   tab = ch ? ch.group || null : channels.map(c => c.group).find(g => g && slug(g) === hash) || null;
-  viewer = !ch && !replayId && hash === 'demo';
+  viewer = !ch && !replayId && (hash === 'demo' || demoPage);
+  if (viewer && !demoPage) showTabAddress();  // an older link, #demo: the player's own address
   if (replayId) {
     const demo = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(replayId)).then(r => r.json()).catch(() => null);
     const g = demo && demo.demos[0] && demo.demos[0].group;

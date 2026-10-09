@@ -365,6 +365,43 @@ function serveDemo(req, res, id) {
 
 // ---------------------------------------------------------------- http
 
+// /demo: spectate.html with the demo player's title, description and address, built once per
+// version of the file
+const DEMO_HEAD = {
+  title: 'Soldat demo player · Watch .sdm demos of any version in your browser',
+  description: 'Watch Soldat demos (.sdm) in your browser: any version from 1.2.1 to 1.7.1 plays here. ' +
+    'Older demos are converted as they open, and you can download the converted file. No install, no account.',
+  url: 'https://soldat.live/demo',
+};
+let demoPage = null;  // { etag, html, gz }
+function serveDemoPage(req, res) {
+  const file = path.join(ROOT, 'spectate.html');
+  fs.stat(file, (err, st) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
+    const etag = `"demo-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+    const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: etag,
+      'X-Content-Type-Options': 'nosniff', Vary: 'Accept-Encoding' };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
+    if (!demoPage || demoPage.etag !== etag) {
+      const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const html = fs.readFileSync(file, 'utf8')
+        .replace(/<title>[^<]*<\/title>/, `<title>${DEMO_HEAD.title}</title>`)
+        .replace(/(<meta name="description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`)
+        .replace(/(<link rel="canonical" href=")[^"]*/, `$1${DEMO_HEAD.url}`)
+        .replace(/(<meta property="og:url" content=")[^"]*/, `$1${DEMO_HEAD.url}`)
+        .replace(/(<meta property="og:title" content=")[^"]*/, `$1${attr(DEMO_HEAD.title)}`)
+        .replace(/(<meta property="og:description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`);
+      demoPage = { etag, html: Buffer.from(html), gz: zlib.gzipSync(html) };
+    }
+    const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (gzip) headers['Content-Encoding'] = 'gzip';
+    const body = gzip ? demoPage.gz : demoPage.html;
+    headers['Content-Length'] = body.length;
+    res.writeHead(200, headers);
+    res.end(req.method === 'HEAD' ? undefined : body);
+  });
+}
+
 const server = http.createServer((req, res) => {
   const url = requestUrl(req);
   if (!url) { res.writeHead(400).end(); return; }
@@ -384,6 +421,10 @@ const server = http.createServer((req, res) => {
   }
   // a recorded match: /replay?id=<demo>
   if (url.pathname === '/replay') { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
+  // the demo player's own address: the page, with the player's title and description for search
+  // engines and link previews (the page opens on the player there: js/spectate/main.js demoPage)
+  if (url.pathname === '/demo/') { res.writeHead(301, { Location: '../demo' + url.search }).end(); return; }
+  if (url.pathname === '/demo') { serveDemoPage(req, res); return; }
   // one address for the page (search engines would list both)
   if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
   // a server's own address (/<id>): the page, tuned in to it

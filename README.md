@@ -35,7 +35,7 @@ spectator, and streams that one connection to every viewer.
   knife throws, saves, clutch captures. Watch a match's highlights back to back, share a
   link to a single clip, or make a reel of several matches.
 - **Match ratings** from 0 to 100, for how good a match is to watch.
-- **Your own demos**: drop a `.sdm` file to play it, highlights included. It never leaves
+- **Your own demos** at [soldat.live/demo](https://soldat.live/demo): drop a `.sdm` file to play it, highlights included. It never leaves
   your browser. The game's own demos, from Soldat 1.2.1 to 1.7.1, are converted as they open,
   and the converted file can be downloaded ([old demo formats](docs/DEMOS.md)).
 - A **broadcast delay** so players can't use the stream to spy on each other, and phones work
