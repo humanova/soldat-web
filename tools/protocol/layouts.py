@@ -1,5 +1,6 @@
-# Message layouts of a Soldat dedicated server (Linux, i386, Free Pascal), read from its code:
-# how docs/DEMOS.md compares the versions. Needs: pip install capstone pyelftools
+# Message layouts of a Soldat dedicated server (Linux, i386, Free Pascal: 2.7.4 on, Soldat
+# 1.6.4 on), read from its code: how docs/DEMOS.md compares the versions. kylix.py reads the
+# older ones. Needs: pip install capstone pyelftools
 #
 #   python3 layouts.py sizes soldatserver            every message it builds: id, size, function
 #   python3 layouts.py fields soldatserver FN ID SIZE   what that function writes where
