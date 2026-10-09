@@ -2201,7 +2201,7 @@ function renderIntros() {
     b.title = `Watch the intro of Soldat ${intro.versions}`;
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
-    title.append(el('span', 'ch-label', `Soldat ${intro.versions}`), el('span', 'chip', String(date.getFullYear())));
+    title.append(el('span', 'ch-label', `Soldat ${intro.versions}`));
     main.append(title, el('span', 'ch-sub', `${intro.map} · ${released}`));
     b.append(main, el('span', 'ch-map', intro.map), el('span', 'ch-mode num', released), el('span', 'ch-players num', length));
     b.addEventListener('click', () => openFile(fetchIntro(intro), `Intro of Soldat ${intro.versions}`));

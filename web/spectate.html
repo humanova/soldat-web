@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=9">
+<link rel="stylesheet" href="spectate.css?v=11">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || (/\/[\w-]+$/.test(location.pathname) && !/\/demo$/.test(location.pathname))) document.documentElement.classList.add('direct');</script>
@@ -103,7 +103,7 @@
       <section id="viewer" class="viewer" aria-labelledby="viewer-title" hidden>
         <div class="listing-head">
           <h1 id="viewer-title">Watch a demo</h1>
-          <p class="summary">Any version from 1.2.0 to 1.7.1 plays here: older demos are converted in your browser, and you can download the converted file</p>
+          <p class="summary">Any version from 1.2.0 to 1.7.1 plays here: older demos are converted, and can be downloaded</p>
           <span id="viewer-status" class="status error" role="status"></span>
           <button id="viewer-back" type="button" class="btn quiet">Back</button>
         </div>
@@ -142,8 +142,7 @@
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone watching.</p>
         <p>Contact <b class="nick">humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
           if you want your server to be included. Listed servers can also be played on <a href="https://play.soldat.live">play.soldat.live</a>.</p>
-        <p>Have a Soldat demo (.sdm)? <a href="demo" class="open-demo">Watch it here</a>, any version from 1.2.0 to 1.7.1, or the
-          intro demos of the old Soldat versions, back to 2004.</p>
+        <p>Have a Soldat demo (.sdm)? <a href="demo" class="open-demo">Watch it here</a>, any version from 1.2.0 to 1.7.1.</p>
         <p>Soldat TV is open source (MIT): <a href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">humanova/soldat-web</a> on GitHub.</p>
       </div>
       <section class="tv-chat" aria-labelledby="tv-chat-title">
