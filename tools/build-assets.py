@@ -2,8 +2,8 @@
 """Builds the browser client's game data.
 
   web/soldat.smod        core archive (stored zip): graphics, sounds, animations, maps, configs
-  web/assets/...         map textures and scenery, fetched on demand by the client, and what
-                         older versions' demos need that 1.7.1 does not ship (tools/old-assets)
+  web/assets/...         map textures and scenery, fetched on demand by the client (and the
+                         older versions' maps for old demos, tools/old-maps.py, which it keeps)
   web/assets/index.json  list of the files under web/assets
   web/play-regular.ttf   interface font
 
@@ -104,6 +104,13 @@ def main():
     print(f'soldat.smod: {len(core)} files, {total / 1048576:.1f} MB')
 
     assets_dir = os.path.join(a.out, 'assets')
+    # the older versions' maps tools/old-maps.py put there stay
+    old_list = os.path.join(assets_dir, 'old-maps.json')
+    old = {}
+    if os.path.isfile(old_list):
+        for rel in json.load(open(old_list)):
+            with open(os.path.join(assets_dir, rel), 'rb') as fh:
+                old[rel] = fh.read()
     if os.path.isdir(assets_dir):
         shutil.rmtree(assets_dir)
     index = []
@@ -119,19 +126,15 @@ def main():
             shutil.copyfile(full, dst)
             index.append(rel)
             count += 1
-    # maps and graphics of older versions that 1.7.1 does not have, fetched like a map a
-    # server offers: the intro demos (web/intros) and other old demos are played on them
-    old = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-assets')
-    have = {p.lower() for p in index}
-    for d in ['maps'] + ON_DEMAND_DIRS:
-        for key, (rel, full) in sorted(collect(old, d).items()):
-            if key in have:
-                continue
-            dst = os.path.join(assets_dir, rel)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copyfile(full, dst)
-            index.append(rel)
-            count += 1
+    for rel, data in sorted(old.items()):
+        dst = os.path.join(assets_dir, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        with open(dst, 'wb') as fh:
+            fh.write(data)
+        index.append(rel)
+    if old:
+        with open(old_list, 'w') as fh:
+            json.dump(sorted(old), fh, indent=0)
     with open(os.path.join(assets_dir, 'index.json'), 'w') as fh:
         json.dump(index, fh, separators=(',', ':'))
     print(f'assets: {count} on-demand files')

@@ -37,7 +37,8 @@ spectator, and streams that one connection to every viewer.
 - **Match ratings** from 0 to 100, for how good a match is to watch.
 - **Your own demos** at [soldat.live/demo](https://soldat.live/demo): drop a `.sdm` file to play it, highlights included. It never leaves
   your browser. The game's own demos, from Soldat 1.2.0 (2004) to 1.7.1 and the betas, are
-  converted as they open, and the converted file can be downloaded
+  converted as they open and played on the maps of their time, and the converted file can be
+  downloaded
   ([old demo formats](docs/DEMOS.md)).
 - **The intro demos** of the old versions on the same page, the match each one played behind
   its menu, from Soldat 1.2 (2004) to 1.7.1.
@@ -121,8 +122,8 @@ port by [humanova](https://twitter.com/humanova).
 The game data is not covered by that license: `web/soldat.smod` and `web/assets/` hold files
 of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
 [base game content](https://github.com/opensoldat/base) (CC BY 4.0). The intro demos
-(`web/intros/`) and the map htf_Mare with its texture (`tools/old-assets/`, also in
-`web/assets/`) are files of the older versions of Soldat (also © Transhuman Design). The screenshots and
+(`web/intros/`) and the older versions' maps with their graphics (in `web/assets/`, listed in
+`old-maps.json`) are files of the older versions of Soldat (also © Transhuman Design). The screenshots and
 link previews are pictures of the game. Soldat TV's icons are made from Soldat's own.
 
 Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), the country flags

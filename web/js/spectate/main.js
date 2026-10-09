@@ -8,6 +8,7 @@ import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
 import { migrateDemo } from './legacy.js';
 import { INTROS } from './intros.js';
+import { pickMaps, renameMaps, shownMap } from './old-maps.js';
 import { countHighlights, rateMatch, ratingText, weaponName, HIGHLIGHT_TYPES } from './highlights.js';
 import { directDemo, DIRECTOR_VERSION } from './director.js';
 
@@ -2118,7 +2119,8 @@ async function openFile(file, title = null) {
     file = await file;
     // a demo of an older Soldat is converted to 1.7.1's layout first (js/spectate/legacy.js)
     const migrated = await migrateDemo(await readDemoFile(file));
-    const demo = parseDemo(migrated.data);
+    // it plays on the maps of its version where 1.7.1's differ (the download keeps the names)
+    const demo = parseDemo(await onOldMaps(migrated));
     if (!demo.msgs.length) throw new Error('This demo has nothing in it to play.');
     const name = title || demoName(file);
     // the header's start: a Unix time (the file's own date if there is none)
@@ -2126,7 +2128,8 @@ async function openFile(file, title = null) {
     const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
     if (i >= 0) opened.splice(i, 1);
     const old = migrated.from !== '1.7.1' ? migrated.name : null;
-    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, from: old, highlights: null, rating: null };
+    const map = shownMap(demo.map);
+    const entry = { file, name, map, start, ticks: demo.ticks, from: old, highlights: null, rating: null };
     opened.unshift(entry);
     opened.length = Math.min(opened.length, 8);
     // the game's own demos (no header) are converted too, if only to get one
@@ -2134,7 +2137,7 @@ async function openFile(file, title = null) {
       from: migrated.name, data: migrated.data,
       file: file.name.replace(/\.gz$/i, '').replace(/\.sdm$/i, '') + '-171.sdm',
     };
-    playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size, converted },
+    playDemo(demo, { id: null, map, start, serverName: name, bytes: file.size, converted },
       { id: null, name, group: null, replay: true, local: true });
     entry.highlights = countHighlights(replay.highlights);
     entry.rating = rateMatch(replay.highlights, replay.length / TICKS);
@@ -2145,6 +2148,27 @@ async function openFile(file, title = null) {
     viewerStatus(e instanceof RangeError || e instanceof TypeError ? 'This file could not be read as a Soldat demo.' : e && e.message ? e.message : String(e));
   } finally {
     tuning = false;
+  }
+}
+
+// A converted demo of an older version, its maps renamed to the versions it was played on where
+// 1.7.1's differ (js/spectate/old-maps.js); else as it is
+async function onOldMaps(migrated) {
+  if (!migrated.from || migrated.from === '1.7.1') return migrated.data;
+  try {
+    const smod = game.archives.get('soldat/soldat.smod');
+    const names = await pickMaps(migrated.from, migrated.data, {
+      own: (map) => { const e = smod && smod.get('maps/' + map.toLowerCase() + '.pms'); return e ? e.data : null; },
+      fetchMap: async (name) => {
+        const res = await fetch(new URL('maps/' + encodeURIComponent(name) + '.pms', game.assetBase));
+        if (!res.ok) throw new Error(`${name}: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      },
+    });
+    return renameMaps(migrated.data, names);
+  } catch (e) {
+    console.warn('old maps:', e);
+    return migrated.data;
   }
 }
 

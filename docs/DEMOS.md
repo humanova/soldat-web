@@ -216,7 +216,8 @@ compressed ones inflated, and a list in clear encrypted.
 - **1.7.1's own recordings:** none was available. 1.7.1 ships 1.6.9's intro, so its recordings
   are taken to be headerless like the 1.6.x ones. With Soldat TV's header they are read as well.
 - **Maps:** a demo on a map the page does not have cannot be shown ("Server did not provide
-  map"). Of the intros' maps, 1.7.1 lacks htf_Mare (1.3): it is in the asset mirror, see below.
+  map"). The stock maps of every release from 1.2.0 to 1.7.0 are there (see below); custom
+  ones are not. A beta is taken to have had its release's maps.
 - **The tests** (`npm test`) use a made-up match in each layout, check every layout's sizes
   against the servers' and convert the intro demos (`web/intros/`).
 
@@ -244,10 +245,27 @@ The dates on the page are the versions' release dates (the wiki's
 Not on the page: 1.6.4 RC3's intro on Flashback (`895ee534…`, only in that RC, cut short at
 its end).
 
-htf_Mare came with 1.3.0 and 1.3.1 only. Its map file and its texture `marais` (made a PNG,
-the same pixels) are from 1.3.0's installer, in `tools/old-assets/`, which
-`tools/build-assets.py` adds to the asset mirror (`web/assets/`). The client fetches them from
-there as it would a map a server offers. Its scenery `moon.bmp` is in no version: it is
+## The maps of their time
+
+Many stock maps were reshaped between versions: 1.6.0 redid Cambodia, 1.7.0 remade ctf_Ash and
+moved ctf_Maya 65 px up, and so on. A demo played on 1.7.1's map then shows its players inside
+the ground or in the air (22% of the 1.5.0 intro's positions are in 1.7.1's Cambodia).
+
+`tools/old-maps.py` reads the stock maps of every release from 1.2.0 to 1.7.0 (their
+installers), groups each map's versions by the ground a player collides with (versions that
+differ by less than 0.5% of its area are one), and keeps those that differ from 1.7.1's by more
+than 1%: 102 files of 58 maps, in the asset mirror as `maps/<map>~<tag>.pms`. The tag is the
+first version with it, without "1." and dots (`Cambodia~20`: 1.2.0 to 1.5.0; `~60`: 1.6.0 to
+1.6.2). A map 1.7.1 lacks (htf_Mare, ctf_Death2, Storm...) keeps its name for its newest
+version. The textures and scenery they draw that 1.7.1 has not come along (32 files, as the
+games had them). `web/assets/old-maps.json` lists them all, and `tools/build-assets.py` keeps
+them; `web/js/spectate/old-maps-data.js` is the list the page picks from.
+
+When the page plays a converted demo, it scores 1.7.1's map and each older version of it by
+the share of the players' positions (sprite snapshots, movement) that are inside the ground,
+and plays on the lowest; on a tie, on the one the demo's version shipped
+(`web/js/spectate/old-maps.js`). It plays a copy with the map renamed; the converted file
+keeps the map's own name, for the game. htf_Mare's scenery `moon.bmp` is in no version: it is
 not drawn, as in the game.
 
 ## Sources

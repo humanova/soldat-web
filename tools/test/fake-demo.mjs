@@ -7,6 +7,9 @@ import { setHash } from '../../web/js/spectate/legacy.js';
 import { L171, VARIABLE, ORDER, OLD_WEAPON_NUM, WEAPON_STYLE, MOVEMENT_ACC_SCALE } from '../../web/js/spectate/legacy-formats.js';
 
 export const SESSION_ID = 2345;
+
+// whether a 1.7.1 message has its right check value
+export const setHashOk = (m) => { const c = setHash(m.slice()); return c[1] === m[1] && c[2] === m[2]; };
 const HEADER_SIZE = 180;
 const dv = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
