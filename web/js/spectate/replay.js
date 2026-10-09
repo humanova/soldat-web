@@ -324,7 +324,7 @@ export class Replay {
       }
     }
     // the client joins on a PlayersList: a demo starts with one
-    if (!s.base) throw new Error('This demo has no player list to start from: it was not recorded by Soldat TV or a Soldat 1.7.1 client.');
+    if (!s.base) throw new Error('This demo has no player list to start from: it was not recorded by Soldat TV or a Soldat client (1.2.1 to 1.7.1).');
     if (!this.checkpoints.length) this.checkpoints.push({ tick: 0, index: 0, state: new MatchState() });
     this.ownName = s.ownNewPlayer ? fixedString(s.ownNewPlayer, 7, NAME_LEN) : '';
     this.end = matchEnd(this.demo);
