@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node relay/play.mjs",
-    "spectator": "node relay/spectator.mjs"
+    "spectator": "node relay/spectator.mjs",
+    "test": "node --test tools/test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"

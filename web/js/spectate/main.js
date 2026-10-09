@@ -6,6 +6,7 @@ import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
+import { migrateDemo } from './legacy.js';
 import { countHighlights, rateMatch, ratingText, weaponName, HIGHLIGHT_TYPES } from './highlights.js';
 import { directDemo, DIRECTOR_VERSION } from './director.js';
 
@@ -1693,12 +1694,20 @@ function showBar() {
   bar.hl.title = `Highlights only (H): ${highlightsText(countHighlights(replay.highlights))}`;
   $('clipcap').hidden = true;
   bar.line.setAttribute('aria-valuemax', String(Math.round(replay.length / TICKS)));
-  // a demo from the viewer's computer is theirs already
-  $('rp-download').hidden = !replay.meta.id;
+  // a demo from the viewer's computer is theirs already, but for one of an older Soldat:
+  // it can have it as it plays here, in Soldat 1.7.1's layout
+  const conv = replay.meta.converted;
+  $('rp-download').hidden = !replay.meta.id && !conv;
   if (replay.meta.id) {
     $('rp-download').href = demoUrl(replay.meta.id);
     $('rp-download').setAttribute('download', replay.meta.id + '.sdm');
     $('rp-download').title = `Download the demo (${replay.meta.id}.sdm, ${(replay.meta.bytes / 1048576).toFixed(1)} MB)`;
+  } else if (conv) {
+    if (convertedUrl) URL.revokeObjectURL(convertedUrl);
+    convertedUrl = URL.createObjectURL(new Blob([conv.data], { type: 'application/octet-stream' }));
+    $('rp-download').href = convertedUrl;
+    $('rp-download').setAttribute('download', conv.file);
+    $('rp-download').title = `Download the demo converted from ${conv.from} to Soldat 1.7.1 (${conv.file}, ${sizeText(conv.data.length)})`;
   }
   barKey = '';
   renderBar();
@@ -2061,7 +2070,8 @@ setInterval(() => { if (!watching) showAge(); }, 1000);
 // ---------- the demo viewer: a demo file from the viewer's computer, played on the page
 
 let viewer = false;   // the demo viewer is open (in place of the tab's list)
-const opened = [];    // the demos opened since the page loaded: { file, name, map, start, ticks }
+const opened = [];    // the demos opened since the page loaded: { file, name, map, start, ticks, from }
+let convertedUrl = null;  // the replay bar's download of a converted demo (a blob: URL)
 
 const sizeText = (n) => `${(n / 1048576).toFixed(1)} MB`;
 
@@ -2093,17 +2103,24 @@ async function openFile(file) {
   $('loading-bar').style.width = '0%';
   try {
     await started;
-    const demo = parseDemo(await readDemoFile(file));
+    // a demo of an older Soldat is converted to 1.7.1's layout first (js/spectate/legacy.js)
+    const migrated = await migrateDemo(await readDemoFile(file));
+    const demo = parseDemo(migrated.data);
     if (!demo.msgs.length) throw new Error('This demo has nothing in it to play.');
     const name = demoName(file);
     // the header's start: a Unix time (the file's own date if there is none)
     const start = demo.start > 0 ? demo.start * 1000 : file.lastModified;
     const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
     if (i >= 0) opened.splice(i, 1);
-    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, highlights: null, rating: null };
+    const old = migrated.from !== '1.7.1' ? migrated.name : null;
+    const entry = { file, name, map: demo.map, start, ticks: demo.ticks, from: old, highlights: null, rating: null };
     opened.unshift(entry);
     opened.length = Math.min(opened.length, 8);
-    playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size },
+    const converted = old && {
+      from: old, data: migrated.data,
+      file: file.name.replace(/\.gz$/i, '').replace(/\.sdm$/i, '') + '-171.sdm',
+    };
+    playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size, converted },
       { id: null, name, group: null, replay: true, local: true });
     entry.highlights = countHighlights(replay.highlights);
     entry.rating = rateMatch(replay.highlights, replay.length / TICKS);
@@ -2134,6 +2151,7 @@ function renderOpened() {
     const title = el('span', 'ch-title');
     title.append(el('span', 'ch-label', o.name), el('span', 'chip', when(o.start)));
     const sub = el('span', 'ch-sub', o.map);
+    if (o.from) sub.append(' · ', el('span', '', o.from));
     if (playsOf(o.highlights)) sub.append(' · ', highlightCount(o.highlights));
     if (o.rating) sub.append(' · ', ratingBadge(o.rating));
     main.append(title, sub);
