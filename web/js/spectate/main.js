@@ -498,7 +498,7 @@ function moveGesture() {
 
 // ---------- the game's own free camera: a click on the picture holds the mouse (pointer lock)
 // and the camera flows towards the cursor, faster the farther it is from the middle, as in
-// the game. Esc, or any other camera, lets go.
+// the game. Esc, a right click, or any other camera, lets go.
 
 let downAt = null;  // where a mouse press started (a drag is no click)
 canvas.addEventListener('pointerdown', (e) => {
@@ -515,6 +515,8 @@ canvas.addEventListener('click', (e) => {
 });
 
 const mouseHeld = () => document.pointerLockElement === canvas;
+// mousedown, not pointerdown: a second button pressed while one is held is no pointerdown
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2 && mouseHeld()) document.exitPointerLock(); });
 let mouseMove = [0, 0];
 document.addEventListener('mousemove', (e) => {
   if (!mouseHeld()) return;
