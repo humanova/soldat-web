@@ -1,8 +1,10 @@
 // Made-up demos for the tests: a match in Soldat 1.7.1's layout (docs/PROTOCOL-1.7.1.md),
-// and the same match as Soldat 1.7.0 and 1.6.8 sent it (docs/DEMOS.md).
+// and the same match as older versions sent it (docs/DEMOS.md): 1.7.0 and 1.6.8 by hand,
+// all of them from legacy-formats.js's layouts.
 
 import { SessionCipher } from '../../web/js/spectate/cipher.js';
 import { setHash } from '../../web/js/spectate/legacy.js';
+import { L171, VARIABLE, ORDER, OLD_WEAPON_NUM, WEAPON_STYLE, MOVEMENT_ACC_SCALE } from '../../web/js/spectate/legacy-formats.js';
 
 export const SESSION_ID = 2345;
 const HEADER_SIZE = 180;
@@ -60,6 +62,9 @@ export function newPlayer(slot, name, team) {
   return setHash(b);
 }
 
+// the weapons' bullet styles (1.7.1's order)
+const STYLES = [1, 1, 1, 1, 3, 1, 4, 1, 1, 1, 1, 11, 11, 12, 8, 7, 5, 14, 6, 2];
+
 export function serverVars() {
   const b = new Uint8Array(986), d = dv(b);
   b[0] = 52;
@@ -69,10 +74,11 @@ export function serverVars() {
     b[92 + i] = 10 + i;
     d.setUint16(112 + i * 2, 60 + i, true);
     d.setFloat32(152 + i * 4, 10 + i, true);
-    b[232 + i] = 1;
+    b[232 + i] = STYLES[i];
     d.setFloat32(732 + i * 4, 1.15, true);  // the hitbox modifiers 1.7.0 had built in
     d.setFloat32(812 + i * 4, 1, true);
     d.setFloat32(892 + i * 4, 0.9, true);
+    d.setFloat32(372 + i * 4, i / 200, true);  // MovementAcc: weapons.ini's 0..19, divided by 200
   }
   b.fill(1, 972, 986);
   return setHash(b);
@@ -136,6 +142,50 @@ export function spriteDeath(slot, killer, health = -40) {
 
 const chat = (slot, s) => setHash(Uint8Array.from([6, 0, 0, slot, ...[...s].map((c) => c.charCodeAt(0)), 0]));
 
+// a big text (SpecialMessage, layer 0)
+export function special(text) {
+  const b = new Uint8Array(25 + text.length + 1), d = dv(b);
+  b[0] = 64;
+  b[3] = 1;  // big text
+  d.setInt32(5, 300, true);
+  d.setFloat32(9, 0.2, true);
+  d.setUint32(13, 0xFFFFCC00, true);
+  d.setFloat32(17, 0.4, true);
+  d.setFloat32(21, 0.5, true);
+  for (let i = 0; i < text.length; i++) b[25 + i] = text.charCodeAt(i);
+  return setHash(b);
+}
+
+// a bullet of the player in slot, of a weapon (1.7.1's numbers)
+export function bullet(slot, weapon, tick) {
+  const b = new Uint8Array(24), d = dv(b);
+  b[0] = 5;
+  b[3] = slot; b[4] = weapon;
+  d.setFloat32(5, 100 + tick, true);
+  d.setFloat32(9, -210, true);
+  d.setFloat32(13, 20, true);
+  d.setFloat32(17, -1, true);
+  return setHash(b);
+}
+
+// a player's weapons (Delta_Weapons)
+export function weapons(slot, weapon, secondary) {
+  return setHash(Uint8Array.of(25, 0, 0, slot, weapon, secondary, 9));
+}
+
+export function movement(slot, tick) {
+  const b = new Uint8Array(27), d = dv(b);
+  b[0] = 21;
+  b[3] = slot;
+  d.setFloat32(4, 300 + tick, true);
+  d.setFloat32(8, -50, true);
+  d.setFloat32(12, 2, true);
+  d.setUint16(20, 0x0011, true);
+  b[22] = 90;
+  d.setInt32(23, 5000 + tick, true);
+  return setHash(b);
+}
+
 // [tick, message] of a short match
 export function match({ clearList = false } = {}) {
   const out = [
@@ -149,9 +199,15 @@ export function match({ clearList = false } = {}) {
     if (t % 30 === 0) out.push([t, spriteSnapshotMajor(1, t)]);
     if (t % 60 === 0) out.push([t, heartBeat()]);
   }
+  out.push([40, bullet(1, 3, 40)]);
+  out.push([41, weapons(2, 14, 12)]);
+  out.push([42, bullet(2, 11, 42)]);
+  out.push([43, movement(2, 43)]);
+  out.push([44, setHash(Uint8Array.of(37, 0, 0, 1, 2, 0))]);  // IdleAnimation: 1, 2
   out.push([90, spriteDeath(2, 1)]);
   out.push([95, newPlayer(3, 'Charlie Three', 1)]);
   out.push([100, chat(1, ' gg')]);
+  out.push([101, special('Round 2')]);
   return out.sort((a, b) => a[0] - b[0]);
 }
 
@@ -232,4 +288,78 @@ export function expected(m) {
   const o = m.slice();
   o.fill(0, 3, 7);  // the heartbeat's map id: another checksum before 1.7.1
   return setHash(o);
+}
+
+// ---------------------------------------------------------------- any older version
+
+// the field layouts of legacy-formats.js: { name: { off, type, n, size } }
+function fieldsOf(layout, at) {
+  const out = {};
+  let off = at;
+  for (const [name, t] of layout) {
+    const arr = /^(\w+)\[(\d+)\]$/.exec(t);
+    const type = arr ? arr[1] : t, n = arr ? +arr[2] : 1;
+    const raw = /^b(\d+)$/.exec(type);
+    const size = raw ? +raw[1] : { u8: 1, i8: 1, u16: 2, i16: 2, i32: 4, u32: 4, f32: 4 }[type] * n;
+    out[name] = { off, type: raw ? 'raw' : type, n, size };
+    off += size;
+  }
+  return { fields: out, size: off };
+}
+const GETS = { u8: 'getUint8', i8: 'getInt8', u16: 'getUint16', i16: 'getInt16', i32: 'getInt32', u32: 'getUint32', f32: 'getFloat32' };
+const SETS = { u8: 'setUint8', i8: 'setInt8', u16: 'setUint16', i16: 'setInt16', i32: 'setInt32', u32: 'setUint32', f32: 'setFloat32' };
+const read = (d, f, i) => d[GETS[f.type]](f.off + i * (f.size / f.n), true);
+const write = (d, f, i, v) => d[SETS[f.type]](f.off + i * (f.size / f.n), f.type === 'f32' ? v : Math.round(v), true);
+
+// a 1.7.1 message as a version of legacy-formats.js sent it (null if it had none such); a
+// player list in clear, as the games wrote it to their demos
+export function toFormat(m, fmt) {
+  const id = [...fmt.msgs].find(([, e]) => e && e.to === m[0]);
+  if (!id) return null;
+  const [old, entry] = id;
+  const head = fmt.hashed ? 3 : 1;
+  const finish = (b) => { b[0] = old; return fmt.hashed ? setHash(b) : b; };
+  if (VARIABLE.has(m[0])) {
+    const body = entry.special === 'noLayer' ? concat([m.subarray(3, 4), m.subarray(5)]) : m.subarray(3);
+    return finish(concat([new Uint8Array(head), body]));
+  }
+  let src = m;
+  if (m[0] === 16) {
+    src = m.slice();
+    new SessionCipher(dv(m).getUint16(2134, true)).fields(src, [[1580, 4], [19, 1], [1584, 4]], true);
+  }
+  const from = fieldsOf(L171[m[0]], 3).fields;
+  const { fields: to, size } = fieldsOf(entry.layout || L171[m[0]], head);
+  const b = new Uint8Array(size), d = dv(b), sd = dv(src);
+  const order = ORDER[fmt.weapons];
+  for (const [name, f] of Object.entries(to)) {
+    const g = from[name];
+    if (!g) continue;
+    if (f.type === 'raw' || g.type === 'raw') { b.set(src.subarray(g.off, g.off + Math.min(f.size, g.size)), f.off); continue; }
+    for (let i = 0; i < f.n; i++) {
+      // ServerVars' weapons in the version's order; MovementAcc as weapons.ini had it
+      const j = m[0] === 52 && f.n === 20 ? order[i] - 1 : i;
+      let v = read(sd, g, j);
+      if (m[0] === 52 && name === 'MovementAcc' && f.type !== 'f32') v *= MOVEMENT_ACC_SCALE;
+      write(d, f, i, v);
+    }
+  }
+  if (fmt.weapons !== 'new' && (m[0] === 3 || m[0] === 25 || m[0] === 62)) {
+    b[to.Weapon.off] = OLD_WEAPON_NUM(b[to.Weapon.off]);
+    b[to.Secondary.off] = OLD_WEAPON_NUM(b[to.Secondary.off]);
+  }
+  if (m[0] === 5 && to.Style) b[to.Style.off] = WEAPON_STYLE[m[4]];
+  else if (m[0] === 5 && fmt.weapons !== 'new') b[to.Weapon.off] = OLD_WEAPON_NUM(b[to.Weapon.off]);
+  if ((m[0] === 2 || m[0] === 35 || m[0] === 36) && !to.Active) {
+    // no Active: unused entries have team 255
+    for (let i = 0; i < to.Team.n; i++) if (!m[from.Active.off + i]) b[to.Team.off + i] = 0xFF;
+  }
+  return finish(b);
+}
+
+// a demo as the game recorded it: no header, the records at once (up to 1.6.3) or after
+// three bytes
+export function gameDemo(msgs, hashed, ticks = 130) {
+  const file = demo(msgs, { ticks });
+  return concat([hashed ? new Uint8Array(3) : new Uint8Array(0), file.subarray(HEADER_SIZE)]);
 }

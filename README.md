@@ -36,8 +36,8 @@ spectator, and streams that one connection to every viewer.
   link to a single clip, or make a reel of several matches.
 - **Match ratings** from 0 to 100, for how good a match is to watch.
 - **Your own demos**: drop a `.sdm` file to play it, highlights included. It never leaves
-  your browser. Demos of Soldat 1.6.8 and 1.7.0 are converted as they open, and the converted
-  file can be downloaded ([old demo formats](docs/DEMOS.md)).
+  your browser. The game's own demos, from Soldat 1.2.1 to 1.7.1, are converted as they open,
+  and the converted file can be downloaded ([old demo formats](docs/DEMOS.md)).
 - A **broadcast delay** so players can't use the stream to spy on each other, and phones work
   held sideways.
 
@@ -101,7 +101,8 @@ anything missing from the server, like a custom map.
   ([protocol notes](docs/PROTOCOL-1.7.1.md)). `src/web/` stands in for SDL2, OpenGL and
   OpenAL. `src/spectator/` adds Soldat TV's camera.
 - `web/js/`: the browser side. `web/js/spectate/` has Soldat TV's director, replays and
-  highlights, and the conversion of older demos (`legacy.js`, also `tools/migrate-demo.mjs`).
+  highlights, and the conversion of older demos (`legacy.js`, the layouts in
+  `legacy-formats.js`, also `tools/migrate-demo.mjs`).
 - `relay/`: the game relay (`play.mjs`) and the Soldat TV hub (`spectator.mjs`).
 
 ## Credits and license

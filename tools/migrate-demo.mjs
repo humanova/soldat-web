@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Converts demos recorded with older Soldat versions (1.6.8, 1.7.0) to the layout of Soldat
-// 1.7.1, which Soldat TV and the 1.7.1 game play (web/js/spectate/legacy.js, docs/DEMOS.md).
+// Converts the demos the game recorded (Soldat 1.2.1 to 1.7.1) to the layout of Soldat 1.7.1
+// with Soldat TV's header, which Soldat TV plays (web/js/spectate/legacy.js, docs/DEMOS.md).
 // The page does the same with a demo dropped on it; this is for many files at once.
 //
 //   node tools/migrate-demo.mjs FILE.sdm...            writes FILE-171.sdm next to each

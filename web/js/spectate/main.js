@@ -1694,8 +1694,8 @@ function showBar() {
   bar.hl.title = `Highlights only (H): ${highlightsText(countHighlights(replay.highlights))}`;
   $('clipcap').hidden = true;
   bar.line.setAttribute('aria-valuemax', String(Math.round(replay.length / TICKS)));
-  // a demo from the viewer's computer is theirs already, but for one of an older Soldat:
-  // it can have it as it plays here, in Soldat 1.7.1's layout
+  // a demo from the viewer's computer is theirs already, but for one of an older Soldat or
+  // one the game recorded: it can have it as it plays here, in Soldat 1.7.1's layout
   const conv = replay.meta.converted;
   $('rp-download').hidden = !replay.meta.id && !conv;
   if (replay.meta.id) {
@@ -1707,7 +1707,9 @@ function showBar() {
     convertedUrl = URL.createObjectURL(new Blob([conv.data], { type: 'application/octet-stream' }));
     $('rp-download').href = convertedUrl;
     $('rp-download').setAttribute('download', conv.file);
-    $('rp-download').title = `Download the demo converted from ${conv.from} to Soldat 1.7.1 (${conv.file}, ${sizeText(conv.data.length)})`;
+    $('rp-download').title = conv.from === 'Soldat 1.7.1'
+      ? `Download the demo with Soldat TV's header (${conv.file}, ${sizeText(conv.data.length)})`
+      : `Download the demo converted from ${conv.from} to Soldat 1.7.1 (${conv.file}, ${sizeText(conv.data.length)})`;
   }
   barKey = '';
   renderBar();
@@ -2116,8 +2118,9 @@ async function openFile(file) {
     const entry = { file, name, map: demo.map, start, ticks: demo.ticks, from: old, highlights: null, rating: null };
     opened.unshift(entry);
     opened.length = Math.min(opened.length, 8);
-    const converted = old && {
-      from: old, data: migrated.data,
+    // the game's own demos (no header) are converted too, if only to get one
+    const converted = (old || migrated.framed !== 'soldem') && {
+      from: migrated.name, data: migrated.data,
       file: file.name.replace(/\.gz$/i, '').replace(/\.sdm$/i, '') + '-171.sdm',
     };
     playDemo(demo, { id: null, map: demo.map, start, serverName: name, bytes: file.size, converted },

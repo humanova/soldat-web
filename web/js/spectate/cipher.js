@@ -151,11 +151,14 @@ class Blowfish {
 
 // ---------------------------------------------------------------- the session cipher
 
-export const sessionKey = (sessionId) => Uint8Array.from('\xA7' + String(sessionId + 0x25B3B1), (c) => c.charCodeAt(0));
+// the key of a session: a prefix and the session id plus a number, 1.6.0 on's by default
+// (older versions had others: legacy-formats.js)
+export const sessionKey = (sessionId, prefix = '\xA7', add = 0x25B3B1) =>
+  Uint8Array.from(prefix + String(sessionId + add), (c) => c.charCodeAt(0));
 
 export class SessionCipher {
-  constructor(sessionId) {
-    this.bf = new Blowfish(ripemd160(sessionKey(sessionId)));
+  constructor(sessionId, prefix, add) {
+    this.bf = new Blowfish(ripemd160(sessionKey(sessionId, prefix, add)));
     this.iv = new Uint8Array(8);
     this.bf.block(this.iv, 0, false);
     this.cv = this.iv.slice();
