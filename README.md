@@ -36,8 +36,11 @@ spectator, and streams that one connection to every viewer.
   link to a single clip, or make a reel of several matches.
 - **Match ratings** from 0 to 100, for how good a match is to watch.
 - **Your own demos** at [soldat.live/demo](https://soldat.live/demo): drop a `.sdm` file to play it, highlights included. It never leaves
-  your browser. The game's own demos, from Soldat 1.2.1 to 1.7.1, are converted as they open,
-  and the converted file can be downloaded ([old demo formats](docs/DEMOS.md)).
+  your browser. The game's own demos, from Soldat 1.2.0 (2004) to 1.7.1 and the betas, are
+  converted as they open, and the converted file can be downloaded
+  ([old demo formats](docs/DEMOS.md)).
+- **The intro demos** of the old versions on the same page, the match each one played behind
+  its menu, from Soldat 1.2 (2004) to 1.7.1.
 - A **broadcast delay** so players can't use the stream to spy on each other, and phones work
   held sideways.
 
@@ -102,7 +105,8 @@ anything missing from the server, like a custom map.
   OpenAL. `src/spectator/` adds Soldat TV's camera.
 - `web/js/`: the browser side. `web/js/spectate/` has Soldat TV's director, replays and
   highlights, and the conversion of older demos (`legacy.js`, the layouts in
-  `legacy-formats.js`, also `tools/migrate-demo.mjs`).
+  `legacy-formats.js`, also `tools/migrate-demo.mjs`). `web/intros/` has the old versions'
+  intro demos (listed in `intros.js`).
 - `relay/`: the game relay (`play.mjs`) and the Soldat TV hub (`spectator.mjs`).
 
 ## Credits and license
@@ -116,7 +120,9 @@ port by [humanova](https://twitter.com/humanova).
 
 The game data is not covered by that license: `web/soldat.smod` and `web/assets/` hold files
 of Soldat 1.7.1 (freeware, © Transhuman Design, all rights reserved) and of the
-[base game content](https://github.com/opensoldat/base) (CC BY 4.0). The screenshots and
+[base game content](https://github.com/opensoldat/base) (CC BY 4.0). The intro demos
+(`web/intros/`) and the map htf_Mare with its texture (`tools/old-assets/`, also in
+`web/assets/`) are files of the older versions of Soldat (also © Transhuman Design). The screenshots and
 link previews are pictures of the game. Soldat TV's icons are made from Soldat's own.
 
 Also included: the Play font by Jonas Hecksher (SIL Open Font License 1.1), the country flags

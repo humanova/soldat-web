@@ -168,6 +168,16 @@ export function bullet(slot, weapon, tick) {
   return setHash(b);
 }
 
+// the server moves a player (ForcePosition)
+export function forcePosition(slot) {
+  const b = new Uint8Array(12), d = dv(b);
+  b[0] = 60;
+  d.setFloat32(3, 120, true);
+  d.setFloat32(7, -180, true);
+  b[11] = slot;
+  return setHash(b);
+}
+
 // a player's weapons (Delta_Weapons)
 export function weapons(slot, weapon, secondary) {
   return setHash(Uint8Array.of(25, 0, 0, slot, weapon, secondary, 9));
@@ -204,6 +214,7 @@ export function match({ clearList = false } = {}) {
   out.push([42, bullet(2, 11, 42)]);
   out.push([43, movement(2, 43)]);
   out.push([44, setHash(Uint8Array.of(37, 0, 0, 1, 2, 0))]);  // IdleAnimation: 1, 2
+  out.push([70, forcePosition(1)]);
   out.push([90, spriteDeath(2, 1)]);
   out.push([95, newPlayer(3, 'Charlie Three', 1)]);
   out.push([100, chat(1, ' gg')]);
@@ -293,7 +304,7 @@ export function expected(m) {
 // ---------------------------------------------------------------- any older version
 
 // the field layouts of legacy-formats.js: { name: { off, type, n, size } }
-function fieldsOf(layout, at) {
+export function fieldsOf(layout, at) {
   const out = {};
   let off = at;
   for (const [name, t] of layout) {
@@ -312,9 +323,12 @@ const read = (d, f, i) => d[GETS[f.type]](f.off + i * (f.size / f.n), true);
 const write = (d, f, i, v) => d[SETS[f.type]](f.off + i * (f.size / f.n), f.type === 'f32' ? v : Math.round(v), true);
 
 // a 1.7.1 message as a version of legacy-formats.js sent it (null if it had none such); a
-// player list in clear, as the games wrote it to their demos
+// player list in clear, as the games wrote it to their demos. One the version sent but 1.7.1
+// has no use for is only its size (if the format says it).
 export function toFormat(m, fmt) {
   const id = [...fmt.msgs].find(([, e]) => e && e.to === m[0]);
+  const dropped = fmt.msgs.get(m[0]);
+  if (!id && dropped && dropped.drop) return setHash(Uint8Array.from({ length: dropped.drop }, (_, i) => (i ? 0 : m[0])));
   if (!id) return null;
   const [old, entry] = id;
   const head = fmt.hashed ? 3 : 1;
@@ -337,8 +351,10 @@ export function toFormat(m, fmt) {
     if (!g) continue;
     if (f.type === 'raw' || g.type === 'raw') { b.set(src.subarray(g.off, g.off + Math.min(f.size, g.size)), f.off); continue; }
     for (let i = 0; i < f.n; i++) {
-      // ServerVars' weapons in the version's order; MovementAcc as weapons.ini had it
-      const j = m[0] === 52 && f.n === 20 ? order[i] - 1 : i;
+      // ServerVars' weapons in the version's order (the game's own after the 20: 0);
+      // MovementAcc as weapons.ini had it
+      if (m[0] === 52 && f.n > 20 && i >= 20) continue;
+      const j = m[0] === 52 && f.n >= 20 ? order[i] - 1 : i;
       let v = read(sd, g, j);
       if (m[0] === 52 && name === 'MovementAcc' && f.type !== 'f32') v *= MOVEMENT_ACC_SCALE;
       write(d, f, i, v);

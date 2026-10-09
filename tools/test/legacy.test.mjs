@@ -8,10 +8,11 @@ import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { migrateDemo, detectVersion, FORMATS } from '../../web/js/spectate/legacy.js';
-import { DEFAULT_SPREAD } from '../../web/js/spectate/legacy-formats.js';
+import { DEFAULT_SPREAD, L171, VARIABLE } from '../../web/js/spectate/legacy-formats.js';
+import { INTROS } from '../../web/js/spectate/intros.js';
 import { SessionCipher } from '../../web/js/spectate/cipher.js';
 import { parseDemo, Replay } from '../../web/js/spectate/replay.js';
-import { match, demo, downgrade, expected, concat, spriteSnapshot, playersList, toFormat, gameDemo } from './fake-demo.mjs';
+import { match, demo, downgrade, expected, concat, spriteSnapshot, playersList, toFormat, gameDemo, fieldsOf } from './fake-demo.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const as = (to) => match().map(([t, m]) => [t, downgrade(m, to)]);
@@ -153,6 +154,49 @@ for (const fmt of FORMATS.filter((f) => f.key !== '1.7.1')) {
   });
 }
 
+// The sizes the servers send (with the header; docs/DEMOS.md): the layouts must give them.
+// Rows: a message ID, then its size in each format of COLUMNS (0: none).
+const COLUMNS = ['1.2.1', '1.3.1', '1.4.1', '1.4.2', '1.5.0', '1.5.1', '1.6.0', '1.6.4b', '1.6.4rc1', '1.6.4', '1.6.6', '1.6.7b1', '1.6.7', '1.6.8b1', '1.6.8', '1.7.0', '1.7.1b1', '1.7.1'];
+const SERVER_SIZES = [
+  [3, 30, 30, 22, 30, 30, 30, 30, 36, 36, 36, 36, 36, 36, 36, 36, 36, 41, 41],
+  [41, 23, 23, 15, 23, 23, 23, 23, 29, 29, 29, 29, 30, 30, 30, 30, 30, 32, 32],
+  [21, 21, 21, 21, 21, 21, 21, 21, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27],
+  [5, 19, 19, 19, 19, 19, 21, 21, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24],
+  [13, 266, 275, 275, 275, 276, 276, 276, 278, 278, 278, 278, 278, 278, 278, 278, 278, 280, 280],
+  [16, 1525, 1525, 1511, 1511, 1517, 1633, 1633, 1637, 1637, 1637, 1637, 1637, 2149, 2149, 2149, 2150, 2150, 2150],
+  [17, 58, 58, 58, 58, 58, 85, 58, 60, 60, 60, 60, 60, 60, 60, 60, 60, 61, 61],
+  [35, 93, 93, 93, 93, 109, 109, 109, 159, 159, 159, 159, 159, 159, 159, 159, 159, 159, 159],
+  [37, 3, 3, 3, 3, 3, 3, 3, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+  [52, 0, 507, 542, 542, 604, 604, 604, 693, 686, 686, 746, 746, 746, 746, 746, 746, 746, 986],
+  [60, 9, 9, 9, 9, 9, 9, 9, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 12],
+  [61, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 12, 12, 12, 12],
+  [66, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+// where the fields of the betas' changes start (the servers' builders)
+const SERVER_FIELDS = { '1.5.1': { 17: { Pos: 77 } }, '1.6.4b': { 5: { Seed: 21 }, 52: { Damage: 12, Push: 587, WeaponActive: 679 } } };
+test('the layouts give the sizes the servers send', () => {
+  const byKey = Object.fromEntries(FORMATS.map((f) => [f.key, f]));
+  for (const key of COLUMNS) {
+    const fmt = byKey[key];
+    assert.ok(fmt, key);
+    for (const [id, ...sizes] of SERVER_SIZES) {
+      const want = sizes[COLUMNS.indexOf(key)];
+      const entry = fmt.msgs.get(id);
+      // 60 and 61: ForcePosition and ForceVelocity from 1.6.8 on, before: ForcePosition and
+      // ForceWeapon (61: a size of its own, not checked here)
+      if (!fmt.key.startsWith('1.6.8') && !fmt.key.startsWith('1.7') && id === 61) continue;
+      // dropped of a size legacy.js knows, or of any length (chat): not checked here
+      if (entry === null || (entry && VARIABLE.has(entry.to))) continue;
+      const size = !entry ? 0 : entry.drop ?? fieldsOf(entry.layout || L171[entry.to], fmt.hashed ? 3 : 1).size;
+      assert.equal(size, want, `${key}: message ${id}`);
+    }
+    for (const [id, at] of Object.entries(SERVER_FIELDS[key] || {})) {
+      const { fields } = fieldsOf(fmt.msgs.get(+id).layout, fmt.hashed ? 3 : 1);
+      for (const [name, off] of Object.entries(at)) assert.equal(fields[name].off, off, `${key}: ${name} of message ${id}`);
+    }
+  }
+});
+
 test('an encrypted player list of 1.5 is read with 1.5\'s key', async () => {
   // 1.5 (soldatserver 2.6.5): '\xA7' + IntToStr(SessionID + $B37B1); MapID 1462, GameStyle 17,
   // Gravity 1466 and a word at 1470 encrypted, SessionID at 1506
@@ -184,19 +228,23 @@ test('the game\'s demo of 1.7.1 gets a header and stays the same', async () => {
   same(r.data, want);
 });
 
-// The demos the games came with (intro.sdm): set SOLDAT_DEMOS to a folder of them, named
-// intro-<version>.sdm (as 1.2.1 to 1.6.9 shipped them: 121 131 141 142 15 160 164 166 167 169).
-const INTROS = { 121: '1.2.1', 131: '1.3.1', 141: '1.4.1', 142: '1.4.2', 15: '1.5.0', 160: '1.6.0', 164: '1.6.4', 166: '1.6.6', 167: '1.6.8', 169: '1.7.0' };
+// The demos the games came with (demos/intro.sdm), as the page lists them (js/spectate/intros.js,
+// web/intros/): the version each converts as (1.6.7's was recorded with 1.6.8), its map and length
+const INTRO_FORMAT = { '1.2.0': '1.2.1', '1.3.0': '1.3.1', '1.4.0': '1.4.2', '1.4.1': '1.4.1', '1.5.0': '1.5.0', '1.6.0': '1.6.0',
+  '1.6.4': '1.6.4', '1.6.6': '1.6.6', '1.6.7': '1.6.8', '1.6.9': '1.7.0' };
 const STYLES = [1, 1, 1, 1, 3, 1, 4, 1, 1, 1, 1, 11, 11, 12, 8, 7, 5, 14, 6, 2];
-test('the games\' own demos convert', { skip: !process.env.SOLDAT_DEMOS && 'set SOLDAT_DEMOS to a folder of intro demos' }, async () => {
-  for (const [v, key] of Object.entries(INTROS)) {
-    const file = path.join(process.env.SOLDAT_DEMOS, `intro-${v}.sdm`);
-    if (!fs.existsSync(file)) continue;
-    const r = await migrateDemo(new Uint8Array(fs.readFileSync(file)));
+test('the intro demos the page lists convert as their versions', async () => {
+  assert.deepEqual(INTROS.map((i) => /^intro-(.+)\.sdm\.gz$/.exec(i.file)[1]), Object.keys(INTRO_FORMAT));
+  for (const intro of INTROS) {
+    const file = path.join(here, '../../web/intros', intro.file);
+    const key = INTRO_FORMAT[/^intro-(.+)\.sdm\.gz$/.exec(intro.file)[1]];
+    const r = await migrateDemo(new Uint8Array(zlib.gunzipSync(fs.readFileSync(file))));
     assert.equal(r.from, key, file);
     assert.ok(!r.notes.some((n) => /left out/.test(n)), r.notes.join(' '));
     const { d, by } = converted(r.data);
-    assert.ok(d.ticks > 1000 && d.msgs.length > 10000);
+    assert.equal(d.map, intro.map, file);
+    assert.equal(Math.round(d.ticks / 60), intro.seconds, file);
+    assert.ok(d.msgs.length > 10000);
     if (key !== '1.2.1') assert.deepEqual([...by.get(52)[0][1].subarray(232, 252)], STYLES, file);
     const replay = new Replay(d, {}, {});
     assert.ok(replay.stateAt(600).state.roster.filter(Boolean).length > 5, file);
@@ -206,6 +254,18 @@ test('the games\' own demos convert', { skip: !process.env.SOLDAT_DEMOS && 'set 
       assert.ok(bullets.filter((w) => w === 12).length > 100 && !bullets.includes(15), file);
     }
   }
+});
+
+test('a game\'s demo cut short in its last record converts without it', async () => {
+  // the recording stopped while a record was written (1.6.4 RC3's intro)
+  const fmt = FORMATS.find((f) => f.key === '1.6.4');
+  const whole = gameDemo(match().map(([t, m]) => [t, toFormat(m, fmt)]).filter(([, m]) => m), true);
+  const r = await migrateDemo(concat([whole, Uint8Array.of(24, 0, 3, 0, 0, 0)]));
+  assert.equal(r.from, '1.6.4');
+  assert.match(r.notes.join(' '), /cut short/);
+  same(r.data, (await migrateDemo(whole)).data);
+  // but a file that is mostly not records is no demo
+  assert.equal((await migrateDemo(concat([whole.subarray(0, 400), Uint8Array.of(200, 0, 3)]))).from, null);
 });
 
 test('a demo of an unknown layout is refused', async () => {

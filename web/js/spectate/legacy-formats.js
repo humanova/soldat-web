@@ -1,5 +1,5 @@
-// The message layouts of Soldat 1.4.2 to 1.7.1, as their dedicated servers build them
-// (docs/DEMOS.md has how each was found). legacy.js converts a demo's messages with them.
+// The message layouts of Soldat 1.2.0 to 1.7.1 and their betas, as their dedicated servers build
+// them (docs/DEMOS.md has how each was found). legacy.js converts a demo's messages with them.
 //
 // A layout lists a message's fields after its header: [name, type], the type one of u8 i8
 // u16 i16 i32 u32 f32, b<n> (n bytes taken as they are) or <type>[<n>] (an array). The
@@ -130,14 +130,15 @@ export const DEFAULT_GRAVITY = 0.06;
 // ---------------------------------------------------------------- the formats
 
 // A format: how one or more versions sent their messages. msgs: the version's message ID ->
-// { to: 1.7.1's ID, layout: the version's (1.7.1's if left out) }, or null for a message 1.7.1
-// has no use for. Messages left out are unknown to it.
+// { to: 1.7.1's ID, layout: the version's (1.7.1's if left out) }, or a message 1.7.1 has no
+// use for: null (legacy.js knows its size) or { drop: its size }. Messages left out are
+// unknown to it.
 function format(key, name, hashed, base, changes, extra = {}) {
   const msgs = new Map(base ? base.msgs : Object.keys(L171).map((id) => [+id, { to: +id }]));
   if (!base) for (const id of VARIABLE) msgs.set(id, { to: id });
   for (const [id, m] of Object.entries(changes)) {
     if (m === undefined) msgs.delete(+id);
-    else msgs.set(+id, m && { ...m, to: m.to ?? +id });
+    else msgs.set(+id, m && (m.drop !== undefined ? m : { ...m, to: m.to ?? +id }));
   }
   return { key, name, hashed, msgs, weapons: 'new', bulletStyle: false, encrypted: ['MapID', 'GameStyle', 'Gravity'], cipher: CIPHER_160, ...(base && pick(base)), ...extra };
 }
@@ -148,24 +149,39 @@ const pick = (f) => ({ weapons: f.weapons, bulletStyle: f.bulletStyle, encrypted
 // and encrypted with RC4 (1.4) or CAST-128 (1.2, 1.3), keyed 's' + the session id plus
 // $80600 (1.2.1), $92600 (1.3.1), $97800 (1.4.0), $A6000 (1.4.1) or $A5A00 (1.4.2). Those are
 // left out here (null): the 1.4 games wrote the list to their demos in clear, and the lists of
-// the 1.2.1 and 1.3.1 intro demos did not decrypt so (legacy.js guesses their game mode).
+// the 1.2 and 1.3 intro demos did not decrypt so (legacy.js guesses their game mode): they
+// were recorded with 1.2.0 and 1.3.0, whose keys are not known (no server of theirs).
 const CIPHER_160 = ['\xA7', 0x25B3B1];
 const CIPHER_150 = ['\xA7', 0xB37B1];
 
 const F171 = format('1.7.1', 'Soldat 1.7.1', true, null, {});
+// 1.7.1 beta 1: 1.7.0's ServerVars, without the hitbox modifiers
+const F171b1 = format('1.7.1b1', 'Soldat 1.7.1 beta 1', true, F171, { 52: { layout: L170[52] } });
 const F170 = format('1.7.0', 'Soldat 1.6.9–1.7.0', true, F171, {
   3: { layout: L170[3] }, 41: { layout: L170[41] }, 13: { layout: L170[13] }, 17: { layout: L170[17] }, 52: { layout: L170[52] },
 });
 const F168 = format('1.6.8', 'Soldat 1.6.8', true, F170, { 16: { layout: PL168 } });
+// 1.6.8 beta 1: ForcePosition and ForceVelocity without their player (left out), no VoteOff
+const F168b1 = format('1.6.8b1', 'Soldat 1.6.8 beta 1', true, F168, { 56: undefined, 60: { drop: 11 }, 61: { drop: 11 } });
 // 1.6.7: the IDs from 60 on before 1.6.8 added ForceVelocity (61) and VoteOff (56); its
 // ForcePosition has no player (it moved the player it was sent to): left out
 const renumbered = { 56: undefined, 60: null, 61: { to: 62 }, 62: undefined, 63: { to: 64, special: 'noLayer' }, 64: { to: 65 }, 65: { to: 66 }, 66: undefined, 68: { to: 69 }, 69: { to: 70 }, 70: undefined };
 const F167 = format('1.6.7', 'Soldat 1.6.7', true, F168, renumbered, { weapons: 'old16' });
+// 1.6.7 beta 1: 1.6.6's PlayersList
+const F167b1 = format('1.6.7b1', 'Soldat 1.6.7 beta 1', true, F167, { 16: { layout: PL166 } });
 const F166 = format('1.6.6', 'Soldat 1.6.6', true, F167, {
   16: { layout: PL166 }, 41: { layout: swap(L170[41], { Keys16: [['Keys16', 'u8']] }) }, 71: null,
 });
-const F164 = format('1.6.4', 'Soldat 1.6.4–1.6.5', true, F166, {
-  52: { layout: swap(L170[52], { MovementAcc: [['MovementAcc', `u8[${W}]`]] }) },
+const SV164 = swap(L170[52], { MovementAcc: [['MovementAcc', `u8[${W}]`]] });
+const F164 = format('1.6.4', 'Soldat 1.6.4–1.6.5', true, F166, { 52: { layout: SV164 } });
+// 1.6.4's betas: bullets without Forced. Up to beta 4, ServerVars without InheritedVelocity
+// and 23 weapons (three of the game's own after the 20, left out), and a copy of the bullet
+// (66) sent to some players (left out)
+const noForced = swap(L171[5], { Forced: [] });
+const F164rc1 = format('1.6.4rc1', 'Soldat 1.6.4 RC1', true, F164, { 5: { layout: noForced } });
+const F164b = format('1.6.4b', 'Soldat 1.6.4 beta 2–4', true, F164rc1, {
+  52: { layout: SV164.filter(([n]) => n !== 'InheritedVelocity').map(([n, t]) => [n, t.replace(`[${W}]`, '[23]')]) },
+  66: { drop: 23 },
 });
 // 1.6.0 to 1.6.3: no check value; bullets carried their style, not their weapon
 const unhashed = {
@@ -178,6 +194,11 @@ const unhashed = {
 };
 const F160 = format('1.6.0', 'Soldat 1.6.0–1.6.3', false, F164, unhashed,
   { weapons: 'old14', bulletStyle: true, encrypted: ['MapID', 'GameStyle', 'Gravity', 'ScriptWord'] });
+// 1.5.1's beta (20e, 21f): NewPlayer had a byte and a short string (25 characters) before
+// the position
+const F151 = format('1.5.1', 'Soldat 1.5.1 beta', false, F160, {
+  17: { layout: swap(L170[17], { Pos: [['Flag', 'u8'], ['Text', 'b26'], ['Pos', 'b8']] }) },
+});
 // 1.5: bullets without a seed, PlayersList without the server's name and info
 const F150 = format('1.5.0', 'Soldat 1.5', false, F160, {
   5: { layout: [['Owner', 'u8'], ['Style', 'u8'], ['Pos', 'b8'], ['Vel', 'b8']] }, 16: { layout: PL150 },
@@ -196,18 +217,20 @@ const noVel = (layout) => swap(layout, { Vel: [] });
 const F141 = format('1.4.1', 'Soldat 1.4.1', false, F142, {
   3: { layout: noVel(F142.msgs.get(3).layout) }, 41: { layout: noVel(F142.msgs.get(41).layout) },
 });
-// 1.3.1: the weapons the menu offers in PlayersList, not in ServerVars, which had neither the
-// minimap's switch nor recoil
-const F131 = format('1.3.1', 'Soldat 1.3.1', false, F142, {
+// 1.3.0 and 1.3.1: the weapons the menu offers in PlayersList, not in ServerVars, which had
+// neither the minimap's switch nor recoil (1.3.0's demos fit 1.3.1's server: it has none of
+// its own)
+const F131 = format('1.3.1', 'Soldat 1.3.0 or 1.3.1', false, F142, {
   16: { layout: [...PL142, ['WeaponActive', 'b14']] },
   52: { layout: swap(SV142, { DisableMinimap: [], Recoil: [], WeaponActive: [] }) },
 });
-// 1.2.1: deaths without the shot's distance, life and ricochet; no ServerVars (the game's own
-// weapons), VoteOn of another layout
-const F121 = format('1.2.1', 'Soldat 1.2.1', false, F131, {
+// 1.2.0 and 1.2.1: deaths without the shot's distance, life and ricochet; no ServerVars (the
+// game's own weapons), VoteOn of another layout (1.2.0's demos fit 1.2.1's server). Demos came
+// with 1.2.0: no older version recorded any.
+const F121 = format('1.2.1', 'Soldat 1.2.0 or 1.2.1', false, F131, {
   13: { layout: swap(F142.msgs.get(13).layout, { ShotDistance: [], ShotLife: [], Ricochet: [] }) }, 52: undefined, 45: null,
 });
 
-// newest first
-export const FORMATS = [F171, F170, F168, F167, F166, F164, F160, F150, F142, F141, F131, F121];
+// newest first (a beta after its release, which wins a tie)
+export const FORMATS = [F171, F171b1, F170, F168, F168b1, F167, F167b1, F166, F164, F164rc1, F164b, F160, F151, F150, F142, F141, F131, F121];
 export const FORMAT = Object.fromEntries(FORMATS.map((f) => [f.key, f]));

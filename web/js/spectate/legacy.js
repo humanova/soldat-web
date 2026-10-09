@@ -24,7 +24,7 @@ export { FORMATS };
 const HEADER_SIZE = 180;
 const MAP_NAME = 8, START_DATE = 172, TICKS_NUM = 176;
 const COMPRESSED = 0xFF;
-const ID = { HeartBeat: 2, Snapshot: 3, Bullet: 5, PlayersList: 16, Weapons: 25, HeartBeat16: 35, HeartBeat8: 36,
+const ID = { HeartBeat: 2, Snapshot: 3, Bullet: 5, PlayersList: 16, NewPlayer: 17, Weapons: 25, HeartBeat16: 35, HeartBeat8: 36,
   ServerVars: 52, ForceWeapon: 62, Special: 64 };
 const GAMESTYLE_HTF = 6;
 
@@ -72,7 +72,7 @@ function fields(layout, at) {
 // has not stay 0, for the fixes below to fill.
 function compile(fmt, id) {
   const entry = fmt.msgs.get(id);
-  if (!entry) return null;
+  if (!entry || entry.drop !== undefined) return null;
   const head = fmt.hashed ? 3 : 1;
   const to = entry.to;
   if (VARIABLE.has(to)) return { to, variable: true, head, special: entry.special };
@@ -165,22 +165,23 @@ const SIZES = new Map();
 function sizesOf(fmt) {
   if (!SIZES.has(fmt)) {
     const s = new Map();
-    for (const id of fmt.msgs.keys()) {
+    for (const [id, entry] of fmt.msgs) {
       const p = plan(fmt, id);
       if (p) s.set(id, p.variable ? 0 : p.size);
-      else if (fmt.msgs.get(id) === null) s.set(id, oldSize(fmt, id));
+      else if (entry) s.set(id, entry.drop);
+      else s.set(id, oldSize(fmt, id));
     }
     SIZES.set(fmt, s);
   }
   return SIZES.get(fmt);
 }
 
-// the size of a message a version sent that 1.7.1 has no use for (it is skipped)
-const DROPPED = { 44: [0, 0, 0], 45: [49, 49, 20], 60: [12, 11, 9], 63: [0, 0, 0], 67: [7, 7, 7], 71: [12, 12, 12] };
+// the size of a message a version sent that 1.7.1 has no use for (it is skipped): with the
+// check value, without
+const DROPPED = { 44: [0, 0], 45: [49, 20], 60: [11, 9], 63: [0, 0], 67: [7, 7], 71: [12, 12] };
 function oldSize(fmt, id) {
   const s = DROPPED[id];
-  if (!s) return 0;
-  return fmt.key === '1.6.8' || fmt.key === '1.7.0' || fmt.key === '1.7.1' ? s[0] : fmt.hashed ? s[1] : s[2];
+  return s ? s[fmt.hashed ? 0 : 1] : 0;
 }
 
 const PLANS = new Map();
@@ -198,24 +199,24 @@ function sample(at, record) {
   const step = Math.max(1, Math.floor(at.length / 20000));
   for (let i = 0; i < at.length; i++) {
     const m = record(at[i]);
-    // all of the few player lists and server settings, which tell most
-    if (m[0] === ID.PlayersList || m[0] === ID.ServerVars || (i % step === 0 && TELLING.has(m[0]))) out.push(m);
+    // all of the few player lists, new players and server settings, which tell most
+    if (m[0] === ID.PlayersList || m[0] === ID.NewPlayer || m[0] === ID.ServerVars || (i % step === 0 && TELLING.has(m[0]))) out.push(m);
   }
   return out;
 }
 
 // The version of a demo: of those its framing allows, the one whose message sizes fit its
-// records best; ties go to the newest, but for 1.6.7 and 1.6.8, which ServerVars tells apart.
+// records best; ties go to the newest. A ServerVars of 746 bytes (1.6.6 to 1.7.0, 1.7.1 beta
+// 1) also tells the weapons' order, which 1.6.7 and 1.6.8 differ by.
 function choose(records, hashed) {
+  const vars = records.find((m) => m[0] === ID.ServerVars && m.length === 746);
+  const order = vars && weaponOrder(vars, 3);
   let best = null, score = -Infinity;
   for (const fmt of FORMATS) {
     if (fmt.hashed !== hashed) continue;
+    if (order && sizesOf(fmt).get(ID.ServerVars) === 746 && fmt.weapons !== order) continue;
     const s = fit(fmt, records);
     if (s > score) { best = fmt; score = s; }
-  }
-  if (best && (best.key === '1.6.8' || best.key === '1.6.7')) {
-    const vars = records.find((m) => m[0] === ID.ServerVars && m.length === 746);
-    if (vars) best = FORMAT[weaponOrder(vars, 3) === 'old16' ? '1.6.7' : '1.6.8'];
   }
   return best;
 }
@@ -269,8 +270,9 @@ function walk(u8, p, hashed, loose = false) {
 }
 
 // How a demo is framed: Soldat TV's header, the three bytes of the game's demos from 1.6.4 on,
-// or nothing (up to 1.6.3). The records must reach the end of the file and the first be a
-// PlayersList (compressed or not).
+// or nothing (up to 1.6.3). The first record must be a PlayersList (compressed or not) and the
+// records reach the end of the file, or the last be cut short after many (the recording
+// stopped; 1.6.4 RC3's intro).
 function framing(u8) {
   if (u8.length >= HEADER_SIZE && String.fromCharCode(...u8.subarray(0, 6)) === 'SOLDEM') {
     return { kind: 'soldem', start: HEADER_SIZE, hashed: true, ...walk(u8, HEADER_SIZE, true, true) };
@@ -278,8 +280,8 @@ function framing(u8) {
   const starts = (p) => p + 3 <= u8.length && (u8[p + 2] === ID.PlayersList || u8[p + 2] === COMPRESSED);
   for (const [start, hashed] of [[3, true], [0, false]]) {
     if (!starts(start)) continue;
-    const w = walk(u8, start, hashed);
-    if (w && w.at.length) return { kind: start ? 'prefix' : 'bare', start, hashed, ...w };
+    const w = walk(u8, start, hashed, true);
+    if (w.at.length && (!w.cut || w.at.length >= 100)) return { kind: start ? 'prefix' : 'bare', start, hashed, ...w };
   }
   return null;
 }
@@ -562,6 +564,7 @@ export async function migrateDemo(u8) {
   const notes = [];
   if (!latest) notes.push(`Recorded with ${fmt.name}: ${kept} messages in Soldat 1.7.1's layout.`);
   if (frame.kind !== 'soldem') notes.push('The game\'s demo: given a Soldat TV header.');
+  if (frame.cut) notes.push('Its last record was cut short: left out.');
   const skipped = [...dropped.values()].reduce((a, b) => a + b, 0);
   if (skipped) notes.push(`${skipped} messages Soldat 1.7.1 has no use for left out.`);
   if (unpacked.size) notes.push(`${unpacked.size} compressed records unpacked.`);

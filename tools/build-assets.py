@@ -2,7 +2,8 @@
 """Builds the browser client's game data.
 
   web/soldat.smod        core archive (stored zip): graphics, sounds, animations, maps, configs
-  web/assets/...         map textures and scenery, fetched on demand by the client
+  web/assets/...         map textures and scenery, fetched on demand by the client, and what
+                         older versions' demos need that 1.7.1 does not ship (tools/old-assets)
   web/assets/index.json  list of the files under web/assets
   web/play-regular.ttf   interface font
 
@@ -112,6 +113,19 @@ def main():
         for key in sorted(files):
             rel, full = files[key]
             if any(key.startswith(c.lower() + '/') for c in CORE_TEXTURE_DIRS):
+                continue
+            dst = os.path.join(assets_dir, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(full, dst)
+            index.append(rel)
+            count += 1
+    # maps and graphics of older versions that 1.7.1 does not have, fetched like a map a
+    # server offers: the intro demos (web/intros) and other old demos are played on them
+    old = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-assets')
+    have = {p.lower() for p in index}
+    for d in ['maps'] + ON_DEMAND_DIRS:
+        for key, (rel, full) in sorted(collect(old, d).items()):
+            if key in have:
                 continue
             dst = os.path.join(assets_dir, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)

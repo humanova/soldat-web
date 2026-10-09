@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Converts the demos the game recorded (Soldat 1.2.1 to 1.7.1) to the layout of Soldat 1.7.1
+// Converts the demos the game recorded (Soldat 1.2.0 to 1.7.1) to the layout of Soldat 1.7.1
 // with Soldat TV's header, which Soldat TV plays (web/js/spectate/legacy.js, docs/DEMOS.md).
 // The page does the same with a demo dropped on it; this is for many files at once.
 //

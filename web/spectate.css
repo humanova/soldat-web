@@ -192,6 +192,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .opened-list > li { grid-template-columns: minmax(0, 1fr); }
 .opened .columns { padding-right: 6px; }
 .opened .ch-sub { padding-left: 0; }
+.intros-note { margin: -4px 0 8px; color: var(--muted); font-size: 13px; }
+.intros .chip { font-variant-numeric: tabular-nums; }
 .drop-touch { display: none; }
 @media (hover: none) {
   .drop-mouse { display: none; }

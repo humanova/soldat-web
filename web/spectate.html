@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#313d4f">
 <title>Soldat TV · Watch live Soldat matches in your browser</title>
-<meta name="description" content="Watch Soldat matches live from the public servers, right in your browser: every server, map and player, the score, the chat and the kills, or watch your own demos, from Soldat 1.2.1 to 1.7.1. No install, no account.">
+<meta name="description" content="Watch Soldat matches live from the public servers, right in your browser: every server, map and player, the score, the chat and the kills, or watch your own demos, from Soldat 1.2.0 to 1.7.1. No install, no account.">
 <!-- the site's address: change it here when the page is hosted elsewhere -->
 <link rel="canonical" href="https://soldat.live/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Soldat TV">
 <meta property="og:url" content="https://soldat.live/">
 <meta property="og:title" content="Soldat TV · Watch live Soldat matches">
-<meta property="og:description" content="Watch Soldat matches live from the public servers, right in your browser, or watch your own demos, from Soldat 1.2.1 to 1.7.1. No install, no account.">
+<meta property="og:description" content="Watch Soldat matches live from the public servers, right in your browser, or watch your own demos, from Soldat 1.2.0 to 1.7.1. No install, no account.">
 <meta property="og:image" content="https://soldat.live/og-2.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=8">
+<link rel="stylesheet" href="spectate.css?v=9">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || (/\/[\w-]+$/.test(location.pathname) && !/\/demo$/.test(location.pathname))) document.documentElement.classList.add('direct');</script>
@@ -63,7 +63,7 @@
   <!-- news under the tabs: the demo player (js/spectate/main.js shows it until it is closed, not on the player) -->
   <div id="ribbon" class="ribbon" hidden>
     <span class="ribbon-new">New</span>
-    <span class="ribbon-text">Watch your own Soldat demos: any version from 1.2.1 to 1.7.1 plays here, older ones are converted in your browser.</span>
+    <span class="ribbon-text">Watch your own Soldat demos: any version from 1.2.0 to 1.7.1 plays here, older ones are converted in your browser.</span>
     <a href="demo" class="open-demo ribbon-link">Open the demo player →</a>
     <button id="ribbon-close" type="button" class="ribbon-close" aria-label="Close" title="Close">×</button>
   </div>
@@ -103,7 +103,7 @@
       <section id="viewer" class="viewer" aria-labelledby="viewer-title" hidden>
         <div class="listing-head">
           <h1 id="viewer-title">Watch a demo</h1>
-          <p class="summary">Any version from 1.2.1 to 1.7.1 plays here: older demos are converted in your browser, and you can download the converted file</p>
+          <p class="summary">Any version from 1.2.0 to 1.7.1 plays here: older demos are converted in your browser, and you can download the converted file</p>
           <span id="viewer-status" class="status error" role="status"></span>
           <button id="viewer-back" type="button" class="btn quiet">Back</button>
         </div>
@@ -122,6 +122,15 @@
           </div>
           <ol id="opened-list" class="channels demo-list opened-list"></ol>
         </section>
+        <!-- the demo each version of the game played behind its menu (js/spectate/intros.js) -->
+        <section class="opened intros" aria-labelledby="intros-title">
+          <h2 id="intros-title">Soldat's intro demos</h2>
+          <p class="intros-note">The match each version played behind its menu, from 2004 on, as it was recorded then.</p>
+          <div class="columns" aria-hidden="true">
+            <span>Came with</span><span>Map</span><span class="c-mode num">Released</span><span class="num">Length</span>
+          </div>
+          <ol id="intro-list" class="channels demo-list opened-list"></ol>
+        </section>
       </section>
     </section>
 
@@ -133,7 +142,8 @@
         <p>Soldat TV joins each server once as a spectator and passes the match on to everyone watching.</p>
         <p>Contact <b class="nick">humanovan</b> on the <a href="https://discord.com/invite/soldat-234733999879094272" target="_blank" rel="noopener">Soldat Discord</a>
           if you want your server to be included. Listed servers can also be played on <a href="https://play.soldat.live">play.soldat.live</a>.</p>
-        <p>Have a Soldat demo (.sdm)? <a href="demo" class="open-demo">Watch it here</a>, any version from 1.2.1 to 1.7.1.</p>
+        <p>Have a Soldat demo (.sdm)? <a href="demo" class="open-demo">Watch it here</a>, any version from 1.2.0 to 1.7.1, or the
+          intro demos of the old Soldat versions, back to 2004.</p>
         <p>Soldat TV is open source (MIT): <a href="https://github.com/humanova/soldat-web" target="_blank" rel="noopener">humanova/soldat-web</a> on GitHub.</p>
       </div>
       <section class="tv-chat" aria-labelledby="tv-chat-title">

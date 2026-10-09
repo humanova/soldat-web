@@ -369,7 +369,7 @@ function serveDemo(req, res, id) {
 // version of the file
 const DEMO_HEAD = {
   title: 'Soldat demo player · Watch .sdm demos of any version in your browser',
-  description: 'Watch Soldat demos (.sdm) in your browser: any version from 1.2.1 to 1.7.1 plays here. ' +
+  description: 'Watch Soldat demos (.sdm) in your browser: any version from 1.2.0 to 1.7.1 plays here. ' +
     'Older demos are converted as they open, and you can download the converted file. No install, no account.',
   url: 'https://soldat.live/demo',
 };

@@ -7,6 +7,7 @@ import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
 import { migrateDemo } from './legacy.js';
+import { INTROS } from './intros.js';
 import { countHighlights, rateMatch, ratingText, weaponName, HIGHLIGHT_TYPES } from './highlights.js';
 import { directDemo, DIRECTOR_VERSION } from './director.js';
 
@@ -1478,6 +1479,11 @@ function when(ms) {
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+  // another year's: the year too, and the time only if it was lately (an old demo has none)
+  if (d.getFullYear() !== now.getFullYear()) {
+    const date = d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    return now - d < 30 * 86400000 ? `${date} ${time}` : date;
+  }
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
@@ -2097,7 +2103,9 @@ function demoName(file) {
   return ch ? ch.name : base;
 }
 
-async function openFile(file) {
+// file: a File, or a promise of one (an intro demo being fetched); title: the name it plays
+// under (else the file's)
+async function openFile(file, title = null) {
   if (tuning || !file) return;
   tuning = true;
   viewerStatus('');
@@ -2107,11 +2115,12 @@ async function openFile(file) {
   $('loading-bar').style.width = '0%';
   try {
     await started;
+    file = await file;
     // a demo of an older Soldat is converted to 1.7.1's layout first (js/spectate/legacy.js)
     const migrated = await migrateDemo(await readDemoFile(file));
     const demo = parseDemo(migrated.data);
     if (!demo.msgs.length) throw new Error('This demo has nothing in it to play.');
-    const name = demoName(file);
+    const name = title || demoName(file);
     // the header's start: a Unix time (the file's own date if there is none)
     const start = demo.start > 0 ? demo.start * 1000 : file.lastModified;
     const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
@@ -2162,11 +2171,45 @@ function renderOpened() {
     main.append(title, sub);
     b.append(main, el('span', 'ch-map', o.map), el('span', 'ch-mode num', sizeText(o.file.size)),
       el('span', 'ch-players num', `${Math.max(1, Math.round(o.ticks / TICKS / 60))} min`));
-    b.addEventListener('click', () => openFile(o.file));
+    b.addEventListener('click', () => openFile(o.file, o.name));
     li.append(b);
     ol.append(li);
   }
 }
+
+// ---------- the intro demos: the match each version of the game played behind its menu
+// (js/spectate/intros.js), opened like a file
+
+const introDate = (intro) => new Date(intro.released + 'T12:00:00');
+
+async function fetchIntro(intro) {
+  const res = await fetch('intros/' + intro.file);
+  if (!res.ok) throw new Error(`The intro demo of Soldat ${intro.versions} could not be loaded (${res.status}).`);
+  return new File([await res.blob()], intro.file, { lastModified: introDate(intro).getTime() });
+}
+
+function renderIntros() {
+  const ol = $('intro-list');
+  ol.textContent = '';
+  for (const intro of INTROS) {
+    const date = introDate(intro);
+    const released = date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    const length = `${Math.floor(intro.seconds / 60)}:${String(intro.seconds % 60).padStart(2, '0')}`;
+    const li = el('li');
+    const b = el('button', 'channel demo');
+    b.type = 'button';
+    b.title = `Watch the intro of Soldat ${intro.versions}`;
+    const main = el('span', 'ch-main');
+    const title = el('span', 'ch-title');
+    title.append(el('span', 'ch-label', `Soldat ${intro.versions}`), el('span', 'chip', String(date.getFullYear())));
+    main.append(title, el('span', 'ch-sub', `${intro.map} · ${released}`));
+    b.append(main, el('span', 'ch-map', intro.map), el('span', 'ch-mode num', released), el('span', 'ch-players num', length));
+    b.addEventListener('click', () => openFile(fetchIntro(intro), `Intro of Soldat ${intro.versions}`));
+    li.append(b);
+    ol.append(li);
+  }
+}
+renderIntros();
 
 function setViewer() {
   viewer = true;

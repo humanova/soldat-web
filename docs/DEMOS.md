@@ -1,7 +1,8 @@
 # Soldat demos (.sdm) of older versions
 
-Soldat TV plays the demos the game recorded from Soldat 1.2.1 to 1.7.1, and its own. They are
-converted to 1.7.1's layout on the page when they are opened (`web/js/spectate/legacy.js`,
+Soldat TV plays the demos the game recorded from Soldat 1.2.0 to 1.7.1, the betas' too, and
+its own. 1.2.0 (2004) is the first version that recorded demos (F8). They are converted to
+1.7.1's layout on the page when they are opened (`web/js/spectate/legacy.js`,
 the layouts in `legacy-formats.js`). The converted demo can be downloaded from the replay bar.
 `tools/migrate-demo.mjs` converts many files at once:
 
@@ -13,23 +14,32 @@ node tools/migrate-demo.mjs --out converted demos/*.sdm
 The formats below were reverse engineered from the dedicated servers of each version, all on
 [static.soldat.pl/downloads](https://static.soldat.pl/downloads/). A demo holds the server's
 messages as the client got them, so the server's message layouts are the demo's. The games
-came with a demo (`demos/intro.sdm`): every format was checked against one, and converted
-ones were played on the page.
+came with a demo (`demos/intro.sdm`): every release's format was checked against one, and
+converted ones were played on the page. The betas' were read from their servers only.
 
 | Versions | Server | Demo checked | Format |
 |----------|--------|--------------|--------|
-| 1.2.1 | 2.2.9 | 1.2.1's intro | `1.2.1` |
-| 1.3.1 | 2.4.9 (2.5.x) | 1.3.1's intro | `1.3.1` |
+| 1.2.0, 1.2.1 | 2.2.9 (1.2.1's) | the 1.2 intro, recorded with 1.2.0 | `1.2.1` |
+| 1.3.0, 1.3.1 | 2.4.9 (1.3.1's; 2.5.x) | the 1.3 intro, recorded with 1.3.0 | `1.3.1` |
 | 1.4.1 | 2.6.1 | 1.4.1's intro | `1.4.1` |
-| 1.4.0, 1.4.2 | 2.6.0, 2.6.2 (2.6.3) | 1.4.2's intro | `1.4.2` |
+| 1.4.0, 1.4.2 | 2.6.0, 2.6.2 (2.6.3, Soldatserver+ 1.0.x) | 1.4.0's intro (1.4.2 has the same) | `1.4.2` |
 | 1.5.0 | 2.6.4, 2.6.5 | 1.5.0's intro | `1.5.0` |
-| 1.6.0 to 1.6.3 | 2.7.0 to 2.7.3 | 1.6.0's intro (1.6.3 has the same) | `1.6.0` |
-| 1.6.4, 1.6.5 | 2.7.4, 2.7.5 | 1.6.4's intro | `1.6.4` |
-| 1.6.6 | 2.7.6 | 1.6.6's intro | `1.6.6` |
-| 1.6.7 | 2.7.7 | (none: 1.6.7's intro is a 1.6.8 one) | `1.6.7` |
-| 1.6.8 | 2.7.8 | 1.6.7's and 1.6.8's intro | `1.6.8` |
-| 1.6.9, 1.7.0 | 2.7.9, 2.8.0 | 1.6.9's intro (1.7.0 and 1.7.1 have the same) | `1.7.0` |
-| 1.7.1 | 2.8.1 | Soldat TV's demos | `1.7.1` |
+| 1.5.1 beta (20e, 21f) | 2.7.0 beta (151e, 151f) | | `1.5.1` |
+| 1.6.0 to 1.6.3, their RCs and betas | 2.7.0 to 2.7.3 | 1.6.0's intro (to 1.6.3 the same) | `1.6.0` |
+| 1.6.4 beta 2 to 4 | 2.7.4 b2 to b4 | | `1.6.4b` |
+| 1.6.4 RC1 | 2.7.4 rc1 | | `1.6.4rc1` |
+| 1.6.4 (RC2 on), 1.6.5, 1.6.6 beta 1 | 2.7.4, 2.7.5, 2.7.6 b1 | 1.6.4's intro, 1.6.4 RC3's | `1.6.4` |
+| 1.6.6 (beta 2 on) | 2.7.6 | 1.6.6's intro | `1.6.6` |
+| 1.6.7 beta 1 | 2.7.7 b1 | | `1.6.7b1` |
+| 1.6.7 (beta 2 on) | 2.7.7 | (none: 1.6.7's intro is a 1.6.8 one) | `1.6.7` |
+| 1.6.8 beta 1 | 2.7.8 b1 | | `1.6.8b1` |
+| 1.6.8 (beta 2 on) | 2.7.8 | 1.6.7's and 1.6.8's intro | `1.6.8` |
+| 1.6.9, 1.7.0, their alphas, betas and RCs | 2.7.9, 2.8.0, 2.8.0.9 | 1.6.9's intro (1.7.0 and 1.7.1 have the same) | `1.7.0` |
+| 1.7.1 beta 1 | 2.8.1 b1 | | `1.7.1b1` |
+| 1.7.1, 1.7.1.1 | 2.8.1, 2.8.2 | Soldat TV's demos | `1.7.1` |
+
+1.2.0 and 1.3.0 had no dedicated server of their own (the game hosted). Their intros are the
+ones 1.2.1 and 1.3.1 shipped, and fit 1.2.1's and 1.3.1's servers in all their messages.
 
 ## The file
 
@@ -51,7 +61,8 @@ A record is `Size: Word`, then Size bytes. Size 1 is the next tick (60 a second)
 followed by two bytes, which the game skips. Any other record is a datagram as the client got
 it: one message, several of the same kind (sprite snapshots come four or eight at a time), or
 a compressed one (`$FF`, then zlib). The page's replay reads one message a record, so records
-are split and inflated. Before 1.6.4 a two-byte record is a message too.
+are split and inflated. Before 1.6.4 a two-byte record is a message too. A recording can stop
+in the middle of a record (1.6.4 RC3's intro): such a last record is left out.
 
 A demo starts with what a joining player gets: the PlayersList, the recorder's own NewPlayer
 (slot 32, named `DEMO`), ServerVars and the items. The client adds records itself: its own
@@ -136,9 +147,9 @@ SHA-1 with RC4 (1.4) or CAST-128 (1.2, 1.3), and keys `'s' + IntToStr(SessionID 
 $80600 (1.2.1), $92600 (1.3.1), $97800 (1.4.0), $A6000 (1.4.1) or $A5A00 (1.4.2)
 (`kylix.py key`).
 
-The games wrote the list to their demos decrypted from 1.4 on. The 1.2.1 and 1.3.1 intros
-have it encrypted, and it did not decrypt with their servers' keys (they may have been
-recorded with older builds). For a list that does not decrypt, the converter guesses the game
+The games wrote the list to their demos decrypted from 1.4 on. The 1.2 and 1.3 intros have it
+encrypted, and it did not decrypt with 1.2.1's and 1.3.1's keys: they were recorded with 1.2.0
+and 1.3.0, whose keys are not known. For a list that does not decrypt, the converter guesses the game
 mode from the map's name and the match (ctf_, inf_, htf_ maps; pointmatch if the yellow flag
 is there; a team match if anyone has a team).
 
@@ -149,10 +160,31 @@ and the 1.7.1 client takes a map id it does not know for another version of the 
 page, such a replay showed neither the score nor the players. Conversion sets it to 0, which
 the client does not check.
 
+### The betas
+
+The betas, release candidates and alphas send their release's sizes, but for these (the
+format of each in the table above):
+
+- **1.5.1 beta**: 1.6.0's layouts and key, but NewPlayer (17) had a byte and a short string (25
+  characters) before the position: 85 bytes.
+- **1.6.4 beta 2 to 4**: bullets (5) without `Forced` (23 bytes). ServerVars (52) without
+  `InheritedVelocity`, and each setting for 23 weapons, 1.6.4's 20 and three of the game's own
+  after them (693 bytes). Message 66 (23 bytes) is a copy of a bullet sent to some players:
+  left out. Beta 2 has only a Kylix server, whose sizes are beta 3's.
+- **1.6.4 RC1**: bullets without `Forced`.
+- **1.6.6 beta 1**: 1.6.4's layouts (MovementAcc a byte).
+- **1.6.7 beta 1**: 1.6.6's PlayersList (1637 bytes).
+- **1.6.8 beta 1**: ForcePosition (60) and ForceVelocity (61) without their player (11 bytes):
+  left out. No VoteOff. The weapons are already 1.6.8's.
+- **1.7.1 beta 1**: 1.7.0's ServerVars, without the hitbox modifiers (746 bytes).
+- **1.7.1.1** (2.8.2): 1.7.1's.
+
 ## What conversion does
 
 - A version is chosen by how well its message sizes fit the demo's records (the framing tells
-  1.2.1–1.6.3 from 1.6.4–1.7.1). 1.6.7 and 1.6.8 are told apart by ServerVars.
+  1.2.0–1.6.3 from 1.6.4–1.7.1). A ServerVars of 746 bytes also tells the weapons' order,
+  which 1.6.7 and 1.6.8 differ by. A beta that differs from its release only in messages a
+  demo does not have is taken for the release, which converts it the same.
 - Each message gets 1.7.1's ID, header and check value. Its fields are copied or converted,
   and those the version did not have are filled in:
   - **ServerTicks:** the demo's tick.
@@ -164,11 +196,12 @@ the client does not check.
   - **Heartbeats:** `Active` from the teams, and the map id 0.
 - The PlayersList is encrypted with the 1.7.1 key.
 - Messages 1.7.1 has no use for are left out:
-  - ForcePosition before 1.6.8.
+  - ForcePosition before 1.6.8, and ForceVelocity in 1.6.8 beta 1.
   - SpecialMessage before 1.6.4, whose layout is not known.
   - 1.6.4–1.6.6's message 71.
   - 1.4.2's message 67.
-  - 1.2.1's VoteOn.
+  - 1.2's VoteOn.
+  - 1.6.4 beta 2 to 4's message 66.
 - More than a few messages that fit no version's sizes: the demo is refused.
 
 A demo of 1.7.1 with Soldat TV's header stays as it is. Records of several messages are split,
@@ -176,14 +209,46 @@ compressed ones inflated, and a list in clear encrypted.
 
 ## Not verified
 
-- **Versions not checked:** no 1.2.0 or 1.3.0 server was looked at, nor the betas (1.5.1, the
-  1.6.x betas). 1.4.0 is taken for 1.4.2, whose server sends the same sizes.
+- **1.2.0 and 1.3.0** had no server to read: their layouts are taken to be 1.2.1's and
+  1.3.1's, which their intros fit. Their session keys are not known.
+- **The betas** were read from their servers alone: no demo of theirs was found. Their
+  bullets' weapon is taken from the same place in a bullet as 1.6.4's.
 - **1.7.1's own recordings:** none was available. 1.7.1 ships 1.6.9's intro, so its recordings
   are taken to be headerless like the 1.6.x ones. With Soldat TV's header they are read as well.
-- **Maps:** a demo on a map the page does not have cannot be shown. For example, htf_Mare
-  (1.3) gives "Server did not provide map".
-- **The tests** (`npm test`) use a made-up match in each layout. With `SOLDAT_DEMOS` set to a
-  folder of the intro demos (`intro-121.sdm` ... `intro-169.sdm`), they convert those too.
+- **Maps:** a demo on a map the page does not have cannot be shown ("Server did not provide
+  map"). Of the intros' maps, 1.7.1 lacks htf_Mare (1.3): it is in the asset mirror, see below.
+- **The tests** (`npm test`) use a made-up match in each layout, check every layout's sizes
+  against the servers' and convert the intro demos (`web/intros/`).
+
+## The intro demos
+
+The page lists the intro demo of each version that had one of its own (`web/intros/`, listed
+in `web/js/spectate/intros.js`), gzipped as the games shipped them (`app/demos/intro.sdm` in the
+installers). A version that kept its predecessor's has none of its own:
+
+| File | Came with | Map | Recorded | SHA-1 of `intro.sdm` | From |
+|------|-----------|-----|----------|----------------------|------|
+| `intro-1.2.0.sdm.gz` | 1.2.0, 1.2.1 | Krab | 2004-01-09 | `4f312847f262cc2b834b183edfccdb52ec62d8bb` | `soldat12.zip` |
+| `intro-1.3.0.sdm.gz` | 1.3.0, 1.3.1 | htf_Mare | 2005-08-02 | `1a61c631b5159ef8715ca78097a1423f16b180cb` | `soldat13.zip` |
+| `intro-1.4.0.sdm.gz` | 1.4.0, 1.4.2 | Bigfalls | 2007-04-03 | `90b440039fd9cb3bbfd383b5035df890f78794e1` | `soldat14.zip` |
+| `intro-1.4.1.sdm.gz` | 1.4.1 | Bigfalls | 2007-05-24 | `22f642636e46325027609a3c4f20ecfbfe797d61` | `soldat141.zip` |
+| `intro-1.5.0.sdm.gz` | 1.5.0, 1.5.1 beta, 1.6.0 RCs | Cambodia | 2009-04-06 | `45c1682fa896cb978300fe62bf46157c535e38fe` | `soldat15.zip` |
+| `intro-1.6.0.sdm.gz` | 1.6.0 to 1.6.3, 1.6.4 betas | Cambodia | 2011-08-30 | `86162a1dd85020d897601d1df3b22b08aa400234` | `soldat160.zip` |
+| `intro-1.6.4.sdm.gz` | 1.6.4, 1.6.5, 1.6.6 betas | Cambodia | 2013-07-21 | `b2b17413c27103669b804f19285881e191245296` | `soldat164.zip` |
+| `intro-1.6.6.sdm.gz` | 1.6.6, 1.6.7 betas | htf_Boxed | 2013-10-06 | `742a44129238b0e7f67556f3d6714d66ad55d704` | `soldat166.zip` |
+| `intro-1.6.7.sdm.gz` | 1.6.7, 1.6.8 | RatCave | 2014-04-16 | `a3ddfe1e45a2b37449beeaeefc03b1e4425aa240` | `soldat167.zip` |
+| `intro-1.6.9.sdm.gz` | 1.6.9 to 1.7.1.1 | Cambodia | 2015-05-29 | `4a3e0ebfba1ab8671ac4dbaa4922ee982f6e226d` | `soldat169.zip` |
+
+The dates on the page are the versions' release dates (the wiki's
+[change logs](https://wiki.soldat.pl/index.php/Change_Logs)); "Recorded" is the file's date.
+Not on the page: 1.6.4 RC3's intro on Flashback (`895ee534…`, only in that RC, cut short at
+its end).
+
+htf_Mare came with 1.3.0 and 1.3.1 only. Its map file and its texture `marais` (made a PNG,
+the same pixels) are from 1.3.0's installer, in `tools/old-assets/`, which
+`tools/build-assets.py` adds to the asset mirror (`web/assets/`). The client fetches them from
+there as it would a map a server offers. Its scenery `moon.bmp` is in no version: it is
+not drawn, as in the game.
 
 ## Sources
 
@@ -214,6 +279,20 @@ Linux binaries:
 | 2.7.9 | 1.6.9 | `38483f31fee55610fa22e7ed50677e83c71792b7` |
 | 2.8.0 | 1.7.0 | `13a553768f04df72ef3dcf326814e45e8abb1891` |
 | 2.8.1 | 1.7.1 | `a0058978b9e439c55b7aa43ec8aa1f89f64ec219` |
+
+The betas whose layouts differ (the others were compared by their sizes alone):
+
+| Server | Game | SHA-1 of the binary |
+|--------|------|---------------------|
+| 2.7.0 beta 151e, 151f | 1.5.1 beta | `c1fd86889e3f31a82e8b41c45846a82ed0c48227`, `7259352ff18877321a33729dc188d709243ffddc` (UPX) |
+| 2.7.4 b2 (`soldatserver_delphi`) | 1.6.4 beta 2 | `152848f4b563d5cb17963cafe90c43fd1938f1fd` |
+| 2.7.4 b3, b4 (`soldatserver_lazarus`) | 1.6.4 beta 3, 4 | `fb4e611773b25a5485b08fc7f3935f0942969cdc`, `87b40b816bfd930c485f5d2257b299cf2f6b34a9` |
+| 2.7.4 rc1 (`soldatserver_lazarus`) | 1.6.4 RC1 | `9ecbd2a1738d640af3c10f9bcf616fa7dac751c0` |
+| 2.7.6 b1 | 1.6.6 beta 1 | `171e72c6646468446d041d081d3352b4f16ccdc9` |
+| 2.7.7 b1 | 1.6.7 beta 1 | `3f161610c0e3ff6cfe87cda4317c74247062dd58` |
+| 2.7.8 b1 | 1.6.8 beta 1 | `b9b9d56a3b083787f6eca74721f993baa25d6540` |
+| 2.8.1 b1 | 1.7.1 beta 1 | `3fd538c180708c3953b8111d7f85c7cf3990555e` |
+| 2.8.2 | 1.7.1.1 | `c598a51c0f378d2fa4573299dee8b6d625bf7ace` |
 
 ```bash
 pip install capstone pyelftools
