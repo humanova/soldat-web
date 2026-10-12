@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=11">
+<link rel="stylesheet" href="spectate.css?v=12">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || (/\/[\w-]+$/.test(location.pathname) && !/\/demo$/.test(location.pathname))) document.documentElement.classList.add('direct');</script>
@@ -123,14 +123,14 @@
           <ol id="opened-list" class="channels demo-list opened-list"></ol>
         </section>
         <!-- the demo each version of the game played behind its menu (js/spectate/intros.js) -->
-        <section class="opened intros" aria-labelledby="intros-title">
-          <h2 id="intros-title">Soldat's intro demos</h2>
-          <p class="intros-note">The match each version played behind its menu, from 2004 on, as it was recorded then.</p>
+        <details class="opened intros">
+          <summary><h2>Soldat's intro demos</h2><span id="intros-count" class="intros-count">10 matches, 2004 to 2015</span></summary>
+          <p class="intros-note">The match each version played behind its menu, as it was recorded then.</p>
           <div class="columns" aria-hidden="true">
             <span>Came with</span><span>Map</span><span class="c-mode num">Released</span><span class="num">Length</span>
           </div>
           <ol id="intro-list" class="channels demo-list opened-list"></ol>
-        </section>
+        </details>
       </section>
     </section>
 

@@ -194,7 +194,17 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .opened-list > li { grid-template-columns: minmax(0, 1fr); }
 .opened .columns { padding-right: 6px; }
 .opened .ch-sub { padding-left: 0; }
-.intros-note { margin: -4px 0 8px; color: var(--muted); font-size: 13px; }
+/* the intro demos stay folded under the drop zone until asked for */
+.intros > summary { display: flex; align-items: baseline; gap: 10px; width: fit-content; cursor: pointer; list-style: none; user-select: none; }
+.intros > summary::-webkit-details-marker { display: none; }
+.intros > summary::before { content: ''; align-self: center; border-left: 6px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform .15s; }
+.intros[open] > summary::before { transform: rotate(90deg); }
+.intros > summary h2 { margin: 0; }
+.intros-count { color: var(--muted); font-size: 13px; }
+.intros > summary:hover h2, .intros > summary:hover .intros-count { color: var(--green-text); }
+.intros > summary:hover::before { border-left-color: var(--green-text); }
+.intros[open] > summary { margin-bottom: 8px; }
+.intros-note { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .intros .chip { font-variant-numeric: tabular-nums; }
 .drop-touch { display: none; }
 @media (hover: none) {

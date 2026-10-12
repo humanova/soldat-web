@@ -2217,6 +2217,8 @@ async function fetchIntro(intro) {
 function renderIntros() {
   const ol = $('intro-list');
   ol.textContent = '';
+  const years = INTROS.map((intro) => introDate(intro).getFullYear());
+  $('intros-count').textContent = `${INTROS.length} matches, ${Math.min(...years)} to ${Math.max(...years)}`;
   for (const intro of INTROS) {
     const date = introDate(intro);
     const released = date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
