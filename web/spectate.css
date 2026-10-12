@@ -558,6 +558,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 @media (max-width: 960px) {
   .guide-main { grid-template-columns: 1fr; align-content: start; gap: 24px; padding: 16px 12px 24px; }
   .notes > :not(.tv-chat) { display: none; }
+  /* the chat on small screens: only next to the demo player */
+  #guide:not(.on-viewer) .notes { display: none; }
 }
 @media (max-width: 760px) {
   .columns, .channel { grid-template-columns: minmax(0, 1fr) 140px 56px 82px; }
