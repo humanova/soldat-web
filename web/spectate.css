@@ -245,6 +245,13 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 #watch.idle .dock:not(.placed) { transform: translate(-50%, 8px); }
 #watch.idle #canvas { cursor: none; }
 
+/* the clean view: the match alone, for recording it; only a notice (a lost connection) stays */
+#watch.clean :is(.ui, .scorebug, .banners, .vote, .bigmsg, .card, .clipcap, .chat, .unmute) { visibility: hidden; }
+#watch.clean #canvas { cursor: none; }
+.clean-hint { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); z-index: 4; background: var(--glass);
+  border: 1px solid var(--line); padding: 7px 14px; font-size: 14px; white-space: nowrap; pointer-events: none; transition: opacity .6s; }
+.clean-hint.gone { opacity: 0; }
+
 .icon-btn { position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; background: none;
   border: 0; color: var(--text); font-size: 20px; line-height: 1; }
 .icon-btn:hover { background: rgba(255, 255, 255, .1); }
@@ -284,6 +291,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   font: inherit; cursor: pointer; }
 /* a finger needs taller rows */
 @media (pointer: coarse) { .visuals-menu label { padding: 7px 12px; } }
+.visuals-menu .only-match { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); }
 
 /* ---------- the panels over the match: the menus' slate boxes and dark title bars, the
    game's own text shadows. All of them can be dragged (main.js: movable panels). */

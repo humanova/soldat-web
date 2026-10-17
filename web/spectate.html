@@ -24,7 +24,7 @@
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
 <!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
-<link rel="stylesheet" href="spectate.css?v=13">
+<link rel="stylesheet" href="spectate.css?v=14">
 <!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
      (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || (/\/[\w-]+$/.test(location.pathname) && !/\/demo$/.test(location.pathname))) document.documentElement.classList.add('direct');</script>
@@ -233,6 +233,8 @@
           <label class="pick">Players off screen
             <select data-cvar="spec_offscreen"><option value="1" selected>Arrow</option><option value="2">Name</option><option value="0">Off</option></select>
           </label>
+          <!-- everything over the match hidden, for recording it (js/spectate/main.js: clean view) -->
+          <label class="only-match"><input type="checkbox" id="clean"> Only the match (U)</label>
         </div>
       </div>
       <button id="fullscreen" type="button" class="icon-btn" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
@@ -260,6 +262,9 @@
     <button id="rp-speed" type="button" class="rp-speed" title="Speed">1×</button>
     <a id="rp-download" class="icon-btn" aria-label="Download the demo"><svg><use href="#i-download"/></svg></a>
   </div>
+
+  <!-- how to bring the controls back, for a moment after the clean view comes on -->
+  <div id="clean-hint" class="clean-hint" hidden></div>
 
   <!-- the highlight being played: what, by whom, which one of how many -->
   <div id="clipcap" class="clipcap" aria-live="polite" hidden></div>

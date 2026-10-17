@@ -31,6 +31,8 @@ const reelIds = location.pathname.endsWith('/replay') && !replayId && params.get
   }) : null;
 // a server's own address, /<id> (older links: ?watch=<id>)
 const directId = replayId || reelIds || demoPage ? null : params.get('watch') || decodeURIComponent(location.pathname.split('/').pop()) || null;
+// any of these with ?clean: in the clean view from the start (watching: the clean view)
+let clean = params.has('clean') && params.get('clean') !== '0';
 
 const MIN_ZOOM = -0.9, MAX_ZOOM = 1.6;  // Spectator.pas: view scale exp(z)
 const TEAMS = { 1: 'Alpha', 2: 'Bravo', 3: 'Charlie', 4: 'Delta' };
@@ -215,6 +217,7 @@ function watch(ch) {
   game.al.hold(false);
   applyVolume();
   applyVisuals();
+  setClean(clean, false);
   if (!game.join('tv', 1, '')) {
     showGuide();
     setStatus('Could not start watching.', true);
@@ -644,8 +647,11 @@ window.addEventListener('keydown', (e) => {
     Minus: () => setZoom(zoom + 0.25), NumpadSubtract: () => setZoom(zoom + 0.25),
     Digit0: () => setZoom(0), Tab: () => toggleRoster(), KeyC: () => toggleChat(),
     KeyV: () => toggleVisuals(),
-    Escape: () => { closeRoster(); toggleVisuals(false); }, Enter: () => sayKey(),
+    Escape: () => { if (clean) setClean(false); else { closeRoster(); toggleVisuals(false); } }, Enter: () => sayKey(),
+    KeyU: () => setClean(!clean),
   };
+  // what opens a panel brings the controls back first
+  if (clean && ['Tab', 'KeyC', 'KeyV', 'Enter'].includes(e.code)) setClean(false);
   const pan = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1] }[e.code];
   if (pan) {
     if (mode !== 'free') setMode('free', true);
@@ -719,10 +725,38 @@ function idle() {
   $('volume').parentElement.classList.remove('open');
 }
 function toggleUi() {
+  if (clean) { setClean(false); return; }
   if ($('watch').classList.contains('idle')) wake();
   else { clearTimeout(idleTimer); idle(); }
 }
 for (const id of ['dock', 'roster', 'replaybar']) $(id).addEventListener('pointerdown', wake);
+
+// ---------- the clean view: nothing over the match (the bars, the score, the player, the
+// highlights' captions, the chats, the game's kill feed), to record it. U or Esc brings it
+// all back, a tap on a touch screen too; a link with ?clean opens in it (OBS's browser
+// source). Not kept: a visitor back on a page with nothing to click would be lost.
+
+let cleanHintTimer = 0;
+function setClean(on, hint = on) {
+  clean = on;
+  $('watch').classList.toggle('clean', on);
+  $('clean').checked = on;
+  if (game.started) setCvar('ui_killconsole', on ? '0' : '1');
+  clearTimeout(cleanHintTimer);
+  const h = $('clean-hint');
+  h.hidden = !hint;
+  h.classList.remove('gone');
+  if (hint) {
+    h.textContent = matchMedia('(hover: none)').matches ? 'Tap to show the controls' : 'Press U or Esc to show the controls';
+    cleanHintTimer = setTimeout(() => {
+      h.classList.add('gone');
+      cleanHintTimer = setTimeout(() => { h.hidden = true; }, 700);
+    }, 1800);
+  }
+  if (on) { closeRoster(); toggleVisuals(false); }
+  else wake();
+}
+$('clean').addEventListener('change', () => setClean($('clean').checked));
 
 // ---------- movable panels: dragged by their bar (the score and the flag news anywhere), a
 // double-click on it puts the panel back. Kept as fractions of the free room across and down,
