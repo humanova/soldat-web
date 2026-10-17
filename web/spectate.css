@@ -291,6 +291,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
   font: inherit; cursor: pointer; }
 /* a finger needs taller rows */
 @media (pointer: coarse) { .visuals-menu label { padding: 7px 12px; } }
+#watch:not(.replaying) .smooth-pick { display: none; }
 .visuals-menu .only-match { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); }
 
 /* ---------- the panels over the match: the menus' slate boxes and dark title bars, the

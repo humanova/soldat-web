@@ -9,7 +9,7 @@ import { findHighlights } from './highlights.js';
 
 const MSG = {
   HeartBeat: 2, ServerSpriteSnapshot: 3, ThingSnapshot: 9, ThingTaken: 12, RequestGame: 14,
-  PlayerInfo: 15, PlayersList: 16, NewPlayer: 17, ServerDisconnect: 18, PlayerDisconnect: 19, DeltaMovement: 21,
+  SpriteDeath: 13, PlayerInfo: 15, PlayersList: 16, NewPlayer: 17, ServerDisconnect: 18, PlayerDisconnect: 19, DeltaMovement: 21,
   Ping: 30,
   FlagInfo: 32, ThingMustSnapshot: 33, HeartBeat16: 35, HeartBeat8: 36, ServerSpriteSnapshotMajor: 41,
   ClientSpriteSnapshotDead: 43, ServerVars: 52, ServerSyncMsg: 54, WeaponActive: 65, Gravity: 69, MapChange: 8,
@@ -83,6 +83,76 @@ export function parseDemo(buf) {
     at.push(tick);
   }
   return { map: fixedString(u8, 8, 161), start: d.getInt32(172, true), ticks: tick, msgs, at: Int32Array.from(at), cams };
+}
+
+// ---------------------------------------------------------------- smooth movement
+
+// The server says where each player is some 15 times a second. In between the game moves them
+// by the keys they held, and puts them where the next word says when it comes: a jump when
+// its guess was off. A demo has the next word already. With the replay's `smooth` on, each
+// tick the game is told where the players are on the way between the two (a curve through
+// both, its slope at each from the words around it), so they reach the next one as it comes.
+// Not across a death, a respawn or a long gap (the curve could cut through the ground).
+// Measured on two Gather demos (each tick's change of a living player's step): jumps of more
+// than 12 px went down by 75 to 90%, of more than 3 px by half.
+const SMOOTH_GAP = 30;        // ticks between two words; longer ones stay as they are
+const SMOOTH_REACH = 200;     // px; farther apart is a jump of the game (a respawn)
+const MOVES = new Set([MSG.ServerSpriteSnapshot, MSG.ServerSpriteSnapshotMajor, MSG.DeltaMovement]);
+const KEYS_AT = { [MSG.ServerSpriteSnapshot]: 22, [MSG.ServerSpriteSnapshotMajor]: 26, [MSG.DeltaMovement]: 20 };
+const AIM_AT = { [MSG.ServerSpriteSnapshot]: 20, [MSG.ServerSpriteSnapshotMajor]: 24, [MSG.DeltaMovement]: 22 };
+
+// for each player slot (but `own`, the recorder), the stretches between two words of where
+// it is: [{ t1, t2 (ticks), x1, y1, vx1, vy1, x2, y2, vx2, vy2 (the curve's slope at each
+// end, px a tick), keys, aim1, aim2 }]
+function smoothPaths({ msgs, at }, own) {
+  const paths = new Map(), last = new Map();
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i], slot = m[3];
+    if (slot < 1 || slot > MAX_PLAYERS || slot === own) continue;
+    if (m[0] === MSG.SpriteDeath || m[0] === MSG.NewPlayer || m[0] === MSG.PlayerDisconnect) { last.delete(slot); continue; }
+    if (!MOVES.has(m[0]) || m.length < 24) continue;
+    const d = dv(m);
+    const w = { t: at[i], x: d.getFloat32(4, true), y: d.getFloat32(8, true), keys: d.getUint16(KEYS_AT[m[0]], true), aim: m[AIM_AT[m[0]]] };
+    if (!w.x && !w.y) continue;  // no position (NoPosition)
+    const p = last.get(slot);
+    last.set(slot, w);
+    if (!p || w.t - p.t < 2 || w.t - p.t > SMOOTH_GAP || Math.hypot(w.x - p.x, w.y - p.y) > SMOOTH_REACH) continue;
+    if (!paths.has(slot)) paths.set(slot, []);
+    paths.get(slot).push({ t1: p.t, t2: w.t, x1: p.x, y1: p.y, x2: w.x, y2: w.y, keys: p.keys, aim1: p.aim, aim2: w.aim });
+  }
+  // the slope at a word: through the words before and after it, where the stretches meet
+  for (const path of paths.values()) {
+    path.forEach((g, k) => {
+      const a = k > 0 && path[k - 1].t2 === g.t1 ? path[k - 1] : null, b = path[k + 1] && path[k + 1].t1 === g.t2 ? path[k + 1] : null;
+      const from = a || g, to = b || g;
+      g.vx1 = (g.x2 - from.x1) / (g.t2 - from.t1);
+      g.vy1 = (g.y2 - from.y1) / (g.t2 - from.t1);
+      g.vx2 = (to.x2 - g.x1) / (to.t2 - g.t1);
+      g.vy2 = (to.y2 - g.y1) / (to.t2 - g.t1);
+    });
+  }
+  return paths;
+}
+
+// a Delta_Movement of `slot` at `tick` on its stretch `g`: where the curve has it, how fast,
+// aiming between the two words' aims, with the keys of the first
+function smoothMove(slot, g, tick) {
+  const T = g.t2 - g.t1, s = (tick - g.t1) / T, s2 = s * s, s3 = s2 * s;
+  const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = 3 * s2 - 2 * s3, h11 = s3 - s2;
+  const d00 = 6 * s2 - 6 * s, d10 = 3 * s2 - 4 * s + 1, d01 = 6 * s - 6 * s2, d11 = 3 * s2 - 2 * s;
+  const turn = ((g.aim2 - g.aim1 + 384) % 256) - 128;
+  const m = new Uint8Array(27), d = dv(m);
+  m[0] = MSG.DeltaMovement;
+  m[3] = slot;
+  d.setFloat32(4, h00 * g.x1 + h10 * T * g.vx1 + h01 * g.x2 + h11 * T * g.vx2, true);
+  d.setFloat32(8, h00 * g.y1 + h10 * T * g.vy1 + h01 * g.y2 + h11 * T * g.vy2, true);
+  d.setFloat32(12, (d00 * g.x1 + d01 * g.x2) / T + d10 * g.vx1 + d11 * g.vx2, true);
+  d.setFloat32(16, (d00 * g.y1 + d01 * g.y2) / T + d10 * g.vy1 + d11 * g.vy2, true);
+  d.setUint16(20, g.keys, true);
+  m[22] = (g.aim1 + Math.round(turn * s) + 256) & 255;
+  // the client drops a movement older than the last snapshot's ServerTicks
+  d.setInt32(23, 0x7FFFFFFF, true);
+  return setHash(m);
 }
 
 // ---------------------------------------------------------------- the match at a moment
@@ -305,6 +375,38 @@ export class Replay {
   }
 
   get length() { return this.end; }
+
+  // smooth movement (above): made on the first use
+  get smooth() { return !!this.paths && this.smoothOn; }
+  set smooth(on) {
+    this.smoothOn = !!on;
+    if (on && !this.paths) this.paths = smoothPaths(this.demo, this.ownSlot);
+    this.smoothNext = this.smoothTick = null;
+  }
+
+  // the players on their way at the tick `pos` is in, once a tick (as the server's words, the
+  // game moves them on from there)
+  smoothTo(pos) {
+    const tick = Math.floor(pos);
+    if (tick === this.smoothTick) return;
+    this.smoothTick = tick;
+    if (!this.smoothNext) {
+      // after a jump: each slot's first stretch that ends after `tick`
+      this.smoothNext = new Map();
+      for (const [slot, path] of this.paths) {
+        let lo = 0, hi = path.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (path[mid].t2 <= tick) lo = mid + 1; else hi = mid; }
+        this.smoothNext.set(slot, lo);
+      }
+    }
+    for (const [slot, path] of this.paths) {
+      let k = this.smoothNext.get(slot);
+      while (k < path.length && path[k].t2 <= tick) k++;
+      this.smoothNext.set(slot, k);
+      if (k < path.length && path[k].t1 < tick) this.sock.deliver(smoothMove(slot, path[k], tick));
+    }
+  }
+
   // where the replay is (during a jump: where it is going)
   get time() { return this.target ?? this.pos; }
 
@@ -327,6 +429,7 @@ export class Replay {
     if (!s.base) throw new Error('This demo has no player list to start from: it was not recorded by Soldat TV or a Soldat client (1.2.0 to 1.7.1).');
     if (!this.checkpoints.length) this.checkpoints.push({ tick: 0, index: 0, state: new MatchState() });
     this.ownName = s.ownNewPlayer ? fixedString(s.ownNewPlayer, 7, NAME_LEN) : '';
+    this.ownSlot = s.own;
     this.end = matchEnd(this.demo);
   }
 
@@ -409,6 +512,7 @@ export class Replay {
     this.joining = true;
     this.lastRequest = 0;
     this.pinged = from;
+    this.smoothNext = this.smoothTick = null;
   }
 
   seek(tick) {
@@ -538,6 +642,7 @@ export class Replay {
       if (m[0] === MSG.Ping) this.pinged = pos;
       this.sock.deliver(m);
     }
+    if (this.smooth) this.smoothTo(pos);
     if (!(pos - this.pinged < PING_GAP)) {
       this.pinged = pos;
       this.sock.deliver(setHash(Uint8Array.of(MSG.Ping, 0, 0, 0, 0)));

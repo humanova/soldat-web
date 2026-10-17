@@ -758,6 +758,14 @@ function setClean(on, hint = on) {
 }
 $('clean').addEventListener('change', () => setClean($('clean').checked));
 
+// demos: smooth movement (js/spectate/replay.js), kept for the next ones
+$('smooth').checked = !!prefs.smooth;
+$('smooth').addEventListener('change', () => {
+  prefs.smooth = $('smooth').checked;
+  savePrefs();
+  if (replay) replay.smooth = prefs.smooth;
+});
+
 // ---------- movable panels: dragged by their bar (the score and the flag news anywhere), a
 // double-click on it puts the panel back. Kept as fractions of the free room across and down,
 // so a panel at an edge stays there on any screen.
@@ -1623,6 +1631,7 @@ function makeReplay(demo, meta, clip = 0) {
     onPart: (p) => { reelCam.fit = null; showClip(p); },
     onShot: (shot) => reelShot(shot),
   });
+  r.smooth = !!prefs.smooth;
   // a reel of several matches: the clip it asks for, or the clips with the plays it asks for,
   // from the first of them to the last
   if (reelSet && clip) r.highlights = r.highlights.slice(clip - 1, clip);
