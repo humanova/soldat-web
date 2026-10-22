@@ -11,7 +11,7 @@ servers live. Viewers watch them in Reloaded's own game, built for the browser (
 
 `port` is the game port. Reloaded has no spectator slots: the hub joins as a player, picks
 the spectator team (`/team 5`), and takes one of the 32 slots. `delaySeconds`, `group` and
-`askPassword` work as for a 1.7.1 server. Recording (`record`) does not yet.
+`askPassword` and `record` work as for a 1.7.1 server.
 
 Optionally, at the top level, `"reloaded": { "dir": "data/reloaded", "web": "reloaded/web/dist" }`:
 - `dir` is where the hub keeps the map files it fetches from the servers (default
@@ -35,6 +35,20 @@ ODIN=... WASI_SDK=... RAYLIB=... reloaded/web/build.sh all    # writes reloaded/
 The page shows a Reloaded channel as any other: the guide, the channel bar, the delay and
 Soldat TV's chat. The picture is the game in a frame (`/reloaded/?line=<hub>/watch&watch=<id>`),
 with its own HUD, scoreboard, chat and controls for following the players.
+
+## Recordings
+
+With `record`, the hub records each round it is watched for as Reloaded's own demo (a
+`.srdm`, `relay/lib/reloaded/record.mjs`), kept with the 1.7.1 demos in the recordings
+folder. Its summary (`<id>.json`) has `"game": "reloaded"`, the map's SHA-256 (`mapHash`), the
+players and the teams' captures. The demo is what the hub's viewers hear: the server's
+messages from the round's `Map` on, and a tick of the game every 60th of a second, as the
+game's own recorder writes them. It plays in the game as a demo the game recorded.
+
+A replay of one (`/replay?id=<id>`) opens the game in the frame with the demo
+(`/reloaded/?demo=/demos/<id>.srdm&map=<map>&mapUrl=/reloaded/maps/<mapHash>.pms`). The page
+fetches the demo, and the map from the hub's copy if the game hasn't got it. Reloaded
+matches have no highlights or rating yet, and the guide marks them `Reloaded`.
 
 ## How it works
 
@@ -78,3 +92,44 @@ UDP. Each viewer adds about 0.1%.
   and the enums as `wire-<version>.json`. A new protocol version is a new dump, and a new
   build of `reloaded/` on the same version.
 - `relay/lib/reloaded/query.mjs`: the server's own query, for the guide's list.
+
+## Developing
+
+Everything can run on one machine: a Reloaded server with bots, a relay of its own, and the
+game built for the browser.
+
+1. The game: `git submodule update --init`, then build `reloaded/web/dist` (its
+   `web/README.md`).
+2. A server: in `reloaded/`, `cd assets && odin run ../apps/server -- -port:24073`. Its
+   bots are set in `assets/server.config.mjson` (`bots`), and a short `time_limit` (2) gives
+   a new round, and a recording, every few minutes. Its bots move on ctf_Ash, but stand at
+   their spawn on ctf_Aftermath and ctf_Bolanos, so give it a rotation of `["ctf_Ash"]`.
+   The server rewrites that file as it starts, so leave it out of commits.
+3. A config of its own, outside the repo (never `relay/spectator.json`):
+
+   ```json
+   {
+     "port": 8199,
+     "playerName": "Soldat TV test",
+     "lingerSeconds": 30,
+     "servers": [
+       { "id": "sr-local", "name": "SR local", "host": "127.0.0.1", "port": 24073, "game": "reloaded", "record": true },
+       { "id": "sr-delay", "name": "SR local, 10 s delay", "host": "127.0.0.1", "port": 24073, "game": "reloaded", "delaySeconds": 10, "record": true }
+     ],
+     "recordings": { "dir": "data/recordings", "minSeconds": 20, "minPlayers": 2 },
+     "reloaded": { "dir": "data/reloaded" },
+     "lobbyUrl": "https://127.0.0.1:1/v0/servers"
+   }
+   ```
+
+   `lobbyUrl` points nowhere so the guide lists only these two. The relay keeps its
+   recordings and map files next to the config.
+4. `node relay/spectator.mjs --config <the config> --port 8199`, and open
+   `http://127.0.0.1:8199/`. A round is recorded while it is watched, plus `lingerSeconds`.
+   Its replay is in the guide's replays once the round ends.
+5. `node tools/reloaded/check-demo.mjs <recordings>/<id>.srdm.gz` reads a recording back as
+   the game would: its header, its records, and every snapshot against its base.
+   `npm test` runs the relay's tests, Reloaded's among them.
+
+A demo also plays in the game outside the browser: copy it into `reloaded/assets/demos/`,
+then `cd reloaded/assets && odin run ../apps/client -- demos/<id>.srdm`.

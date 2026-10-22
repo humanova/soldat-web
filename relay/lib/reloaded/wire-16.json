@@ -359,7 +359,14 @@
     {"name":"captures[2]","kind":"signed","bits":16,"max":0},
     {"name":"captures[3]","kind":"signed","bits":16,"max":0},
     {"name":"captures[4]","kind":"signed","bits":16,"max":0},
-    {"name":"captures[5]","kind":"signed","bits":16,"max":0}]},
+    {"name":"captures[5]","kind":"signed","bits":16,"max":0}],
+  "tick_head": [
+    {"name":"view","kind":"unsigned","bits":32,"max":0},
+    {"name":"command.sequence","kind":"unsigned","bits":32,"max":0},
+    {"name":"command.buttons","kind":"unsigned","bits":16,"max":0},
+    {"name":"command.aim","kind":"vec2","bits":0,"max":0},
+    {"name":"cursor","kind":"vec2","bits":0,"max":0},
+    {"name":"present","kind":"bool","bits":0,"max":0}]},
 "words": [
   {"name":"Shot","fields":[
     {"name":"owner","kind":"unsigned","bits":8,"max":0},

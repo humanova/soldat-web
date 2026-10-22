@@ -52,7 +52,7 @@ import { ReloadedHub } from './lib/reloaded/hub.mjs';
 import { makeReloadedFiles } from './lib/reloaded/files.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
 import { makeChat } from './lib/chat.mjs';
-import { makeRecordings, DEMO_ID } from './lib/recorder.mjs';
+import { makeRecordings, DEMO_ID, demoExt } from './lib/recorder.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = makeArg(process.argv.slice(2));
@@ -359,16 +359,17 @@ function listDemos(url, res) {
   res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));
 }
 
-// /demos/<id>.sdm: the demo, gzipped on the way when the browser takes it. A demo never
+// /demos/<id>.sdm (a Soldat Reloaded server's: .srdm): the demo, gzipped on the way when the browser takes it. A demo never
 // changes once its match is over (a recount of its score rewrites its .json, not it), so
 // browsers and a cache in front (Cloudflare) keep it for good; a missing one is not kept
-function serveDemo(req, res, id) {
-  const f = recordings && DEMO_ID.test(id) ? recordings.file(id) : null;
+function serveDemo(req, res, id, ext) {
+  let f = recordings && DEMO_ID.test(id) ? recordings.file(id) : null;
+  if (f && demoExt(f.meta) !== ext) f = null;
   if (!f) { res.writeHead(404, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end('not found'); return; }
   const etag = `"${f.meta.bytes.toString(16)}-${f.meta.end.toString(16)}"`;
   const headers = {
     'Content-Type': 'application/octet-stream',
-    'Content-Disposition': `attachment; filename="${id}.sdm"`,
+    'Content-Disposition': `attachment; filename="${id}${ext}"`,
     'Cache-Control': 'public, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
     ETag: etag,
@@ -442,8 +443,9 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/demos') { listDemos(url, res); return; }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
-  if (url.pathname.startsWith('/demos/') && url.pathname.endsWith('.sdm')) {
-    serveDemo(req, res, url.pathname.slice(7, -4));
+  const demo = /^\/demos\/([^/]+)(\.sdm|\.srdm)$/.exec(url.pathname);
+  if (demo) {
+    serveDemo(req, res, demo[1], demo[2]);
     return;
   }
   // a recorded match: /replay?id=<demo>
@@ -454,6 +456,16 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/demo') { serveDemoPage(req, res); return; }
   // one address for the page (search engines would list both)
   if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
+  // a map the hubs fetched from a Reloaded server, by its SHA-256: a replay's, for the game
+  const mapFile = reloadedFiles && /^\/reloaded\/maps\/([0-9a-f]{64})\.pms$/.exec(url.pathname);
+  if (mapFile) {
+    const bytes = reloadedFiles.get(mapFile[1]);
+    if (!bytes) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': bytes.length,
+      'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+    res.end(req.method === 'HEAD' ? undefined : bytes);
+    return;
+  }
   // the game a Reloaded server is watched in (reloaded/web), shown in the page
   if (RELOADED_WEB && (url.pathname === '/reloaded' || url.pathname.startsWith('/reloaded/'))) {
     let file;

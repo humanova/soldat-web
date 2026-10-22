@@ -17,11 +17,16 @@
 // whole one: the hub has the server send one (client.mjs, wantWhole) while a viewer has
 // heard nothing of the stream, at most every KEY_AGAIN_MS; with a delay, every
 // KEY_DELAYED_MS, since a whole one asked for now comes to viewers only a delay later.
+//
+// With `record`, each round the viewers see is written into a demo of Reloaded's own
+// (record.mjs), with who played and the score: what the hub read of the snapshots, once a
+// second, through the delay as the stream goes.
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { Hub } from '../hub.mjs';
 import { E, MSG, TICK_RATE, SIZES, Bits, build, parse } from './wire.mjs';
 import { ReloadedClient } from './client.mjs';
+import { ReloadedRecording } from './record.mjs';
 import { queryServer } from './query.mjs';
 
 const JOIN_TIMEOUT_MS = 20_000;
@@ -34,6 +39,7 @@ const KEY_WAIT_MS = 60_000;      // a viewer still without the stream after this
 const BEHIND_TICKS = 2 * TICK_RATE; // a viewer this far behind the stream has lost it
 const FETCH_WAIT_MS = 60_000;    // a viewer's download of a file the hub is still fetching waits this long
 const HELLO_AGAIN_MS = 1000;
+const SAMPLE_MS = 1000;          // who plays and the score, for the recording, this often
 
 const hex = (b) => Buffer.from(b).toString('hex');
 
@@ -41,7 +47,6 @@ export class ReloadedHub extends Hub {
   constructor(cfg, opts) {
     super(cfg, opts);
     this.files = opts.reloadedFiles;
-    this.recordings = null;      // Reloaded demos: not yet
     this.client = null;
     this.fetching = new Map();   // hash -> the hub's fetch of it from the server
     this.queried = { at: 0, info: null, pending: null };
@@ -240,7 +245,8 @@ export class ReloadedHub extends Hub {
   flushDue(now) {
     while (this.queue.length && this.queue[0].at <= now) {
       const item = this.queue.shift();
-      this.deliver(item, item.at - this.delayMs);
+      if (item.sample) this.sampled(item.sample);
+      else this.deliver(item, item.at - this.delayMs);
     }
   }
 
@@ -269,6 +275,14 @@ export class ReloadedHub extends Hub {
         break;
       }
     }
+    if (this.recordings) {
+      if (kind === 'Map') this.recordRound(info, at);
+      else if (this.recording) this.recording.add(data, kind, info, at);
+      if (this.recording && this.recording.full(at)) {
+        this.recording.finish(at);
+        this.recording = null;
+      }
+    }
     for (const v of this.viewers) {
       if (!v.welcomed) continue;
       if (v.buffered >= 1 << 20) { this.stats.dropped++; continue; }  // too slow: dropped like UDP
@@ -276,6 +290,41 @@ export class ReloadedHub extends Hub {
       this.stats.out++;
       this.stats.outBytes += data.length;
     }
+  }
+
+  // ------------------------------------------------------------ recording
+
+  // A round begins on the viewers' stream: its demo, from the server's weapons and the Map.
+  recordRound(map, at) {
+    if (this.recording) this.recording.finish(at);
+    const s = this.seen;
+    this.recording = this.recordings.start({
+      server: this.cfg.id, serverName: this.cfg.name, group: this.cfg.group || null, map: map.map,
+      mapHash: hex(map.hash), mode: (this.queried.info && this.queried.info.mode) || 'CTF',
+      delay: this.delayMs / 1000, round: map.round, slot: this.slot, name: this.playerName,
+    }, at, s.weapons ? [s.weapons] : [], ReloadedRecording);
+    this.recording.add(build('Map', map), 'Map', map, at);
+  }
+
+  // who played and the score, as the hub read them a delay ago
+  sampled(sample) {
+    if (this.recording && this.recording.info.round === sample.round) this.recording.roster(sample.playing, sample.scores);
+  }
+
+  sample() {
+    const c = this.client;
+    if (!this.recordings || !c || !c.round) return;
+    const sample = { round: c.round, playing: this.playing(), scores: c.scores() };
+    if (this.delayMs > 0) this.queue.push({ at: Date.now() + this.delayMs, sample });
+    else this.sampled(sample);
+  }
+
+  // what was still held back by the delay as the hub leaves: the recording's
+  record(item, at) {
+    if (!this.recording) return;
+    if (item.sample) this.sampled(item.sample);
+    else if (item.kind === 'Map') this.recording.finish(at);
+    else this.recording.add(item.data, item.kind, item.info, at);
   }
 
   // A viewer's join answered, as the server answers a player's: the state of the round as
@@ -346,6 +395,10 @@ export class ReloadedHub extends Hub {
   // lost) needs a whole snapshot; with a delay they are asked for all along.
   keysTick() {
     if (Date.now() - this.lastHeard > SILENCE_MS) { this.fail('the server stopped sending'); return; }
+    if (Date.now() - this.sampledAt >= SAMPLE_MS) {
+      this.sampledAt = Date.now();
+      this.sample();
+    }
     const c = this.client;
     if (!c || this.state !== 'live' || !this.viewers.size) return;
     const now = Date.now();
@@ -381,6 +434,7 @@ export class ReloadedHub extends Hub {
     this.seen = { round: 0, tick: 0, weapons: null, map: null, art: [], texts: new Map(), mapChange: null, vote: null };
     this.slot = 0;
     this.keyAt = 0;
+    this.sampledAt = 0;
   }
 
   // ------------------------------------------------------------ for the page

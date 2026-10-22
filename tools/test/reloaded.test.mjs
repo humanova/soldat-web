@@ -1,18 +1,22 @@
 // Soldat Reloaded on Soldat TV (relay/lib/reloaded): its wire read and written back, the
-// hub's spectator reading only the snapshots it acknowledges, and the hub answering a
-// viewer's game as the server would: its join, its map download, a whole snapshot for it.
+// hub's spectator reading only the snapshots it acknowledges, the hub answering a
+// viewer's game as the server would (its join, its map download, a whole snapshot for
+// it), and a round recorded as the game's own demo.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import {
-  Bits, fields, words, build, parse, TABLES, E, MSG, MAX_PLAYERS, MAX_THINGS, SIZES, blankSoldier, buildClientState,
+  Bits, fields, words, build, parse, TABLES, E, MSG, MAX_PLAYERS, MAX_THINGS, SIZES, VERSION, blankSoldier, buildClientState, snapshotHeader,
 } from '../../relay/lib/reloaded/wire.mjs';
 import { ReloadedClient } from '../../relay/lib/reloaded/client.mjs';
 import { ReloadedHub } from '../../relay/lib/reloaded/hub.mjs';
 import { makeReloadedFiles, sha256 } from '../../relay/lib/reloaded/files.mjs';
+import { ReloadedRecording } from '../../relay/lib/reloaded/record.mjs';
+import { makeRecordings } from '../../relay/lib/recorder.mjs';
 
 test('a struct goes whole and as a delta, and reads back the same', () => {
   const a = blankSoldier();
@@ -180,6 +184,82 @@ test('a viewer\'s game is answered as the server answers a joining player', asyn
   } finally {
     hub.clearTimers();
     hub.state = 'idle';
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a round is recorded as the game\'s own demo', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-rec-'));
+  try {
+    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const t0 = Date.UTC(2026, 9, 22, 12);
+    const weapons = build('Weapons', { weapons: blank(TABLES.weapons) });
+    const map = { round: 3, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
+      hash: Buffer.alloc(32, 0xab), art: 0, timeLeft: 3600 };
+    const rec = store.start({ server: 'sr', serverName: 'SR', group: 'Gather', map: 'ctf_Test', mapHash: 'ab'.repeat(32),
+      mode: 'CTF', delay: 0, round: 3, slot: 6, name: 'TV' }, t0, [weapons], ReloadedRecording);
+    rec.add(build('Map', map), 'Map', map, t0);
+    // two seconds of the stream, a snapshot a tick, each against the one before
+    for (let t = 1; t <= 120; t++) rec.add(snapshot(3, t, t - 1), 'Snapshot', { round: 3, tick: t, base: t - 1 }, t0 + (t * 1000) / 60);
+    rec.roster([{ slot: 0, name: 'Ann', team: 1 }, { slot: 1, name: 'Bob', team: 2 }], [2, 1, 0, 0]);
+    rec.roster([{ slot: 0, name: 'Ann', team: 1 }], [0, 0, 0, 0]);   // the round's end: the score kept
+    await rec.finish(t0 + 2000);
+
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, rec.id + '.json'), 'utf8'));
+    assert.equal(meta.game, 'reloaded');
+    assert.equal(meta.mapHash, 'ab'.repeat(32));
+    assert.deepEqual(meta.players, [{ name: 'Ann', team: 1 }, { name: 'Bob', team: 2 }]);
+    assert.deepEqual(meta.scores, [2, 1, 0, 0]);
+    assert.equal(meta.seconds, 2);
+    assert.ok(store.file(rec.id).path.endsWith('.srdm.gz'));
+
+    // the header, as apps/client/demo/demo.odin reads it
+    const d = zlib.gunzipSync(fs.readFileSync(path.join(dir, rec.id + '.srdm.gz')));
+    assert.equal(d.toString('latin1', 0, 4), 'SRDM');
+    assert.equal(d.readUInt16LE(4), 2);
+    assert.equal(d.readUInt16LE(6), VERSION);
+    assert.equal(d.readUInt32LE(8), t0 / 1000);
+    assert.equal(d.readUInt32LE(12), 120);
+    assert.equal(d[16], 6);
+    assert.equal(d.toString('utf8', 17, 41).replace(/\0+$/, ''), 'TV');
+    assert.equal(d.toString('utf8', 41, 105).replace(/\0+$/, ''), 'ctf_Test');
+
+    // the records: the weapons and the Map first, a frame before each tick that follows
+    // packets, a tick each 60th of a second showing a few ticks behind the newest snapshot
+    const kinds = [], views = [];
+    let o = 105, snapshots = 0, newest = 0;
+    while (o < d.length) {
+      const kind = d[o], size = d.readUInt16LE(o + 1), body = d.subarray(o + 3, o + 3 + size);
+      o += 3 + size;
+      kinds.push(kind);
+      if (kind === 1 && kindOf(body) === 'Snapshot') {
+        const b = Bits.reader(body);
+        b.kind();
+        snapshots++;
+        newest = snapshotHeader(b).tick;
+      }
+      if (kind === 3) {
+        const r = Bits.reader(body);
+        const t = fields(r, TABLES.tick_head, {});
+        assert.ok(r.done && !t.present);
+        assert.ok(t.view <= Math.max(0, newest - 2), `view ${t.view} of ${newest}`);
+        views.push(t.view);
+        assert.notEqual(kinds.at(-2), 1, 'a tick after packets, with no frame between');
+      }
+    }
+    assert.equal(o, d.length);
+    const packets = [];
+    for (let i = 0, at = 105; i < 2; i++) {
+      const size = d.readUInt16LE(at + 1);
+      packets.push(kindOf(d.subarray(at + 3, at + 3 + size)));
+      at += 3 + size;
+    }
+    assert.deepEqual(packets, ['Weapons', 'Map']);
+    assert.equal(snapshots, 120);
+    assert.equal(views.length, 120);
+    assert.equal(views.at(-1), 117);
+    for (let i = 1; i < views.length; i++) if (views[i - 1]) assert.ok(views[i] - views[i - 1] <= 2);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

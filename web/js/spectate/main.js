@@ -204,9 +204,9 @@ function watch(ch) {
   document.querySelector('.tally').classList.toggle('replay', !!ch.replay);
   if (ch.replay) {
     if (ch.local) history.replaceState(null, '', './demo' + (debug ? '?debug' : ''));
-    else history.replaceState(null, '', './replay?id=' + encodeURIComponent(replay.meta.id) + (debug ? '&debug' : ''));
+    else history.replaceState(null, '', './replay?id=' + encodeURIComponent((ch.meta || replay.meta).id) + (debug ? '&debug' : ''));
     showReplayTitle(ch);
-    showBar();
+    if (ch.game !== 'reloaded') showBar();  // the Reloaded game has its own
   } else {
     history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
     document.title = `${ch.name} · Soldat TV`;
@@ -238,9 +238,10 @@ function watch(ch) {
 }
 
 function showReplayTitle(ch) {
-  const name = replay.meta.serverName || ch.name;
-  $('ch-name').textContent = `${name} · ${replay.meta.map} · ${when(replay.meta.start)}`;
-  document.title = `Replay: ${replay.meta.map} on ${name} · Soldat TV`;
+  const meta = ch.meta || replay.meta;
+  const name = meta.serverName || ch.name;
+  $('ch-name').textContent = `${name} · ${meta.map} · ${when(meta.start)}`;
+  document.title = `Replay: ${meta.map} on ${name} · Soldat TV`;
 }
 
 // what happened in the match until now: the flag news, the vote, the game's chat
@@ -1547,14 +1548,22 @@ function when(ms) {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
-const demoUrl = (id) => httpBase() + '/demos/' + encodeURIComponent(id) + '.sdm';
+// a recorded match's file: a 1.7.1 demo, or a Soldat Reloaded server's own (.srdm)
+const demoExt = (meta) => (meta && meta.game === 'reloaded' ? '.srdm' : '.sdm');
+const demoUrl = (id, meta) => httpBase() + '/demos/' + encodeURIComponent(id) + demoExt(meta);
 
-// a recorded match: { meta (the hub's listing), demo (parseDemo's) }; progress(got, of) as it loads
-async function loadRecording(id, progress = () => {}) {
+// a recorded match's listing
+async function recordingMeta(id) {
   const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id), { cache: 'no-store' });
   const meta = res.ok ? (await res.json()).demos[0] : null;
   if (!meta) throw new Error('This recording is not available (any more).');
-  const file = await fetch(demoUrl(id));
+  return meta;
+}
+
+// a recorded match: { meta (the hub's listing), demo (parseDemo's) }; progress(got, of) as it loads
+async function loadRecording(id, progress = () => {}, meta = null) {
+  meta = meta || await recordingMeta(id);
+  const file = await fetch(demoUrl(id, meta));
   if (!file.ok) throw new Error(`The recording did not load (HTTP ${file.status}).`);
   const reader = file.body.getReader();
   const chunks = [];
@@ -1592,7 +1601,14 @@ async function openReplay(id) {
   $('loading').hidden = false;
   try {
     await started;
-    const { meta, demo } = await loadRecording(id, loadingProgress('the recording'));
+    const listed = await recordingMeta(id);
+    if (listed.game === 'reloaded') {
+      replay = null;
+      $('loading').hidden = true;
+      watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
+      return;
+    }
+    const { meta, demo } = await loadRecording(id, loadingProgress('the recording'), listed);
     playDemo(demo, meta, replayChannel(meta));
     // a link to a clip: the highlights from it on, the camera on whoever made each
     if (replayClip && replay.highlights.length) {
@@ -1995,16 +2011,25 @@ bar.line.addEventListener('keydown', (e) => {
 
 // A Soldat Reloaded server is watched in Reloaded's own game (its web build: the reloaded/
 // submodule, served at /reloaded/), in a frame over the picture, with the hub's /watch line
-// as its line to the server (relay/lib/reloaded/hub.mjs). The guide, the channel's bar, the
+// as its line to the server (relay/lib/reloaded/hub.mjs); its recorded matches are played
+// there too, from their demos. The guide, the channel's bar, the
 // delay and Soldat TV's chat are the page's as on any channel; the HUD, the scoreboard, the
 // game's chat and following the players are the game's own.
 let reloadedFrame = null;
 
 function watchReloaded(ch) {
   closeReloaded();
-  const q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id });
-  const password = passwords.get(ch.id);
-  if (password) q.set('password', password);
+  let q;
+  if (ch.replay) {
+    // a recorded match: its demo, on its map (the hub's copy, for one the game hasn't got)
+    const m = ch.meta;
+    q = new URLSearchParams({ demo: demoUrl(m.id, m) });
+    if (m.mapHash) q.set('map', m.map), q.set('mapUrl', httpBase() + '/reloaded/maps/' + m.mapHash + '.pms');
+  } else {
+    q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id });
+    const password = passwords.get(ch.id);
+    if (password) q.set('password', password);
+  }
   const f = el('iframe', 'reloaded');
   f.title = 'The match';
   f.allow = 'autoplay; fullscreen';
@@ -2147,6 +2172,7 @@ function renderDemos() {
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
     title.append(el('span', 'ch-label', when(d.start)), el('span', 'chip', d.serverName));
+    if (d.game === 'reloaded') title.append(el('span', 'chip', 'Reloaded'));
     main.append(title);
     const sub = el('span', 'ch-sub', d.map);
     const score = scoreOf(d);
@@ -2163,10 +2189,10 @@ function renderDemos() {
     b.append(main, map, sc, el('span', 'ch-players num', `${Math.max(1, Math.round(d.seconds / 60))} min`));
     b.addEventListener('click', () => openReplay(d.id));
     const dl = el('a', 'peek icon-btn dl');
-    dl.href = demoUrl(d.id);
-    dl.setAttribute('download', d.id + '.sdm');
+    dl.href = demoUrl(d.id, d);
+    dl.setAttribute('download', d.id + demoExt(d));
     dl.setAttribute('aria-label', 'Download the demo');
-    dl.title = `Download the demo (.sdm, ${(d.bytes / 1048576).toFixed(1)} MB)`;
+    dl.title = `Download the demo (${demoExt(d)}, ${(d.bytes / 1048576).toFixed(1)} MB)`;
     dl.innerHTML = '<svg><use href="#i-download"/></svg>';
     li.append(b, dl);
     appendNames(li, { id: 'demo:' + d.id, name: d.map, names: d.players });

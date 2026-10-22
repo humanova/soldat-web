@@ -203,6 +203,12 @@ export class ReloadedClient {
     return out;
   }
 
+  // the teams' captures as the newest snapshot read has them: alpha, bravo, charlie, delta
+  scores() {
+    const r = this.latest && this.latest.round;
+    return r ? [1, 2, 3, 4].map((t) => r[`captures[${t}]`] || 0) : null;
+  }
+
   // ------------------------------------------------------------ to the server
 
   // our state, which acknowledges what we read: our own soldier as the server has it

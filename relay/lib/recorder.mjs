@@ -3,6 +3,9 @@
 // (`recordings.dir`), listed by /api/demos and downloaded from /demos/<id>.sdm; the page
 // replays them (web/js/spectate/replay.js).
 //
+// A Soldat Reloaded server's are Reloaded's own demos (relay/lib/reloaded/record.mjs,
+// <id>.srdm.gz), their .json marked `game: "reloaded"`, listed and kept with the rest.
+//
 // A demo has Soldat's demo layout (Demo.pas): a 180-byte header ('SOLDEM', version 0, the
 // map, the start as a Unix time, the number of ticks), then records: a Word size and as many
 // bytes; size 1 is the next tick (60 a second). The records are the server's messages as the
@@ -30,6 +33,10 @@ export const DEMO_ID = /^[a-z0-9_-]{1,32}-\d{8}-\d{6}(-\d)?$/i;
 
 const stamp = (t) => new Date(t).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 
+// the demo's file, by its game: a 1.7.1 .sdm or a Soldat Reloaded .srdm, gzipped
+export const demoExt = (meta) => (meta.game === 'reloaded' ? '.srdm' : '.sdm');
+const demoFile = (meta) => meta.id + demoExt(meta) + '.gz';
+
 export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, minSeconds = 60, minPlayers = 2, log }) {
   fs.mkdirSync(dir, { recursive: true });
   const demos = new Map();     // id -> meta, the finished ones
@@ -43,7 +50,7 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
     if (!f.endsWith('.json')) continue;
     try {
       const meta = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (DEMO_ID.test(meta.id) && fs.existsSync(path.join(dir, meta.id + '.sdm.gz'))) {
+      if (DEMO_ID.test(meta.id) && fs.existsSync(path.join(dir, demoFile(meta)))) {
         demos.set(meta.id, meta);
         taken.add(meta.id);
       } else {
@@ -62,7 +69,7 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
       demos.delete(m.id);
       taken.delete(m.id);
       total -= m.bytes;
-      await fsp.rm(path.join(dir, m.id + '.sdm.gz'), { force: true });
+      await fsp.rm(path.join(dir, demoFile(m)), { force: true });
       await fsp.rm(path.join(dir, m.id + '.json'), { force: true });
       log(`recording ${m.id} removed`);
     }
@@ -81,9 +88,10 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
   const published = (m) => Date.now() >= m.end + (m.delay || 0) * 1000;
 
   return {
-    // info: { server, serverName, group, map, mode, delay, newMap }; opening: the messages of tick 0
-    start(info, at, opening) {
-      return new Recording({ dir, log, minSeconds, minPlayers, newId, pending, taken,
+    // info: { server, serverName, group, map, mode, delay, newMap }; opening: the messages of tick 0;
+    // Kind: the recording's (a Soldat Reloaded server's: relay/lib/reloaded/record.mjs)
+    start(info, at, opening, Kind = Recording) {
+      return new Kind({ dir, log, minSeconds, minPlayers, newId, pending, taken,
         done: (meta) => { demos.set(meta.id, meta); return prune(); } }, info, at, opening);
     },
     list(filter = {}) {
@@ -95,7 +103,7 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
     // the gzipped file of a published demo
     file(id) {
       const m = demos.get(id);
-      return m && published(m) ? { path: path.join(dir, id + '.sdm.gz'), meta: m } : null;
+      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m } : null;
     },
     // resolves when the demos being finished are on disk
     settle() {

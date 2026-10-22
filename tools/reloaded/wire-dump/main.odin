@@ -14,8 +14,18 @@ import "core:strings"
 import "sr:core/game"
 import net "sr:core/network"
 import res "sr:core/resources"
+import "sr:core/utils"
 
 b: strings.Builder
+
+// A demo's tick record (apps/client/demo/play.odin Tick_Head, which is the client's and
+// can't be imported here without it): the same struct, so fields_of makes the same table.
+Tick_Head :: struct {
+	view:    u32,
+	command: game.Command,
+	cursor:  utils.Vec2,
+	present: bool,
+}
 
 field_kind :: proc(k: net.Field_Kind) -> string {
 	switch k {
@@ -87,6 +97,7 @@ main :: proc() {
 		{"look", net.LOOK_FIELDS},
 		{"weapons", net.WEAPONS_FIELDS},
 		{"round", net.ROUND_FIELDS},
+		{"tick_head", net.fields_of(Tick_Head, "")},
 	}
 	for t, i in tables {
 		if i > 0 do strings.write_string(&b, ",")
