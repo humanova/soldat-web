@@ -244,6 +244,9 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 #watch.idle .topbar { transform: translateY(-8px); }
 #watch.idle .dock:not(.placed) { transform: translate(-50%, 8px); }
 #watch.idle #canvas { cursor: none; }
+/* a Soldat Reloaded server: its own game in a frame, with its own HUD (js/spectate/main.js: Soldat Reloaded) */
+#watch iframe.reloaded { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+#watch.reloaded :is(#canvas, #scorebug, #banners, #vote, #bigmsg, #card, #clipcap, #dock, #chat, #roster, #unmute, #chat-btn, #roster-btn, .visuals, #replaybar) { display: none; }
 
 /* the clean view: the match alone, for recording it; only a notice (a lost connection) stays */
 #watch.clean :is(.ui, .scorebug, .banners, .vote, .bigmsg, .card, .clipcap, .chat, .unmute) { visibility: hidden; }

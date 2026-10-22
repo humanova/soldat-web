@@ -11,12 +11,17 @@
 //   node relay/spectator.mjs [--config relay/spectator.json] [--port 8090]
 //
 // Config (JSON, see relay/spectator.example.json):
-//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword?, record? }]
+//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword?, record?, game? }]
 //                   the only servers it joins. group: the guide's tab the server is listed
 //                   under (none: the main list); askPassword: viewers give the server's
 //                   password (a link has it, /<id>?password=..., or the page asks), the hub
 //                   keeps the last one that worked and then anyone can watch; record: demos
-//                   of its matches while Soldat TV watches it
+//                   of its matches while Soldat TV watches it; game: "reloaded" for a Soldat
+//                   Reloaded server (relay/lib/reloaded/hub.mjs; its port is the game port)
+//   reloaded        { dir (default data/reloaded next to the config): the map files the hubs
+//                   fetched from Reloaded servers, for viewers' games to download; web (default
+//                   reloaded/web/dist, the web build of the reloaded/ submodule): the game
+//                   viewers watch a Reloaded server in, served at /reloaded/ }
 //   recordings      { dir (default data/recordings next to the config), keepDays (14), maxGB (5),
 //                   minSeconds (60), minPlayers (2) }: shorter demos, or with fewer players, are
 //                   not kept; the oldest go after keepDays or while all take more than maxGB
@@ -43,6 +48,8 @@ import { serveStatic } from './lib/static.mjs';
 import { acceptWebSocket, wsFrame } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
+import { ReloadedHub } from './lib/reloaded/hub.mjs';
+import { makeReloadedFiles } from './lib/reloaded/files.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
 import { makeChat } from './lib/chat.mjs';
 import { makeRecordings, DEMO_ID } from './lib/recorder.mjs';
@@ -75,16 +82,25 @@ const recordings = (config.servers || []).some((s) => s.record) ? makeRecordings
   log,
 }) : null;
 
+const GAMES = { '1.7.1': Hub, reloaded: ReloadedHub };
+const reloaded = config.reloaded || {};
+const reloadedFiles = (config.servers || []).some((s) => s.game === 'reloaded') ? makeReloadedFiles({
+  dir: path.resolve(path.dirname(CONFIG), reloaded.dir || 'data/reloaded'),
+  log,
+}) : null;
+const RELOADED_WEB = reloadedFiles
+  ? (reloaded.web ? path.resolve(path.dirname(CONFIG), reloaded.web) : path.join(here, '..', 'reloaded', 'web', 'dist')) : null;
+
 const hubs = new Map();
 for (const s of config.servers || []) {
   if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536) ||
-      (s.group != null && !/^[\w .'-]{1,24}$/.test(s.group))) {
+      (s.group != null && !/^[\w .'-]{1,24}$/.test(s.group)) || (s.game != null && !GAMES[s.game])) {
     throw new Error('bad server entry in config: ' + JSON.stringify(s));
   }
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
-  hubs.set(s.id, new Hub({ ...s, name: s.name || s.id }, {
+  hubs.set(s.id, new GAMES[s.game || '1.7.1']({ ...s, name: s.name || s.id }, {
     playerName: PLAYER_NAME, delaySeconds: config.delaySeconds ?? 0, log,
-    lingerMs: (config.lingerSeconds ?? 20) * 1000, recordings,
+    lingerMs: (config.lingerSeconds ?? 20) * 1000, recordings, reloadedFiles,
   }));
 }
 
@@ -148,7 +164,7 @@ function handleWatch(req, socket, head) {
       if (ok === 'wait') { refuse('Someone just tried a wrong password. Try again in a few seconds.'); return; }
     }
     if (m.type === 'watch') cleanup = watch(ws, ip, hub, password);
-    else if (m.type === 'files') cleanup = files(ws, ip, hub, m.files);
+    else if (m.type === 'files' && !hub.cfg.game) cleanup = files(ws, ip, hub, m.files);
     else ws.close(1003);
   };
 }
@@ -198,7 +214,8 @@ function watch(ws, ip, hub, password) {
   return () => hub.removeViewer(viewer);
 }
 
-// map downloads from the watched server's file server (game port + 10)
+// map downloads from the watched server's file server (game port + 10); a Reloaded game
+// downloads its maps from the hub over its own line (relay/lib/reloaded/hub.mjs)
 const filesInFlight = new Map();
 
 function files(ws, ip, hub, list) {
@@ -276,6 +293,14 @@ setInterval(() => {
   }
 }, STATS_MS).unref();
 
+// a Reloaded server's query answer as a lobby entry
+function reloadedEntry(q) {
+  return q && {
+    Name: q.hostname, GameStyle: q.mode, CurrentMap: q.map, NumPlayers: q.players + q.bots, NumBots: q.bots,
+    MaxPlayers: q.maxPlayers, Country: null,
+  };
+}
+
 // The watchable servers, busiest first: what the hub knows when it watches, else what
 // the lobby reports (servers outside the lobby show only their name until watched).
 // fresh: someone pressed Refresh (the lobby is still asked at most every 5 seconds).
@@ -288,7 +313,8 @@ async function listServers(fresh) {
   }
   const list = await Promise.all([...hubs.values()].map(async (h) => {
     const info = h.info();
-    const e = fromLobby.get(h.cfg.id);
+    // a Reloaded server is in no 1.7.1 lobby: it says itself what it plays
+    const e = h.query ? reloadedEntry(await h.query()) : fromLobby.get(h.cfg.id);
     const bots = e ? e.NumBots || 0 : 0;
     // who plays: the hub's own roster while it watches (with teams), else the lobby's names
     const names = info.names ?? (e && e.NumPlayers > 0
@@ -296,6 +322,7 @@ async function listServers(fresh) {
       : null);
     return {
       ...info,
+      game: h.cfg.game || '1.7.1',
       group: h.cfg.group || null,
       record: !!h.cfg.record,
       locked: h.locked(),
@@ -427,6 +454,14 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/demo') { serveDemoPage(req, res); return; }
   // one address for the page (search engines would list both)
   if (url.pathname === '/spectate.html') { res.writeHead(301, { Location: './' + url.search }).end(); return; }
+  // the game a Reloaded server is watched in (reloaded/web), shown in the page
+  if (RELOADED_WEB && (url.pathname === '/reloaded' || url.pathname.startsWith('/reloaded/'))) {
+    let file;
+    try { file = decodeURIComponent(url.pathname.slice('/reloaded'.length)); } catch (_) { res.writeHead(400).end(); return; }
+    if (file === '' || file.endsWith('/')) file += (file ? '' : '/') + 'index.html';
+    serveStatic(RELOADED_WEB, req, res, { file });
+    return;
+  }
   // a server's own address (/<id>): the page, tuned in to it
   const id = url.pathname.slice(1);
   if (hubs.has(id)) { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
@@ -444,6 +479,9 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, () => {
   log(`Soldat Web spectator on http://localhost:${PORT}/ (serving ${ROOT})`);
   log(`servers: ${[...hubs.values()].map(h => `${h.cfg.id} (${h.cfg.host}:${h.cfg.port})`).join(', ') || 'none'}`);
+  if (RELOADED_WEB && !fs.existsSync(path.join(RELOADED_WEB, 'soldat-reloaded.wasm'))) {
+    log(`no Reloaded web build in ${RELOADED_WEB}: Reloaded servers can't be watched (docs/RELOADED.md)`);
+  }
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

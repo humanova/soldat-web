@@ -44,6 +44,8 @@ spectator, and streams that one connection to every viewer.
   its menu, from Soldat 1.2 (2004) to 1.7.1.
 - A **broadcast delay** so players can't use the stream to spy on each other, and phones work
   held sideways.
+- **Soldat Reloaded servers** too, live in Reloaded's own game built for the browser
+  ([how](docs/RELOADED.md)).
 
 ![A CTF round on ctf_Lanubya](docs/screenshots/lanubya.jpg)
 
@@ -109,6 +111,8 @@ anything missing from the server, like a custom map.
   `legacy-formats.js`, also `tools/migrate-demo.mjs`). `web/intros/` has the old versions'
   intro demos (listed in `intros.js`).
 - `relay/`: the game relay (`play.mjs`) and the Soldat TV hub (`spectator.mjs`).
+  `relay/lib/reloaded/` lets the hub watch Soldat Reloaded servers.
+- `reloaded/`: the web port of Soldat Reloaded (a submodule), which viewers watch those in.
 
 ## Credits and license
 

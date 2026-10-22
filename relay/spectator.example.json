@@ -9,6 +9,8 @@
   "recordings": { "dir": "data/recordings", "keepDays": 14, "maxGB": 5 },
   "servers": [
     { "id": "local", "name": "Local test server", "host": "127.0.0.1", "port": 23073 },
-    { "id": "gather-1", "name": "Gather #1", "host": "127.0.0.1", "port": 23074, "group": "Gather", "askPassword": true, "delaySeconds": 30, "record": true }
-  ]
+    { "id": "gather-1", "name": "Gather #1", "host": "127.0.0.1", "port": 23074, "group": "Gather", "askPassword": true, "delaySeconds": 30, "record": true },
+    { "id": "reloaded", "name": "Soldat Reloaded", "host": "127.0.0.1", "port": 24073, "game": "reloaded" }
+  ],
+  "reloaded": { "dir": "data/reloaded" }
 }

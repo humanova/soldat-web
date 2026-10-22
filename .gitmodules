@@ -1,0 +1,4 @@
+[submodule "reloaded"]
+	path = reloaded
+	url = https://github.com/humanova/soldat-reloaded-web.git
+	branch = main

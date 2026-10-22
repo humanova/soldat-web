@@ -211,6 +211,12 @@ function watch(ch) {
     history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
     document.title = `${ch.name} · Soldat TV`;
   }
+  if (ch.game === 'reloaded') {
+    clearInterval(pollTimer);
+    watchReloaded(ch);
+    wake();
+    return;
+  }
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
   // a replay may have held the game's clock
   try { game.call('soldat_spectator_speed', 1); } catch (_) {}
@@ -250,6 +256,7 @@ function clearNews() {
 }
 
 function showGuide() {
+  closeReloaded();
   watching = null;
   replay = null;
   reelSet = null;
@@ -557,7 +564,7 @@ $('zoom-out').addEventListener('click', () => setZoom(zoom + 0.25));
 $('roster-btn').addEventListener('click', () => toggleRoster());
 $('chat-btn').addEventListener('click', () => toggleChat());
 $('tvchat-btn').addEventListener('click', () => toggleTvChat());
-$('back').addEventListener('click', () => game.leave());
+$('back').addEventListener('click', () => { if (reloadedFrame) showGuide(); else game.leave(); });
 $('fullscreen').addEventListener('click', toggleFullscreen);
 
 // ---------- sound: the game's volume (snd_volume, 0-100); muting keeps the chosen volume
@@ -566,6 +573,7 @@ const volume = () => Math.min(100, Math.max(0, Math.round(+prefs.volume))) || 0;
 
 function applyVolume() {
   setCvar('snd_volume', String(prefs.muted ? 0 : volume()));
+  tellReloaded({ volume: prefs.muted ? 0 : volume() / 100 });
 }
 
 function showSound() {
@@ -634,6 +642,13 @@ if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
 
 window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (reloadedFrame) {
+    if (e.code === 'Enter' && !(e.target.closest && e.target.closest('button, a, label, input, textarea'))) {
+      e.preventDefault();
+      sayKey();
+    }
+    return;
+  }
   // Enter and Space on a button press it
   if ((e.code === 'Enter' || e.code === 'Space') && e.target.closest && e.target.closest('button, a, label')) return;
   // a choice in the menu takes its own arrow keys
@@ -1976,6 +1991,75 @@ bar.line.addEventListener('keydown', (e) => {
   step(e.shiftKey ? Math.sign(d) : d);
 });
 
+// ======================================================== Soldat Reloaded
+
+// A Soldat Reloaded server is watched in Reloaded's own game (its web build: the reloaded/
+// submodule, served at /reloaded/), in a frame over the picture, with the hub's /watch line
+// as its line to the server (relay/lib/reloaded/hub.mjs). The guide, the channel's bar, the
+// delay and Soldat TV's chat are the page's as on any channel; the HUD, the scoreboard, the
+// game's chat and following the players are the game's own.
+let reloadedFrame = null;
+
+function watchReloaded(ch) {
+  closeReloaded();
+  const q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id });
+  const password = passwords.get(ch.id);
+  if (password) q.set('password', password);
+  const f = el('iframe', 'reloaded');
+  f.title = 'The match';
+  f.allow = 'autoplay; fullscreen';
+  f.src = 'reloaded/?' + q;
+  f.addEventListener('load', () => {
+    applyVolume();
+    f.focus();
+  });
+  $('watch').prepend(f);
+  $('watch').classList.add('reloaded');
+  $('unmute').hidden = true;
+  reloadedFrame = f;
+}
+
+function closeReloaded() {
+  if (!reloadedFrame) return;
+  reloadedFrame.remove();  // the game goes with its page
+  reloadedFrame = null;
+  $('watch').classList.remove('reloaded');
+}
+
+function tellReloaded(m) {
+  if (reloadedFrame && reloadedFrame.contentWindow) reloadedFrame.contentWindow.postMessage({ soldatTv: m }, location.origin);
+}
+
+// what the frame says: the hub's word on the line (web/index.html in reloaded/), and the
+// viewer's activity in it, which the controls wake to
+window.addEventListener('message', (e) => {
+  const f = reloadedFrame;
+  if (!f || e.source !== f.contentWindow || e.origin !== location.origin) return;
+  const m = e.data && e.data.soldatReloaded;
+  if (!m || typeof m !== 'object') return;
+  const ch = watching;
+  if (m.type === 'ready') {
+    notice('');
+    $('ch-delay').hidden = !m.delay;
+    $('ch-delay').textContent = `${m.delay} s delay`;
+  } else if (m.type === 'status') {
+    notice(String(m.message || ''));
+  } else if (m.type === 'error') {
+    showGuide();
+    if (m.reason === 'password' && ch) {
+      passwords.delete(ch.id);
+      savePasswords();
+      askPassword(ch, String(m.message || ''));
+    } else {
+      setStatus(String(m.message || 'The match feed stopped.'), true);
+    }
+  } else if (m.type === 'closed' || m.type === 'exit') {
+    showGuide();
+  } else if (m.type === 'activity') {
+    wake();
+  }
+});
+
 // ================================================================== guide
 
 function setStatus(text, error = false) {
@@ -2382,6 +2466,7 @@ function renderGuide() {
     if (c.state === 'live') title.append(el('span', 'chip on-air', c.viewers ? `On air · ${c.viewers}` : 'On air'));
     else if (c.state === 'waiting') title.append(el('span', 'chip off-air', 'Off air'));
     if (c.locked) title.append(el('span', 'chip', 'Password'));
+    if (c.game === 'reloaded') title.append(el('span', 'chip', 'Reloaded'));
     if (c.bots) {
       const humans = Math.max(0, (c.players || 0) - c.bots);
       title.append(el('span', 'chip bots', humans ? `${c.bots} bots` : 'Bots only'));
