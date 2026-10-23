@@ -2104,7 +2104,7 @@ function watchReloaded(ch) {
   if (ch.replay) {
     // a recorded match: its demo, on its map (the hub's copy, for one the game hasn't got)
     const m = ch.meta;
-    q = new URLSearchParams({ demo: demoUrl(m.id, m), tv: '1' });
+    q = new URLSearchParams({ demo: m.localUrl || demoUrl(m.id, m), tv: '1' });
     if (m.mapHash) q.set('map', m.map), q.set('mapUrl', httpBase() + '/reloaded/maps/' + m.mapHash + '.pms');
   } else {
     q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id, tv: '1' });
@@ -2339,6 +2339,33 @@ let convertedUrl = null;  // the replay bar's download of a converted demo (a bl
 
 const sizeText = (n) => `${(n / 1048576).toFixed(1)} MB`;
 
+// a Soldat Reloaded demo (.srdm, apps/client/demo/demo.odin in reloaded/): "SRDM", then its header
+const isReloadedDemo = (b) => b.length >= 105 && String.fromCharCode(b[0], b[1], b[2], b[3]) === 'SRDM';
+let localDemoUrl = null;
+
+// One played in its game in the frame, from the viewer's computer (a blob: address; nothing
+// is sent anywhere). Its map is the game's own: a map it hasn't got can't be shown. Its plays
+// are found by the hub for its recordings, so a file has none here yet.
+function openReloadedFile(file, data, title) {
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const text = (o, n) => new TextDecoder().decode(data.subarray(o, o + n)).replace(/\0.*$/s, '');
+  const ticks = dv.getUint32(12, true);
+  const map = text(17 + 24, 64);
+  const name = title || demoName(file);
+  if (localDemoUrl) URL.revokeObjectURL(localDemoUrl);
+  localDemoUrl = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
+  const start = dv.getUint32(8, true) * 1000 || file.lastModified;
+  const meta = { id: null, game: 'reloaded', map, start, serverName: name, seconds: ticks / TICKS, bytes: file.size, localUrl: localDemoUrl };
+  const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
+  if (i >= 0) opened.splice(i, 1);
+  opened.unshift({ file, name, map, start, ticks, from: 'Soldat Reloaded', highlights: null, rating: null });
+  opened.length = Math.min(opened.length, 8);
+  replay = makeReloadedReplay(meta);
+  $('loading').hidden = true;
+  watch({ id: null, name, group: null, replay: true, local: true, game: 'reloaded', meta });
+  renderOpened();
+}
+
 // a file as it was saved (Soldat TV's are .sdm; a .sdm.gz from the hub's folder works too)
 async function readDemoFile(file) {
   const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
@@ -2351,7 +2378,7 @@ async function readDemoFile(file) {
 
 // Soldat TV names its demos <server>-<date>-<time>: such a file plays under the server's name
 function demoName(file) {
-  const base = file.name.replace(/\.gz$/i, '').replace(/\.sdm$/i, '');
+  const base = file.name.replace(/\.gz$/i, '').replace(/\.s(r)?dm$/i, '');
   const m = /^(.+)-\d{8}-\d{6}(-\d)?$/.exec(base);
   const ch = m && channels.find(c => c.id === m[1]);
   return ch ? ch.name : base;
@@ -2370,8 +2397,10 @@ async function openFile(file, title = null) {
   try {
     await started;
     file = await file;
+    const data = await readDemoFile(file);
+    if (isReloadedDemo(data)) { openReloadedFile(file, data, title); return; }
     // a demo of an older Soldat is converted to 1.7.1's layout first (js/spectate/legacy.js)
-    const migrated = await migrateDemo(await readDemoFile(file));
+    const migrated = await migrateDemo(data);
     // it plays on the maps of its version where 1.7.1's differ (the download keeps the names)
     const demo = parseDemo(await onOldMaps(migrated));
     if (!demo.msgs.length) throw new Error('This demo has nothing in it to play.');
