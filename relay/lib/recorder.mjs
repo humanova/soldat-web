@@ -105,6 +105,16 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
       const m = demos.get(id);
       return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m } : null;
     },
+    // a published demo's summary with `patch` over it, on disk too (a Soldat Reloaded demo's
+    // plays, found after it was kept: relay/lib/reloaded/plays.mjs)
+    async update(id, patch) {
+      const m = demos.get(id);
+      if (!m) return;
+      Object.assign(m, patch);
+      const p = path.join(dir, id + '.json');
+      await fsp.writeFile(p + '.tmp', JSON.stringify(m));
+      await fsp.rename(p + '.tmp', p);
+    },
     // resolves when the demos being finished are on disk
     settle() {
       return Promise.allSettled([...pending]);

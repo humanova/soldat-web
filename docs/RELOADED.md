@@ -54,8 +54,28 @@ game's own recorder writes them. It plays in the game as a demo the game recorde
 
 A replay of one (`/replay?id=<id>`) opens the game in the frame with the demo
 (`/reloaded/?demo=/demos/<id>.srdm&map=<map>&mapUrl=/reloaded/maps/<mapHash>.pms`). The page
-fetches the demo, and the map from the hub's copy if the game hasn't got it. Reloaded
-matches have no highlights or rating yet, and the guide marks them `Reloaded`.
+fetches the demo, and the map from the hub's copy if the game hasn't got it. The guide
+marks them `Reloaded`.
+
+### Highlights and rating
+
+A Reloaded match has highlights and a rating as a 1.7.1 match has them: the same plays, the
+same rules, by the same code (`findPlays` in `web/js/spectate/highlights.js`).
+`relay/lib/reloaded/plays.mjs` reads the demo into what that code takes. The kills, the
+flags taken and the captures are the server's words in the snapshots; who plays, where,
+where the flags are, the clock and the score are the snapshots' state. A kill's weapon is
+given 1.7.1's number for it, and its distance is in metres in both games.
+
+Times are the demo's ticks, as its player and the game's bar count them. Something the
+server did on its tick T is at the first demo tick that shows T.
+
+Reading a demo's snapshots takes a second or two, so the relay does it on a thread of its
+own (`plays-worker.mjs`):
+
+- as a round's demo is kept, for its summary's `highlights` and `rating`;
+- as the relay starts, for any Reloaded summary kept without them;
+- for `/api/demos?id=<id>&clips`, which adds the demo's `clips` (the last 20 are kept).
+  The page finds a 1.7.1 demo's clips in the demo itself.
 
 ## How it works
 

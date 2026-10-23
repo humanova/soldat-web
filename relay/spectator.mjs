@@ -50,6 +50,7 @@ import { proxyFiles } from './lib/files.mjs';
 import { Hub } from './lib/hub.mjs';
 import { ReloadedHub } from './lib/reloaded/hub.mjs';
 import { makeReloadedFiles } from './lib/reloaded/files.mjs';
+import { makeReloadedPlays } from './lib/reloaded/plays.mjs';
 import { makeLobby, makeLobbyPlayers } from './lib/lobby.mjs';
 import { makeChat } from './lib/chat.mjs';
 import { makeRecordings, DEMO_ID, demoExt } from './lib/recorder.mjs';
@@ -83,6 +84,9 @@ const recordings = (config.servers || []).some((s) => s.record) ? makeRecordings
 }) : null;
 
 const GAMES = { '1.7.1': Hub, reloaded: ReloadedHub };
+// the plays of the Soldat Reloaded recordings: a demo's clips, and the summaries kept without them
+const reloadedPlays = recordings && (config.servers || []).some((s) => s.game === 'reloaded')
+  ? makeReloadedPlays(recordings, log) : null;
 const reloaded = config.reloaded || {};
 const reloadedFiles = (config.servers || []).some((s) => s.game === 'reloaded') ? makeReloadedFiles({
   dir: path.resolve(path.dirname(CONFIG), reloaded.dir || 'data/reloaded'),
@@ -346,8 +350,9 @@ async function listServers(fresh) {
 // ---------------------------------------------------------------- recordings
 
 // /api/demos: the recorded matches, newest first; ?id=<demo>, ?server=<id>, ?group=<name>
-// (empty: the main list), ?limit=<n> (50)
-function listDemos(url, res) {
+// (empty: the main list), ?limit=<n> (50); ?id=<demo>&clips: with a Soldat Reloaded demo's
+// clips (highlights.js's findPlays) too
+async function listDemos(url, res) {
   const q = url.searchParams;
   const filter = {};
   if (q.get('id')) filter.id = q.get('id');
@@ -355,6 +360,11 @@ function listDemos(url, res) {
   if (q.has('group')) filter.group = q.get('group') || null;
   const limit = Math.min(500, Math.max(1, parseInt(q.get('limit'), 10) || 50));
   const demos = recordings ? recordings.list(filter).slice(0, limit).map(({ delay, ...m }) => m) : [];
+  // ?id=<id>&clips: a Soldat Reloaded demo's clips too, worked out by the relay
+  // (relay/lib/reloaded/plays.mjs); a 1.7.1 demo's the page finds in it
+  if (filter.id && q.has('clips') && demos.length === 1 && demos[0].game === 'reloaded' && reloadedPlays) {
+    demos[0].clips = await reloadedPlays.clips(filter.id).catch(() => null);
+  }
   res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));
 }
@@ -441,7 +451,10 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url.pathname === '/api/demos') { listDemos(url, res); return; }
+  if (url.pathname === '/api/demos') {
+    listDemos(url, res).catch((e) => { log('demos: ' + e.message); if (!res.headersSent) res.writeHead(500).end(); });
+    return;
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
   const demo = /^\/demos\/([^/]+)(\.sdm|\.srdm)$/.exec(url.pathname);
   if (demo) {
@@ -494,6 +507,7 @@ server.listen(PORT, () => {
   if (RELOADED_WEB && !fs.existsSync(path.join(RELOADED_WEB, 'soldat-reloaded.wasm'))) {
     log(`no Reloaded web build in ${RELOADED_WEB}: Reloaded servers can't be watched (docs/RELOADED.md)`);
   }
+  if (reloadedPlays) reloadedPlays.backfill();
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

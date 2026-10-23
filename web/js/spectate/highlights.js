@@ -70,6 +70,24 @@ function fixedString(b, off, len) {
 
 // demo: { msgs, at, ticks }; end: where the match ends (the replay's length, default its ticks)
 export function findHighlights(demo, end = demo.ticks) {
+  return findPlays(readMatch(demo, end));
+}
+
+// What the plays are found in, from a 1.7.1 demo's messages (a Soldat Reloaded demo's:
+// relay/lib/reloaded/plays.mjs). Players are by slot, 1 to 32, as { name, team }; ticks are
+// the demo's.
+//   kills: [{ tick, slot (the killer), by (the killer then), victim, weapon (a kill's weapon
+//     number, as NetworkClientSprite.pas has it), dist (m), fired (the tick the shot left) }],
+//     enemies only
+//   carrierKills: [{ tick, slot, by, victim, of (the carrier then), own (the carrier's own
+//     flag), home (where it stood), x, y (where the carrier died) }]: carriers killed with
+//     their own flag in, so with a capture to make
+//   caps: [{ tick, slot, by, since (the flag's grab), team (the scorers'), lead (theirs before
+//     it), left (ticks on the clock, null untimed) }]
+//   resting: { 1: Map, 2: Map } of each flag: where it lay without a carrier ("x,y" in 20s),
+//     and how often it was seen there
+//   score: the final [alpha, bravo]; mapChanged: the match ended on a map change; end: its end
+function readMatch(demo, end) {
   const { msgs, at } = demo;
   const players = new Array(MAX_PLAYERS + 1).fill(null);   // { name, team }
   const holder = { [ALPHA_FLAG]: 0, [BRAVO_FLAG]: 0 };
@@ -169,6 +187,11 @@ export function findHighlights(demo, end = demo.ticks) {
     }
   }
 
+  return { kills, carrierKills, caps, resting, score, mapChanged, end };
+}
+
+// The plays of a match as readMatch has it, as clips (findHighlights's).
+export function findPlays({ kills, carrierKills, caps, resting, score, mapChanged, end }) {
   // by: the player as they were then; cams: whom the camera follows from when (the player,
   // unless the clip says otherwise)
   const clip = ({ by, ...h }, from, to, cams = [{ tick: from, slot: h.slot }]) =>
