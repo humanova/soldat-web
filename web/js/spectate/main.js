@@ -2288,7 +2288,7 @@ function renderDemos() {
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
     title.append(el('span', 'ch-label', when(d.start)), el('span', 'chip', d.serverName));
-    if (d.game === 'reloaded') title.append(el('span', 'chip', 'Reloaded'));
+    if (d.game === 'reloaded') title.append(el('span', 'chip reloaded', 'Reloaded'));
     main.append(title);
     const sub = el('span', 'ch-sub', d.map);
     const score = scoreOf(d);
@@ -2642,7 +2642,7 @@ function renderGuide() {
     if (c.state === 'live') title.append(el('span', 'chip on-air', c.viewers ? `On air · ${c.viewers}` : 'On air'));
     else if (c.state === 'waiting') title.append(el('span', 'chip off-air', 'Off air'));
     if (c.locked) title.append(el('span', 'chip', 'Password'));
-    if (c.game === 'reloaded') title.append(el('span', 'chip', 'Reloaded'));
+    if (c.game === 'reloaded') title.append(el('span', 'chip reloaded', 'Reloaded'));
     if (c.bots) {
       const humans = Math.max(0, (c.players || 0) - c.bots);
       title.append(el('span', 'chip bots', humans ? `${c.bots} bots` : 'Bots only'));

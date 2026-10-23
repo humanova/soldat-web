@@ -21,6 +21,7 @@
   --green-lo: #377531;
   --green-text: #cfffce;
   --orange: #ff8728;       /* the outline of the selected server */
+  --reloaded: #8b5fd3;     /* Soldat Reloaded's tag, the stats page's ribbon */
   --alpha: #d8473a;        /* team shirts of the game, a little brighter */
   --bravo: #3f74e0;
   --charlie: #d6c33a;
@@ -161,6 +162,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .chip.on-air { background: var(--green-lo); color: var(--green-text); }
 .chip.on-air::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #7fdc52; }
 .chip.off-air { color: var(--dim); }
+/* a Soldat Reloaded server or match: the purple of the stats page's ribbon */
+.chip.reloaded { background: var(--reloaded); color: #fff; font-weight: 700; }
 /* the map and mode under the name: only on a phone, where their columns are gone */
 .ch-sub { display: none; margin-top: 2px; padding-left: 24px; color: var(--muted); font-size: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
