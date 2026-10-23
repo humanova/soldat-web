@@ -67,8 +67,9 @@ several matches, 1.7.1's and Reloaded's mixed (`/replay?reel=...`). The guide ma
 `Reloaded`.
 
 A `.srdm` from the viewer's computer plays on the demo page (`/demo`) the same way, from a
-`blob:` address: nothing is sent. Its map must be one the game has, and its plays aren't
-found yet (the hub finds them, for its own recordings).
+`blob:` address: nothing is sent. Its map must be one the game has. Its plays, its rating and
+the director's picks are found in the page, by the same code the hub runs
+(`web/js/spectate/reloaded-plays.js`).
 
 ### Highlights and rating
 

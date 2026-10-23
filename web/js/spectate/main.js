@@ -7,6 +7,7 @@ import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
 import { ReloadedReplay } from './reloaded-replay.js';
+import { findReloadedPlays } from './reloaded-plays.js';
 import { migrateDemo } from './legacy.js';
 import { INTROS } from './intros.js';
 import { pickMaps, renameMaps, shownMap } from './old-maps.js';
@@ -2361,8 +2362,9 @@ const isReloadedDemo = (b) => b.length >= 105 && String.fromCharCode(b[0], b[1],
 let localDemoUrl = null;
 
 // One played in its game in the frame, from the viewer's computer (a blob: address; nothing
-// is sent anywhere). Its map is the game's own: a map it hasn't got can't be shown. Its plays
-// are found by the hub for its recordings, so a file has none here yet.
+// is sent anywhere). Its map is the game's own: a map it hasn't got can't be shown. Its plays,
+// its rating and the director's picks are found here, as the hub finds a recording's
+// (reloaded-plays.js).
 function openReloadedFile(file, data, title) {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const text = (o, n) => new TextDecoder().decode(data.subarray(o, o + n)).replace(/\0.*$/s, '');
@@ -2372,10 +2374,14 @@ function openReloadedFile(file, data, title) {
   if (localDemoUrl) URL.revokeObjectURL(localDemoUrl);
   localDemoUrl = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
   const start = dv.getUint32(8, true) * 1000 || file.lastModified;
-  const meta = { id: null, game: 'reloaded', map, start, serverName: name, seconds: ticks / TICKS, bytes: file.size, localUrl: localDemoUrl };
+  let found = null;
+  try { found = findReloadedPlays(data); } catch (e) { console.warn('the demo\'s plays could not be found:', e); }
+  const meta = { id: null, game: 'reloaded', map, start, serverName: name, seconds: ticks / TICKS, bytes: file.size, localUrl: localDemoUrl,
+    clips: found ? found.clips : [], ...(found && found.cams ? { cams: found.cams } : {}) };
   const i = opened.findIndex(o => o.file.name === file.name && o.file.size === file.size);
   if (i >= 0) opened.splice(i, 1);
-  opened.unshift({ file, name, map, start, ticks, from: 'Soldat Reloaded', highlights: null, rating: null });
+  opened.unshift({ file, name, map, start, ticks, from: 'Soldat Reloaded',
+    highlights: found ? found.highlights : null, rating: found ? found.rating : null });
   opened.length = Math.min(opened.length, 8);
   replay = makeReloadedReplay(meta);
   $('loading').hidden = true;
