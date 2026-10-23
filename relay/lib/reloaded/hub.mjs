@@ -39,6 +39,7 @@ const JOIN_TIMEOUT_MS = 20_000;
 const SILENCE_MS = 15_000;       // nothing heard for this long: the connection is gone
 const QUERY_EVERY_MS = 15_000;
 const KEYS_MS = 250;             // how often the viewers' need of a whole snapshot is looked at
+const QUIET_FLUSH_MS = 100;      // the delayed stream's timer, for while the server sends nothing
 const KEY_AGAIN_MS = 1500;
 const KEY_DELAYED_MS = 3000;
 const KEY_WAIT_MS = 60_000;      // a viewer still without the stream after this has given up
@@ -192,7 +193,10 @@ export class ReloadedHub extends Hub {
     this.error = '';
     this.knownPassword = this.password;
     this.clearTimer('join');
-    this.setTimer('flush', 20, () => this.flush(), true);
+    // the delayed stream goes out as the server's messages come in (heard), 60 a second,
+    // rather than on a timer of its own as often; this one only keeps it going while the
+    // server is quiet
+    if (this.delayMs > 0) this.setTimer('flush', QUIET_FLUSH_MS, () => this.flush(), true);
     this.setTimer('keys', KEYS_MS, () => this.keysTick(), true);
     this.setTimer('director', PICK_MS, () => this.directorTick(), true);
     this.log(`live in slot ${this.slot} on ${this.client.mapName}`);
@@ -228,8 +232,12 @@ export class ReloadedHub extends Hub {
     this.stats.in++;
     this.stats.inBytes += data.length;
     const item = { at: Date.now() + this.delayMs, data, kind, info };
-    if (this.delayMs > 0) this.queue.push(item);
-    else this.deliver(item, item.at);
+    if (this.delayMs > 0) {
+      this.queue.push(item);
+      this.flush();
+    } else {
+      this.deliver(item, item.at);
+    }
   }
 
   // The round's file `file` (0 its .pms, i + 1 its art's i-th), named by `hash`, from the

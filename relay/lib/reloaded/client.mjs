@@ -11,6 +11,12 @@
 // whole snapshot now and then (wantWhole): it holds its acknowledgement back until the
 // server, its base grown too old, sends one.
 //
+// It does its work as the server's datagrams come, 60 a second, rather than on timers of
+// its own, which would wake the relay as often again: its state goes out with a datagram
+// that brings something new to acknowledge (no sooner than STATE_MIN_MS after the last), or
+// STATE_AGAIN_MS after the last. A slow timer stands in while the server is quiet (the handshake, ENet's
+// resends).
+//
 // It fetches the round's map files when asked (maps.odin), a part at a time.
 //
 //   const c = new ReloadedClient({ host, port, name, password }, handlers); c.connect()
@@ -26,12 +32,16 @@ import {
 } from './wire.mjs';
 
 const CHANNEL_UNRELIABLE = 0, CHANNEL_RELIABLE = 1;
-const STATE_EVERY_MS = 1000 / 15;   // client states, 15 a second: enough for its acknowledgements (the server counts 120 as flooding)
+const STATE_MIN_MS = 50;            // client states at most 20 a second (the server counts 120 as flooding)...
+const STATE_AGAIN_MS = 150;         // ...and at least every 150 ms, an acknowledgement or not
+const FETCH_EVERY_MS = 1000 / 15;   // how often the map's fetch asks for more
+const IDLE_MS = 200;                // the timer for a quiet server
 const DECODE_EVERY = 6;             // ticks between the snapshots read and acknowledged
 const WHOLE_GIVE_UP = STREAM_WHOLE_AFTER * 3; // ticks held back without a whole snapshot coming
 const FETCH_AHEAD = 64, FETCH_STEP = 32;  // as the game fetches a map (fetch.odin)
 const FETCH_TIMEOUT_MS = 60_000;
 const SPECTATOR = 5;                // the server's /team for watching
+const BLANK = blankSoldier();       // our soldier while the snapshots have none
 
 // the look of a spectator nobody sees
 const LOOK = {
@@ -57,6 +67,10 @@ export class ReloadedClient {
     this.players = new Array(MAX_PLAYERS).fill(null); // { active, team } as last read
     this.wordsHeard = 0;          // the newest of the server's words read (its seq)
     this.seq = 0;                 // our client states
+    this.stateAt = 0;             // when the last went out
+    this.acked = 0;               // what it acknowledged: the snapshot, the newest word
+    this.ackedWords = 0;
+    this.fetchAt = 0;
     this.fetches = [];            // files being fetched: { round, file, resolve, reject, ... }
     this.stats = { snapshots: 0, read: 0, wholes: 0, dropped: 0, bytes: 0 };
   }
@@ -68,7 +82,7 @@ export class ReloadedClient {
       if (rinfo.address !== this.cfg.host || rinfo.port !== this.cfg.port) return;
       this.stats.bytes += data.length;
       this.peer.receive(data);
-      this.peer.flush();
+      this.pump(Date.now());
     });
     sock.on('error', (e) => this.gone('udp: ' + e.message));
     // a connected socket: no address to look up for each datagram sent
@@ -79,7 +93,7 @@ export class ReloadedClient {
     sock.connect(this.cfg.port, this.cfg.host, () => {
       if (this.state !== 'connecting') return;
       this.peer.connect();
-      this.timer = setInterval(() => this.tick(), STATE_EVERY_MS);
+      this.timer = setInterval(() => this.pump(Date.now()), IDLE_MS);
     });
   }
 
@@ -214,18 +228,33 @@ export class ReloadedClient {
 
   // ------------------------------------------------------------ to the server
 
+  // After each datagram and on the idle timer: our state if it is due, the map's fetch,
+  // then whatever ENet has waiting (its acknowledgements, resends).
+  pump(now) {
+    if (this.state === 'joined' && this.round) {
+      const since = now - this.stateAt;
+      const fresh = (this.held || this.read) !== this.acked || this.wordsHeard !== this.ackedWords;
+      if (since >= STATE_AGAIN_MS || (fresh && since >= STATE_MIN_MS)) this.sendState(now);
+      if (this.fetches.length && now - this.fetchAt >= FETCH_EVERY_MS) {
+        this.fetchAt = now;
+        this.pumpFetches();
+      }
+    }
+    this.peer.flush();
+  }
+
   // our state, which acknowledges what we read: our own soldier as the server has it
-  tick() {
-    if (this.state !== 'joined' || !this.round) { this.peer.flush(); return; }
+  sendState(now) {
     const own = this.latest && this.latest.soldiers[this.slot];
-    const soldier = own || blankSoldier();
+    const soldier = own || BLANK;
+    const ack = this.held || this.read;
     const bytes = buildClientState({
-      round: this.round, seq: ++this.seq, ack: this.held || this.read, eventAck: this.wordsHeard,
-      life: soldier['vitals.life'] || 0,
+      round: this.round, seq: ++this.seq, ack, eventAck: this.wordsHeard, life: soldier['vitals.life'] || 0,
     }, soldier);
     if (bytes) this.peer.send(CHANNEL_UNRELIABLE, bytes, false);
-    this.pumpFetches();
-    this.peer.flush();
+    this.stateAt = now;
+    this.acked = ack;
+    this.ackedWords = this.wordsHeard;
   }
 
   say(text) {

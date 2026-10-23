@@ -38,6 +38,7 @@ const PACKET = 1, FRAME = 2, TICK = 3, CAMERA = 4;
 const RECORD_MAX = 65535;
 const VIEW_BEHIND = 3;          // ticks the view keeps behind the newest snapshot
 const MAX_MS = 3 * 3600_000;    // longer, and the demo ends (a round is never this long)
+const CHUNK = 1 << 17;          // the records gather in memory and go to the file this much at a time
 
 // A tick record of nobody: its head alone, the view first (32 bits from bit 0, so its
 // four bytes are the view's, little-endian)
@@ -50,15 +51,8 @@ const TICK_BODY = (() => {
   return Buffer.from(b.bytes());
 })();
 
-function record(kind, data) {
-  const b = Buffer.alloc(3 + data.length);
-  b[0] = kind;
-  b.writeUInt16LE(data.length, 1);
-  data.copy(b, 3);
-  return b;
-}
-
-const FRAME_RECORD = record(FRAME, Buffer.alloc(0));
+const TICK_SIZE = 3 + TICK_BODY.length;
+const EMPTY = Buffer.alloc(0);
 
 export const RELOADED_DEMO = '.srdm';
 
@@ -75,6 +69,10 @@ export class ReloadedRecording {
     this.out.on('error', (e) => { store.log(`recording ${this.id}: ${e.message}`); this.failed = true; });
     this.out.write(Buffer.alloc(HEADER_SIZE));
     this.bytes = HEADER_SIZE;
+    // the records not yet written: 60 or more a second, each its own write would keep the
+    // file's stream busy for a few bytes at a time
+    this.chunk = Buffer.allocUnsafe(CHUNK);
+    this.used = 0;
     this.tick = 0;               // ticks written
     this.newest = 0;             // the newest snapshot's tick
     this.view = 0;               // the tick last shown
@@ -86,15 +84,37 @@ export class ReloadedRecording {
     for (const m of opening) this.packet(m);
   }
 
-  write(b) {
-    if (this.finished || this.failed) return;
-    this.out.write(b);
-    this.bytes += b.length;
+  // room for a record of `size` bytes in the chunk: its offset, or -1 once the demo is
+  // done with
+  room(size) {
+    if (this.finished || this.failed) return -1;
+    if (this.used + size > CHUNK) this.spill();
+    const off = this.used;
+    this.used += size;
+    this.bytes += size;
+    return off;
+  }
+
+  // a record: its kind, its size, the bytes
+  write(kind, data) {
+    const off = this.room(3 + data.length);
+    if (off < 0) return;
+    this.chunk[off] = kind;
+    this.chunk.writeUInt16LE(data.length, off + 1);
+    data.copy(this.chunk, off + 3);
+  }
+
+  // the records gathered, to the file (the stream keeps the chunk: a new one from here)
+  spill() {
+    if (!this.used || this.failed) return;
+    this.out.write(this.chunk.subarray(0, this.used));
+    this.chunk = Buffer.allocUnsafe(CHUNK);
+    this.used = 0;
   }
 
   packet(data) {
     if (data.length > RECORD_MAX) return;
-    this.write(record(PACKET, data));
+    this.write(PACKET, data);
     this.unframed = true;
   }
 
@@ -103,16 +123,20 @@ export class ReloadedRecording {
     const due = Math.floor(((at - this.start) * TICK_RATE) / 1000);
     while (this.tick < due) {
       if (this.unframed) {
-        this.write(FRAME_RECORD);
+        this.write(FRAME, EMPTY);
         this.unframed = false;
       }
       const target = Math.max(0, this.newest - VIEW_BEHIND);
       let view = this.view ? this.view + 1 : target;
       if (target && (view > target + 1 || view < target - 2)) view = target;
       this.view = view;
-      const body = Buffer.from(TICK_BODY);
-      body.writeUInt32LE(view >>> 0, 0);
-      this.write(record(TICK, body));
+      const off = this.room(TICK_SIZE);
+      if (off >= 0) {
+        this.chunk[off] = TICK;
+        this.chunk.writeUInt16LE(TICK_BODY.length, off + 1);
+        TICK_BODY.copy(this.chunk, off + 3);
+        this.chunk.writeUInt32LE(view >>> 0, off + 3);
+      }
       this.tick++;
     }
   }
@@ -127,7 +151,7 @@ export class ReloadedRecording {
   // the director follows `slot` (1 to 32) from `at` on
   camera(slot, at) {
     this.advance(at);
-    this.write(record(CAMERA, Buffer.from([slot & 0xFF])));
+    this.write(CAMERA, Buffer.from([slot & 0xFF]));
   }
 
   // who plays now: [{ slot, name, team }] (no spectators); the teams' captures
@@ -147,7 +171,8 @@ export class ReloadedRecording {
   finish(at) {
     if (this.finished) return this.finished;
     this.advance(at);
-    if (this.unframed) this.write(FRAME_RECORD);
+    if (this.unframed) this.write(FRAME, EMPTY);
+    this.spill();
     const store = this.store;
     this.finished = (async () => {
       await new Promise((resolve) => this.out.end(resolve));

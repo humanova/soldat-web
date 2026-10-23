@@ -152,9 +152,11 @@ export function parse(data) {
 
 
 // A client state: the header, then the owned half and the loadout of `soldier` (whole),
-// typing, and no words.
+// typing, and no words. Written into the one buffer kept for it, then copied out: a dozen
+// a second for each hub.
+const stateBuffer = new Uint8Array(MTU);
 export function buildClientState(h, soldier) {
-  const b = Bits.writer();
+  const b = new Bits(stateBuffer.fill(0), false);
   b.kind(MSG.Client_State);
   b.u16(h.round);
   b.u32(h.seq);
