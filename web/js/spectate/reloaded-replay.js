@@ -4,7 +4,8 @@
 // its speed and has it jump (a jump back plays it again from its start, unseen). The bar,
 // the highlights only, the clips and their camera are as for a 1.7.1 demo: the clips come
 // from the hub (relay/lib/reloaded/plays.mjs), and whom the director followed is in the demo
-// (its camera records), which the game tells as it plays.
+// (its camera records), which the game tells as it plays; for a demo recorded before those,
+// the hub works the picks out (meta.cams, as directDemo does for an old 1.7.1 demo).
 //
 // hooks: call(export, ...args) into the game, onFollow(slot), onTime(), onEnd(),
 // onClip(clip), onPart(play), onShot(shot), onReady() (the game has the demo: its length and
@@ -22,7 +23,8 @@ export class ReloadedReplay {
     this.playing = true;
     this.highlights = highlights || [];
     this.markers = [];
-    this.demo = { cams: [] };   // the director's picks are the game's to tell (camAt's whole-match case)
+    // the director's picks, when the hub worked them out ([{ tick, slot }]); else the game tells them
+    this.demo = { cams: Array.isArray(meta.cams) ? meta.cams : [] };
     this.end = Math.max(1, Math.round((meta.seconds || 0) * TICKS));
     this.pos = 0;
     this.ready = false;
@@ -138,7 +140,7 @@ export class ReloadedReplay {
       const shot = this.shotAt(at);
       if (shot || this.shooting) { this.shooting = !!shot; this.hooks.onShot(shot); }
     } else {
-      const pick = this.hooks.call('soldat_tv_demo_pick');
+      const pick = this.demo.cams.length ? this.camAt(at) : this.hooks.call('soldat_tv_demo_pick');
       if (pick && pick !== this.pick) { this.pick = pick; this.hooks.onFollow(pick); }
     }
   }
