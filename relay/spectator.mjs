@@ -11,7 +11,7 @@
 //   node relay/spectator.mjs [--config relay/spectator.json] [--port 8090]
 //
 // Config (JSON, see relay/spectator.example.json):
-//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword?, record?, game?, play? }]
+//   servers: [{ id, name, host, port, password?, delaySeconds?, group?, askPassword?, record?, game?, play?, country? }]
 //                   the only servers it joins. group: the guide's tab the server is listed
 //                   under (none: the main list); askPassword: viewers give the server's
 //                   password (a link has it, /<id>?password=..., or the page asks), the hub
@@ -22,7 +22,8 @@
 //                   play.soldat.live: true for host:port, or the "host:port" to join (when
 //                   host is internal); none, no link: an address is shown only for a
 //                   server put on the play relay's list too (its SERVER_LIST or ALLOW);
-//                   a server in a group (Gather) has none
+//                   a server in a group (Gather) has none; country: its flag in the guide,
+//                   two letters (ISO 3166), for a server the lobby doesn't list
 //   reloaded        { dir (default data/reloaded next to the config): the map files the hubs
 //                   fetched from Reloaded servers, for viewers' games to download; web (default
 //                   reloaded/web/dist, the web build of the reloaded/ submodule): the game
@@ -104,7 +105,8 @@ const hubs = new Map();
 for (const s of config.servers || []) {
   if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536) ||
       (s.group != null && !/^[\w .'-]{1,24}$/.test(s.group)) || (s.game != null && !GAMES[s.game]) ||
-      (s.play != null && s.play !== true && s.play !== false && !/^[\w.-]{1,253}:\d{1,5}$/.test(s.play))) {
+      (s.play != null && s.play !== true && s.play !== false && !/^[\w.-]{1,253}:\d{1,5}$/.test(s.play)) ||
+      (s.country != null && !/^[a-z]{2}$/i.test(s.country))) {
     throw new Error('bad server entry in config: ' + JSON.stringify(s));
   }
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
@@ -343,7 +345,7 @@ async function listServers(fresh) {
       players: info.players ?? (e ? e.NumPlayers : null),
       maxPlayers: e ? e.MaxPlayers : null,
       bots,
-      country: e ? e.Country : null,
+      country: h.cfg.country || (e ? e.Country : null),
       listed: !!e,
       // a Reloaded server's Play link (play.soldat.live/reloaded/?play=<host>:<port>): only
       // where the config asks for one and not in a group's tab (Gather), the one place a

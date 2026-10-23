@@ -430,6 +430,7 @@ function fitPicture() {
 // where the picture is on the page (object-fit: contain, or cover on phones)
 function picture() {
   const r = canvas.getBoundingClientRect();
+  if (reloadedFrame) return { x: r.left, y: r.top, w: r.width, h: r.height };  // its game fills it (soldat_tv_fill)
   const ar = canvas.width / canvas.height || 16 / 9;
   let w = r.width, h = r.height;
   if ((w / h > ar) !== canvas.classList.contains('cover')) w = h * ar; else h = w / ar;
@@ -987,7 +988,7 @@ function poll() {
   if (reloadedFrame && !match) {
     reconnect.n = 0;
     notice('');
-    if (phone) call('soldat_tv_fill', 1);  // the whole screen, as a 1.7.1 match has it
+    call('soldat_tv_fill', 1);  // the whole picture area, whatever its shape: no bars
     syncAuto(true);
     applyZoom();
     applyVisuals();
@@ -1777,7 +1778,8 @@ function reelHighlights(list, clip) {
 // a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any
 function makeReloadedReplay(meta, clip = 0) {
   const r = new ReloadedReplay(meta, reelHighlights(meta.clips || [], clip), {
-    call: (name, ...args) => call(name, ...args),
+    // nothing (not 0) before its game is up: the replay waits for its demo (soldat_tv_demo_at -1 or more)
+    call: (name, ...args) => (reloadedTv() ? call(name, ...args) : undefined),
     caps: () => {
       const tv = reloadedTv();
       return (tv && tv.caps ? tv.caps() : '').split('\n').filter(Boolean).map((l) => l.split('\t').map(Number));
@@ -2709,6 +2711,10 @@ function renderGuide() {
   const ol = $('channels');
   ol.textContent = '';
   const list = channels.filter(c => (c.group || null) === tab);
+  // the servers' flags (the lobby's country, or the config's): a list where none has one
+  // (Gather's servers aren't in the lobby) has no room kept for them
+  const flags = list.some(c => flag(c.country));
+  ol.classList.toggle('no-flags', !flags);
   let players = 0;
   for (const c of list) {
     players += c.players || 0;
@@ -2719,7 +2725,8 @@ function renderGuide() {
     // the name with its tags; on a phone the map and mode go under it
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
-    title.append(flag(c.country) || el('i', 'cflag none'), el('span', 'ch-label', c.name));
+    if (flags) title.append(flag(c.country) || el('i', 'cflag none'));
+    title.append(el('span', 'ch-label', c.name));
     if (c.state === 'live') title.append(el('span', 'chip on-air', c.viewers ? `On air · ${c.viewers}` : 'On air'));
     else if (c.state === 'waiting') title.append(el('span', 'chip off-air', 'Off air'));
     if (c.locked) title.append(el('span', 'chip', 'Password'));

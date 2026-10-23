@@ -208,6 +208,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .opened-list > li { grid-template-columns: minmax(0, 1fr); }
 .opened .columns { padding-right: 6px; }
 .opened .ch-sub { padding-left: 0; }
+.no-flags .ch-sub { padding-left: 0; }
 /* the intro demos stay folded under the drop zone until asked for */
 .intros > summary { display: flex; align-items: baseline; gap: 10px; width: fit-content; cursor: pointer; list-style: none; user-select: none; }
 .intros > summary::-webkit-details-marker { display: none; }
