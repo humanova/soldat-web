@@ -941,6 +941,8 @@ function poll() {
   if (!s) return;
   // a Reloaded game, its first state: the camera as the page has it
   if (reloadedFrame && !match) {
+    notice('');
+    if (phone) call('soldat_tv_fill', 1);  // the whole screen, as a 1.7.1 match has it
     syncAuto(true);
     applyZoom();
     if (mode === 'auto' && director) follow(director);
@@ -2171,7 +2173,8 @@ window.addEventListener('message', (e) => {
   if (!m || typeof m !== 'object') return;
   const ch = watching;
   if (m.type === 'ready') {
-    notice('');
+    // the hub is ready; the game still joins: "Tuning in..." stays until its first state (poll)
+    if (!match) notice('Tuning in...');
     $('ch-delay').hidden = !m.delay;
     $('ch-delay').textContent = `${m.delay} s delay`;
   } else if (m.type === 'status') {
