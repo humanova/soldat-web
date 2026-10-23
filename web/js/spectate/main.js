@@ -78,6 +78,7 @@ function el(tag, cls, text) {
 const canvas = $('canvas');
 let watching = null;  // the channel being watched (replay: true for a recorded match)
 let replay = null;    // the recorded match being played (js/spectate/replay.js)
+let reloadedFrame = null;  // a Soldat Reloaded match's game, in its frame (Soldat Reloaded, below)
 
 const game = new SoldatRuntime(canvas, {
   input: false,
@@ -585,9 +586,20 @@ function applyVolume() {
   tellReloaded({ volume: prefs.muted ? 0 : volume() / 100 });
 }
 
+// the browser holds the sound back until the page is clicked: the 1.7.1 game's, or the
+// Reloaded game's in the frame
+function soundBlocked() {
+  if (reloadedFrame) { const tv = reloadedTv(); return !!(tv && tv.soundBlocked && tv.soundBlocked()); }
+  return !!game.al && game.al.blocked();
+}
+function resumeSound() {
+  if (reloadedFrame) { const tv = reloadedTv(); if (tv && tv.resumeSound) tv.resumeSound(); setTimeout(showSound, 100); }
+  else game.al.resume();
+}
+
 function showSound() {
-  // the browser holds the sound back until the page is clicked: shown as off, with a hint
-  const blocked = !prefs.muted && volume() > 0 && !!game.al && game.al.blocked();
+  // shown as off while the sound is held back, with a hint
+  const blocked = !prefs.muted && volume() > 0 && soundBlocked();
   const off = prefs.muted || !volume() || blocked;
   $('sound').querySelector('use').setAttribute('href', off ? '#i-mute' : '#i-sound');
   $('sound').setAttribute('aria-label', off ? 'Unmute' : 'Mute');
@@ -601,12 +613,12 @@ showSound();
 let soundFreed = 0;  // when a click let it start: that click is no mute (below)
 for (const type of ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click']) {
   window.addEventListener(type, () => {
-    if (!game.al || !game.al.blocked()) return;
+    if (!soundBlocked()) return;
     soundFreed = performance.now();
-    game.al.resume();
+    resumeSound();
   }, { capture: true, passive: true });
 }
-$('unmute').addEventListener('click', () => game.al.resume());
+$('unmute').addEventListener('click', () => resumeSound());
 if (matchMedia('(hover: none)').matches) $('unmute').querySelector('span').textContent = 'Tap for sound';
 
 $('sound').addEventListener('click', () => {
@@ -2090,8 +2102,8 @@ bar.line.addEventListener('keydown', (e) => {
 // a player, free, the map, the zoom), the score, the flag news, the vote, the card, the
 // roster and the game's chat are the page's as on any channel; the game draws the world,
 // the kill feed and the names. The frame takes no input: the page's picture is over it.
-// A replay's game still has its own HUD, bar and keys.
-let reloadedFrame = null;
+// A replay plays there too, its bar the page's (reloaded-replay.js).
+// (reloadedFrame: declared with the page's state, above)
 
 // the frame's game, once it is up (null before, or for a replay)
 function reloadedTv() {
@@ -2126,6 +2138,8 @@ function watchReloaded(ch) {
   $('watch').classList.toggle('tv', tv);
   $('unmute').hidden = true;
   reloadedFrame = f;
+  // once the game is up: sound held back (opened from a link) shows "Click for sound"
+  f.addEventListener('load', () => setTimeout(showSound, 3000));
 }
 
 // a Reloaded replay, each frame: where its game is (reloaded-replay.js), on the bar
