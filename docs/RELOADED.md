@@ -111,6 +111,12 @@ server is in no 1.7.1 lobby, so the relay joins one only from its server list (`
 `ALLOW` or `ALLOW_ANY`. The game's own server browser doesn't work in a browser (it asks
 servers over UDP): a page names the server to join.
 
+Soldat TV's guide has a Play link on each Reloaded server's row, to
+`play.soldat.live/reloaded/?play=<host>:<port>`: the server's `play` in the relay's
+`/api/watch` listing, its config's `play` or else its `host:port` (set `play` when the hub
+reaches the server at an internal address). For the link to work, that address must be one
+the play relay allows (above).
+
 ## How it works
 
 The hub forwards the server's messages unchanged. It reads as little of them as it can:

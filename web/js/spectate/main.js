@@ -2673,6 +2673,16 @@ function renderGuide() {
     b.append(pl);
     b.addEventListener('click', () => tuneIn(c));
     li.append(b);
+    // a Soldat Reloaded server is played in its game on play.soldat.live: a link over the row,
+    // at the end of the name's column (a link has no place in the row's button)
+    if (c.play) {
+      li.classList.add('playable');
+      const a = el('a', 'ch-play');
+      a.href = new URL('reloaded/?play=' + encodeURI(c.play), $('play-link').href).href;
+      a.title = `Play on ${c.name}`;
+      a.innerHTML = '<svg width="11" height="11" aria-hidden="true"><use href="#i-play"/></svg>Play';
+      li.append(a);
+    }
     appendNames(li, c);
     ol.append(li);
   }
