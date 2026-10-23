@@ -17,6 +17,7 @@ import { ReloadedHub } from '../../relay/lib/reloaded/hub.mjs';
 import { makeReloadedFiles, sha256 } from '../../relay/lib/reloaded/files.mjs';
 import { ReloadedRecording } from '../../relay/lib/reloaded/record.mjs';
 import { makeRecordings } from '../../relay/lib/recorder.mjs';
+import { playsOf } from '../../relay/lib/reloaded/plays.mjs';
 
 test('a struct goes whole and as a delta, and reads back the same', () => {
   const a = blankSoldier();
@@ -259,6 +260,90 @@ test('a round is recorded as the game\'s own demo', async () => {
     assert.equal(views.length, 120);
     assert.equal(views.at(-1), 117);
     for (let i = 1; i < views.length; i++) if (views[i - 1]) assert.ok(views[i] - views[i - 1] <= 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// a whole snapshot: the soldiers ({ slot: { team, pos, name } }), the things ({ id: thing })
+// and the words
+function wholeSnapshot(round, tick, soldiers, things, said, roundFields = {}) {
+  const b = Bits.writer(8192);
+  b.kind(MSG.Snapshot);
+  b.u16(round); b.u32(tick); b.u32(0); b.u32(0); b.u32(0);
+  fields(b, TABLES.round, { ...blank(TABLES.round), ...roundFields });
+  for (let i = 0; i < MAX_PLAYERS; i++) {
+    const s = soldiers[i];
+    b.enum(s ? E.Snap_Word.State : E.Snap_Word.Gone, E.Snap_Word);
+    if (!s) continue;
+    const o = Object.assign(blankSoldier(), { active: true, team: s.team, 'body.pos': s.pos, 'vitals.health': 150 });
+    fields(b, TABLES.soldier_served, o);
+    fields(b, TABLES.soldier_owned, o);
+    b.string(s.name, SIZES.Name);
+  }
+  for (let i = 0; i < MAX_THINGS; i++) {
+    const t = things[i];
+    b.enum(t ? E.Snap_Word.State : E.Snap_Word.Gone, E.Snap_Word);
+    if (t) fields(b, TABLES.thing, { ...blank(TABLES.thing), 'points[0]': [0, 0], ...t });
+  }
+  words(b, said);
+  assert.ok(b.ok);
+  return Buffer.from(b.bytes());
+}
+
+test('a recorded round\'s highlights and rating are found as a 1.7.1 match\'s', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-plays-'));
+  try {
+    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const t0 = Date.UTC(2026, 9, 23, 12);
+    const map = { round: 4, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
+      hash: Buffer.alloc(32, 0xcd), art: 0, timeLeft: 36000 };
+    const rec = store.start({ server: 'sr', serverName: 'SR', group: null, map: 'ctf_Test', mapHash: 'cd'.repeat(32),
+      mode: 'CTF', delay: 0, round: 4, slot: 9, name: 'TV' }, t0, [], ReloadedRecording);
+    rec.add(build('Map', map), 'Map', map, t0);
+    // Ann (alpha) kills Bob, Cid and Dan of bravo, a second apart, then takes their flag and
+    // scores with it 20 s later
+    const soldiers = { 0: { team: 1, pos: [0, 0], name: 'Ann' }, 1: { team: 2, pos: [100, 0], name: 'Bob' },
+      2: { team: 2, pos: [200, 0], name: 'Cid' }, 3: { team: 2, pos: [300, 0], name: 'Dan' } };
+    const flags = { 0: { kind: E.Thing_Kind.Alpha_Flag, 'points[0]': [0, 500], in_base: true },
+      1: { kind: E.Thing_Kind.Bravo_Flag, 'points[0]': [3000, 500], in_base: true } };
+    const kill = (seq, tick, target) => ({ seq, tick, word: { type: 'Ruling', inner: { type: 'Kill', killer: 0, target,
+      weapon: E.Weapon.AK74, pos: [100 * target, 0], part: 1, impact: [0, 0], fire: 0, distance: 10, airtime: 5,
+      ricochets: 0, respawn: 120, kills: target } } });
+    const said = { 600: [kill(1, 600, 1)], 660: [kill(2, 660, 2)], 720: [kill(3, 720, 3)],
+      900: [{ seq: 4, tick: 900, word: { type: 'Ruling', inner: { type: 'Flag_Grab', soldier: 0, flag: 1, pos: [3000, 500] } } }],
+      2100: [{ seq: 5, tick: 2100, word: { type: 'Ruling', inner: { type: 'Flag_Capture', soldier: 0, flag: 1, pos: [0, 500] } } }] };
+    let alpha = 0;
+    for (let t = 1; t <= 2400; t++) {
+      if (t === 2100) alpha = 1;
+      const held = t >= 900 && t < 2100;
+      const things = { ...flags, 1: { ...flags[1], holder: held ? 0 : null, in_base: !held } };
+      const data = wholeSnapshot(4, t, soldiers, things, said[t] || [], { phase: E.Round_Wire_Phase.Playing,
+        time_left: 36000 - t, 'captures[1]': alpha });
+      rec.add(data, 'Snapshot', { round: 4, tick: t, base: 0 }, t0 + (t * 1000) / 60);
+    }
+    rec.roster([{ slot: 0, name: 'Ann', team: 1 }, { slot: 1, name: 'Bob', team: 2 }], [1, 0, 0, 0]);
+    await rec.finish(t0 + 40_000);
+
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, rec.id + '.json'), 'utf8'));
+    assert.equal(meta.highlights.multi, 1);
+    assert.equal(meta.highlights.cap, 1);
+    assert.equal(Object.values(meta.highlights).reduce((a, b) => a + b, 0), 2);
+    assert.equal(meta.rating, null);   // under 3 minutes
+
+    const { clips } = await playsOf(store.file(rec.id).path, meta.scores);
+    assert.equal(clips.length, 2);
+    const [multi, cap] = clips;
+    assert.equal(multi.type, 'multi');
+    assert.equal(multi.label, 'Triple kill');
+    assert.equal(multi.slot, 1);
+    assert.equal(multi.name, 'Ann');
+    // shown as the game shows it: a few ticks after the server's, the view behind the stream
+    assert.ok(multi.tick >= 720 && multi.tick <= 726, `the triple kill at ${multi.tick}`);
+    assert.equal(cap.type, 'cap');
+    assert.equal(cap.team, 1);
+    assert.ok(cap.tick >= 2100 && cap.tick <= 2106);
+    assert.equal(cap.from, cap.tick - 12 * 60);   // the run from the grab (at 900), its last 12 s
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

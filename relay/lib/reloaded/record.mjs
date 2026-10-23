@@ -12,6 +12,9 @@
 //   tick    a tick of the game: the tick on show, the recorder's command and cursor, and
 //           its soldier if it plays (the hub's never does: a spectator)
 //
+// Its summary has the match's highlights and rating, found as a 1.7.1 match's are
+// (plays.mjs).
+//
 // The hub writes a tick for each 60th of a second it has heard the stream for, showing
 // a few ticks behind the newest snapshot, as a game watching it live would. The round
 // begins with the server's weapons and its Map; the snapshots after a Map are whole until
@@ -22,6 +25,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { VERSION, TICK_RATE, TABLES, Bits, fields } from './wire.mjs';
+import { playsOf } from './plays.mjs';
 
 // the demo's layout, as of its VERSION 2 (apps/client/demo/demo.odin)
 const DEMO_VERSION = 2;
@@ -158,7 +162,14 @@ export class ReloadedRecording {
       const fh = await fsp.open(this.part, 'r+');
       try { await fh.write(header, 0, HEADER_SIZE, 0); } finally { await fh.close(); }
       const gz = path.join(store.dir, this.id + RELOADED_DEMO + '.gz');
-      await pipeline(fs.createReadStream(this.part), zlib.createGzip({ level: 9 }), fs.createWriteStream(gz + '.tmp'));
+      // its highlights and rating (plays.mjs, on a thread of its own) as it is packed
+      const [plays] = await Promise.all([
+        playsOf(this.part, this.scores).catch((e) => {
+          store.log(`recording ${this.id}: no plays found: ${e.message}`);
+          return { highlights: null, rating: null };
+        }),
+        pipeline(fs.createReadStream(this.part), zlib.createGzip({ level: 9 }), fs.createWriteStream(gz + '.tmp')),
+      ]);
       await fsp.rename(gz + '.tmp', gz);
       await fsp.rm(this.part, { force: true });
       const meta = {
@@ -166,7 +177,7 @@ export class ReloadedRecording {
         group: this.info.group || null, map: this.info.map, mapHash: this.info.mapHash || null,
         mode: this.info.mode ?? null, start: this.start,
         end: this.start + Math.round((this.tick * 1000) / TICK_RATE), seconds: Math.round(seconds),
-        players: [...this.players.values()], scores: this.scores, highlights: null, rating: null,
+        players: [...this.players.values()], scores: this.scores, highlights: plays.highlights, rating: plays.rating,
         delay: this.info.delay || 0, bytes: (await fsp.stat(gz)).size, rawBytes: this.bytes,
       };
       await fsp.writeFile(path.join(store.dir, this.id + '.json.tmp'), JSON.stringify(meta));
