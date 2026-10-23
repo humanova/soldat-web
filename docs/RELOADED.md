@@ -97,6 +97,20 @@ For one of those, `&clips` also adds `cams` (`[{ tick, slot }]`): the picks work
 its snapshots by the hub's director, each 800 ms early, as `directDemo` does for an old 1.7.1
 demo. A demo with picks of its own has no `cams`.
 
+## Playing
+
+The play relay (`relay/play.mjs`, play.soldat.live's) lets a browser play on a Reloaded server
+too. It serves the game at `/reloaded/` (`RELOADED_WEB`, default `reloaded/web/dist`), and
+`/reloaded/?play=<host>:<port>` joins that server through it: the game's line is a WebSocket to
+the relay's `/relay`, greeted with `{ type: 'reloaded', host, port }`, and the relay holds an
+ENet peer to the server for each player (`relay/lib/reloaded/play.mjs`). The messages go through
+unchanged, each on its kind's channel, but a signed-in player's `Hello` carries their Discord
+account's hardware id, as their 1.7.1 `RequestGame` does. Discord sign-in, the limits on
+sessions and games per account, and the blocked accounts are the 1.7.1 relay's. A Reloaded
+server is in no 1.7.1 lobby, so the relay joins one only from its server list (`SERVER_LIST`),
+`ALLOW` or `ALLOW_ANY`. The game's own server browser doesn't work in a browser (it asks
+servers over UDP): a page names the server to join.
+
 ## How it works
 
 The hub forwards the server's messages unchanged. It reads as little of them as it can:

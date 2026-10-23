@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // Soldat Web play relay: serves the browser client, proxies the lobby server list and
-// bridges WebSocket <-> UDP so browsers can talk to Soldat 1.7.1 servers.
+// bridges WebSocket <-> UDP so browsers can talk to Soldat 1.7.1 servers. Soldat Reloaded's
+// game in the browser (reloaded/'s web build, served at /reloaded/) plays through it too, on
+// a server the relay may join: { type: 'reloaded', host, port } (lib/reloaded/play.mjs).
 // (relay/spectator.mjs is the public spectator hub; it shares only relay/lib.)
 // No dependencies (Node.js 18+).
 //
 //   node relay/play.mjs [--port 8080] [--root ./web] [--allow 127.0.0.1:23073] [--servers relay/spectator.json]
 //
 // Environment: PORT, ROOT, ALLOW (comma separated host:port list), ALLOW_ANY=1,
-// SERVER_LIST (a Soldat TV config whose servers are the only ones to join instead of the lobby's),
+// SERVER_LIST (a Soldat TV config whose servers are the only ones to join instead of the lobby's;
+// a Soldat Reloaded server is joined only from it, ALLOW or ALLOW_ANY, as it is in no 1.7.1 lobby),
+// RELOADED_WEB (the web build of reloaded/, served at /reloaded/; default reloaded/web/dist),
 // LOBBY_URL, TRUST_PROXY=1, MAX_SESSIONS_PER_IP, ORIGINS (comma separated page
 // origins allowed to use the relay besides its own; "*" for any).
 // Discord sign-in (required to play when DISCORD_CLIENT_ID is set): DISCORD_CLIENT_ID,
@@ -28,6 +32,7 @@ import { acceptWebSocket } from './lib/ws.mjs';
 import { proxyFiles } from './lib/files.mjs';
 import { makeLobby } from './lib/lobby.mjs';
 import { makeAuth } from './lib/auth.mjs';
+import { startReloadedPlay } from './lib/reloaded/play.mjs';
 import {
   MSG, PLAYERS_LIST_SIZE, PLAYERS_LIST_SESSION_ID, SessionCipher, splitDatagram, setRequestGameHwid, setPlayerInfoHwid,
 } from './lib/soldat171.mjs';
@@ -57,6 +62,8 @@ const MAX_BYTES_PER_SEC = 16 * 1024;
 const JOIN_MSG_IDS = new Set([14, 15]);
 const JOIN_WINDOW_MS = 17_000;
 const JOIN_MAX_PER_WINDOW = 14;
+
+const RELOADED_WEB = path.resolve(process.env.RELOADED_WEB || path.join(here, '..', 'reloaded', 'web', 'dist'));
 
 const originAllowed = originChecker(new Set((process.env.ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)));
 
@@ -219,6 +226,7 @@ function handleRelay(req, socket, head) {
     try {
       if (m.type === 'udp') cleanup = await startUdp(ws, ip, m, user);
       else if (m.type === 'files') cleanup = await startFiles(ws, ip, m, user);
+      else if (m.type === 'reloaded') cleanup = await startReloaded(ws, ip, m, user);
       else throw new Error('unknown request');
       if (ws.closed) cleanup(); // gone while the session started
     } catch (e) {
@@ -308,6 +316,31 @@ async function startUdp(ws, clientAddr, m, user) {
   };
 }
 
+// a Soldat Reloaded game on a server: one ENet peer to it (lib/reloaded/play.mjs). Its servers are
+// in no 1.7.1 lobby: one the relay may join is on its server list, or allowed by name
+async function startReloaded(ws, clientAddr, m, user) {
+  checkAccount(user, clientAddr);
+  const { ip, port } = await resolveTarget(m.host, m.port);
+  const allowed = ALLOW_ANY || staticAllow.has(`${ip}:${port}`) || staticAllow.has(`${m.host}:${port}`) ||
+    (listed && listed.has(`${ip}:${port}`));
+  if (!allowed) throw new Error('This server is not on this site\'s server list.');
+  if (user) {
+    const games = gamesByAccount.get(user.id) || 0;
+    if (games >= MAX_GAMES_PER_ACCOUNT) throw new Error(`This Discord account is already in ${games} games.`);
+    gamesByAccount.set(user.id, games + 1);
+  }
+  const hwid = user ? auth.hwid(user.id) : null;
+  log(`reloaded session ${clientAddr}${user ? ` discord=${user.id} (${user.name}) hwid=${hwid}` : ''} -> ${ip}:${port}`);
+  const close = startReloadedPlay(ws, { ip, port, hwid, log, label: `${clientAddr} -> ${ip}:${port}` });
+  return () => {
+    close();
+    if (user) {
+      const games = (gamesByAccount.get(user.id) || 1) - 1;
+      if (games <= 0) gamesByAccount.delete(user.id); else gamesByAccount.set(user.id, games);
+    }
+  };
+}
+
 async function startFiles(ws, clientAddr, m, user) {
   checkAccount(user, clientAddr);
   const filePort = Number(m.port);
@@ -339,6 +372,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
+  // Soldat Reloaded's game (reloaded/web/dist), played through this relay
+  if (url.pathname === '/reloaded' || url.pathname.startsWith('/reloaded/')) {
+    let file;
+    try { file = decodeURIComponent(url.pathname.slice('/reloaded'.length)); } catch (_) { res.writeHead(400).end(); return; }
+    if (file === '' || file.endsWith('/')) file += (file ? '' : '/') + 'index.html';
+    serveStatic(RELOADED_WEB, req, res, { file });
+    return;
+  }
   serveStatic(ROOT, req, res);
 });
 
