@@ -351,7 +351,8 @@ async function listServers(fresh) {
 
 // /api/demos: the recorded matches, newest first; ?id=<demo>, ?server=<id>, ?group=<name>
 // (empty: the main list), ?limit=<n> (50); ?id=<demo>&clips: with a Soldat Reloaded demo's
-// clips (highlights.js's findPlays) too
+// clips (highlights.js's findPlays) too, and for one recorded without camera records the
+// director's picks worked out (cams: [{ tick, slot }])
 async function listDemos(url, res) {
   const q = url.searchParams;
   const filter = {};
@@ -363,7 +364,9 @@ async function listDemos(url, res) {
   // ?id=<id>&clips: a Soldat Reloaded demo's clips too, worked out by the relay
   // (relay/lib/reloaded/plays.mjs); a 1.7.1 demo's the page finds in it
   if (filter.id && q.has('clips') && demos.length === 1 && demos[0].game === 'reloaded' && reloadedPlays) {
-    demos[0].clips = await reloadedPlays.clips(filter.id).catch(() => null);
+    const plays = await reloadedPlays.plays(filter.id).catch(() => null);
+    demos[0].clips = plays ? plays.clips : null;
+    if (plays && plays.cams) demos[0].cams = plays.cams;
   }
   res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));

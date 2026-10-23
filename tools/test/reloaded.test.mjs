@@ -17,7 +17,7 @@ import { ReloadedHub } from '../../relay/lib/reloaded/hub.mjs';
 import { makeReloadedFiles, sha256 } from '../../relay/lib/reloaded/files.mjs';
 import { ReloadedRecording } from '../../relay/lib/reloaded/record.mjs';
 import { makeRecordings } from '../../relay/lib/recorder.mjs';
-import { playsOf } from '../../relay/lib/reloaded/plays.mjs';
+import { playsOf, reloadedPlays } from '../../relay/lib/reloaded/plays.mjs';
 
 test('a struct goes whole and as a delta, and reads back the same', () => {
   const a = blankSoldier();
@@ -347,4 +347,47 @@ test('a recorded round\'s highlights and rating are found as a 1.7.1 match\'s', 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// a round on its own: Ann and Bob stand far apart, Cid takes Bravo's flag at tick 600; with
+// `picked`, the hub's director's pick recorded as it began. The demo's bytes.
+async function flagRound(picked) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-cams-'));
+  try {
+    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const t0 = Date.UTC(2026, 9, 23, 13);
+    const map = { round: 5, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
+      hash: Buffer.alloc(32, 0xee), art: 0, timeLeft: 36000 };
+    const rec = store.start({ server: 'sr', serverName: 'SR', group: null, map: 'ctf_Test', mapHash: 'ee'.repeat(32),
+      mode: 'CTF', delay: 0, round: 5, slot: 9, name: 'TV' }, t0, [], ReloadedRecording);
+    rec.add(build('Map', map), 'Map', map, t0);
+    if (picked) rec.camera(1, t0);
+    const soldiers = { 0: { team: 1, pos: [0, 0], name: 'Ann' }, 1: { team: 2, pos: [5000, 0], name: 'Bob' },
+      2: { team: 1, pos: [3000, 2000], name: 'Cid' }, 9: { team: E.Team.Spectator, pos: [0, 0], name: 'TV' } };
+    for (let t = 1; t <= 1500; t++) {
+      const held = t >= 600;
+      const things = { 0: { kind: E.Thing_Kind.Alpha_Flag, 'points[0]': [0, 500], in_base: true },
+        1: { kind: E.Thing_Kind.Bravo_Flag, 'points[0]': [3000, 2000], in_base: !held, holder: held ? 2 : null } };
+      rec.add(wholeSnapshot(5, t, soldiers, things, [], { phase: E.Round_Wire_Phase.Playing, time_left: 36000 - t }),
+        'Snapshot', { round: 5, tick: t, base: 0 }, t0 + (t * 1000) / 60);
+    }
+    rec.roster([{ slot: 0, name: 'Ann', team: 1 }, { slot: 1, name: 'Bob', team: 2 }], [0, 0, 0, 0]);
+    await rec.finish(t0 + 25_000);
+    return zlib.gunzipSync(fs.readFileSync(store.file(rec.id).path));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('a demo recorded without the director\'s picks has them worked out, a carrier followed', async () => {
+  const { cams } = reloadedPlays(await flagRound(false));
+  assert.ok(cams.length >= 2);
+  assert.notEqual(cams[0].slot, 10, 'never the recorder, a spectator');
+  // Cid (slot 3) once the flag is theirs: within the hold of a second, LEAD_MS early
+  const carrier = cams.find((c) => c.slot === 3 && c.tick >= 500);
+  assert.ok(carrier, JSON.stringify(cams));
+  assert.ok(carrier.tick <= 600 + 90, `the carrier followed at ${carrier.tick}`);
+  assert.ok(cams.every((c, i) => !i || c.tick > cams[i - 1].tick));
+  // with picks of its own, none are made up
+  assert.equal(reloadedPlays(await flagRound(true)).cams, undefined);
 });
