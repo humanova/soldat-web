@@ -114,7 +114,7 @@ servers over UDP): a page names the server to join.
 Soldat TV's guide has a Play link on a Reloaded server's row, to
 `play.soldat.live/reloaded/?play=<host>:<port>`, only when its entry in the config has `play`:
 `true` for its `host:port`, or the `"host:port"` to join (when the hub reaches the server at an
-internal address). That is the only server address in the relay's `/api/watch` listing (the
+internal address), and never in a group's tab (Gather). That is the only server address in the relay's `/api/watch` listing (the
 hubs' reasons that viewers see have theirs taken out), so put a server there only once it is
 on the play relay's list too (`SERVER_LIST` or `ALLOW`): elsewhere the link would show an
 address that can't be played.

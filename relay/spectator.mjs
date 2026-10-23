@@ -21,7 +21,8 @@
 //                   play: a Reloaded server's Play link in the guide, to its game on
 //                   play.soldat.live: true for host:port, or the "host:port" to join (when
 //                   host is internal); none, no link: an address is shown only for a
-//                   server put on the play relay's list too (its SERVER_LIST or ALLOW)
+//                   server put on the play relay's list too (its SERVER_LIST or ALLOW);
+//                   a server in a group (Gather) has none
 //   reloaded        { dir (default data/reloaded next to the config): the map files the hubs
 //                   fetched from Reloaded servers, for viewers' games to download; web (default
 //                   reloaded/web/dist, the web build of the reloaded/ submodule): the game
@@ -345,8 +346,10 @@ async function listServers(fresh) {
       country: e ? e.Country : null,
       listed: !!e,
       // a Reloaded server's Play link (play.soldat.live/reloaded/?play=<host>:<port>): only
-      // where the config asks for one, the one place a server's address is in the listing
-      play: h.cfg.game === 'reloaded' && h.cfg.play ? (h.cfg.play === true ? `${h.cfg.host}:${h.cfg.port}` : h.cfg.play) : null,
+      // where the config asks for one and not in a group's tab (Gather), the one place a
+      // server's address is in the listing
+      play: h.cfg.game === 'reloaded' && h.cfg.play && !h.cfg.group
+        ? (h.cfg.play === true ? `${h.cfg.host}:${h.cfg.port}` : h.cfg.play) : null,
     };
   }));
   const humans = (s) => (s.players || 0) - (s.bots || 0);
