@@ -41,7 +41,7 @@ over its state and events as text in the same formats. The frame is of the page'
 the page calls it directly (`window.soldatTv`). So the camera (Auto, a player, free, the whole
 map, the zoom), the score, the flag news, the vote, the followed player's card, the roster
 and the game's chat are the page's, as on a 1.7.1 channel; the game draws the world, the kill
-feed and the names over heads. A replay still plays in the game's own HUD and bar.
+feed and the names over heads.
 
 ## Recordings
 
@@ -52,10 +52,23 @@ players and the teams' captures. The demo is what the hub's viewers hear: the se
 messages from the round's `Map` on, and a tick of the game every 60th of a second, as the
 game's own recorder writes them. It plays in the game as a demo the game recorded.
 
+The hub also writes its director's picks into the demo, as a record of a kind of its own
+(`camera`, a slot), which the game's demo player passes over and its Soldat TV mode tells the
+page.
+
 A replay of one (`/replay?id=<id>`) opens the game in the frame with the demo
-(`/reloaded/?demo=/demos/<id>.srdm&map=<map>&mapUrl=/reloaded/maps/<mapHash>.pms`). The page
-fetches the demo, and the map from the hub's copy if the game hasn't got it. The guide
-marks them `Reloaded`.
+(`/reloaded/?demo=/demos/<id>.srdm&map=<map>&mapUrl=/reloaded/maps/<mapHash>.pms&tv=1`). The
+game fetches the demo, and the map from the hub's copy if it hasn't got it. The game plays
+the demo; the page's bar asks it where it is, sets its speed and has it jump
+(`soldat_tv_demo_*`), as `web/js/spectate/reloaded-replay.js` does in `Replay`'s place. So a
+Reloaded replay has the bar of any replay (the speed, the timeline with the captures and the
+plays, J/L and the other keys), highlights only, a match's clips (`&clip=<n>`) and reels of
+several matches, 1.7.1's and Reloaded's mixed (`/replay?reel=...`). The guide marks them
+`Reloaded`.
+
+A `.srdm` from the viewer's computer plays on the demo page (`/demo`) the same way, from a
+`blob:` address: nothing is sent. Its map must be one the game has, and its plays aren't
+found yet (the hub finds them, for its own recordings).
 
 ### Highlights and rating
 
