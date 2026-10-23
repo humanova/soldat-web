@@ -263,7 +263,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 /* live: the page's picture, see-through, over the frame takes the pointer; the page shows the rest */
 #watch.reloaded.tv iframe.reloaded { pointer-events: none; }
 #watch.reloaded.tv #canvas { opacity: 0; }
-#watch.reloaded.tv .visuals { display: none; }
+#watch.reloaded .smooth-pick { display: none; }  /* its game moves them smoothly itself */
 
 /* the clean view: the match alone, for recording it; only a notice (a lost connection) stays */
 #watch.clean :is(.ui, .scorebug, .banners, .vote, .bigmsg, .card, .clipcap, .chat, .unmute) { visibility: hidden; }
@@ -307,6 +307,10 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .visuals-menu label:hover { background: rgba(255, 255, 255, .08); }
 .visuals-menu input { width: 12px; height: 12px; margin: 0; accent-color: var(--green); cursor: pointer; }
 .visuals-menu .pick { gap: 10px; }
+.visuals-menu .bg-pick { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.visuals-menu .bg-pick select { margin-left: 0; }
+.visuals-menu input[type="color"] { width: 22px; height: 16px; padding: 0; border: 1px solid var(--line); background: none; }
+.visuals-menu input[type="color"][hidden] { display: none; }
 .visuals-menu select { margin-left: auto; padding: 1px 2px; background: var(--deep); border: 1px solid var(--line); color: var(--text);
   font: inherit; cursor: pointer; }
 /* a finger needs taller rows */

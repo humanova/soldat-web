@@ -41,7 +41,23 @@ over its state and events as text in the same formats. The frame is of the page'
 the page calls it directly (`window.soldatTv`). So the camera (Auto, a player, free, the whole
 map, the zoom), the score, the flag news, the vote, the followed player's card, the roster
 and the game's chat are the page's, as on a 1.7.1 channel; the game draws the world, the kill
-feed and the names over heads.
+feed and Soldat TV's marks.
+
+The marks are the 1.7.1 spectator's (its `SpectatorGraphics.pas` and `InterfaceGraphics.pas`),
+ported to the game (`apps/client/draw/tv_world.odin`, `apps/client/hud/draw_tv.odin`): names and
+health bars under the players in their team's colour, players behind scenery as silhouettes
+(the stencil), bullet tracers, crosses where players died, a flag carrier's path, arrows and
+flags over everyone when far out, and players off the screen as arrows (or names) at its
+edge. Each is a setting in the page's eye menu (`soldat_tv_visual`), as the 1.7.1 game's
+`spec_*` ones are, and so is the map's background in one colour (`spec_background` in the 1.7.1
+game). While the next round's map comes (downloading it or its images), the game's picture
+is black and its state says what comes (an `L` line), which the page shows. A live channel
+whose line drops (the hub lost the server, the connection went) is opened again by the page,
+"Reconnecting..." meanwhile, a few times before it gives up for the guide.
+
+A map's images the game hasn't (its pack has Classic's) are looked for in the 1.7.1 game's
+images beside it (`/assets/`, `web/assets/index.json`): served by this site, the game finds
+many maps' textures and scenery there.
 
 ## Recordings
 

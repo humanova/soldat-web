@@ -176,6 +176,7 @@ let match = null;       // the last state snapshot
 let pollTimer = 0;
 
 function watch(ch) {
+  stopReconnect();
   watching = ch;
   if (!ch.local) { tab = ch.group || null; viewer = false; }
   setStatus('');
@@ -267,6 +268,7 @@ function clearNews() {
 }
 
 function showGuide() {
+  stopReconnect();
   closeReloaded();
   watching = null;
   replay = null;
@@ -716,8 +718,23 @@ function visualValue(el) {
   const values = [...el.options].map(o => o.value);
   return values.includes(v) ? v : el.querySelector('option[selected]').value;
 }
+// a Reloaded match's game takes them by number (apps/client/match/tv.odin: tv_visual)
+const RELOADED_VISUALS = { spec_names: 0, spec_health: 1, spec_silhouettes: 2, spec_tracers: 3, spec_deaths: 4,
+  spec_trails: 5, spec_offscreen: 6, spec_background: 7 };
+function setVisual(name, value) {
+  if (reloadedFrame) {
+    const id = RELOADED_VISUALS[name];
+    if (id === undefined) return;
+    // the background: 0xRRGGBB, or -1 for the map's own
+    const n = name === 'spec_background' ? (/^[0-9a-f]{6}$/i.test(value) ? parseInt(value, 16) : -1) : +value;
+    call('soldat_tv_visual', id, n);
+  } else if (game.running) {
+    setCvar(name, value);
+  }
+}
 function applyVisuals() {
-  for (const el of visualControls) setCvar(el.dataset.cvar, visualValue(el));
+  for (const el of visualControls) setVisual(el.dataset.cvar, visualValue(el));
+  setVisual('spec_background', backgroundValue());
 }
 for (const el of visualControls) {
   if (el.type === 'checkbox') el.checked = visualValue(el) === '1';
@@ -725,9 +742,33 @@ for (const el of visualControls) {
   el.addEventListener('change', () => {
     visuals[el.dataset.cvar] = el.type === 'checkbox' ? el.checked : el.value;
     savePrefs();
-    if (game.running) setCvar(el.dataset.cvar, visualValue(el));
+    setVisual(el.dataset.cvar, visualValue(el));
   });
 }
+
+// the map's background: its own, or one colour of the viewer's (kept as "rrggbb")
+function backgroundValue() {
+  const v = visuals.spec_background;
+  return typeof v === 'string' && /^[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : '';
+}
+function showBackground() {
+  const v = backgroundValue();
+  $('bg-mode').value = v ? 'color' : '';
+  $('bg-color').hidden = !v;
+  if (v) $('bg-color').value = '#' + v;
+}
+showBackground();
+$('bg-mode').addEventListener('change', () => {
+  visuals.spec_background = $('bg-mode').value ? $('bg-color').value.slice(1) : '';
+  savePrefs();
+  showBackground();
+  setVisual('spec_background', backgroundValue());
+});
+$('bg-color').addEventListener('input', () => {
+  visuals.spec_background = $('bg-color').value.slice(1);
+  savePrefs();
+  setVisual('spec_background', backgroundValue());
+});
 function toggleVisuals(open = $('visuals').hidden) {
   $('visuals').hidden = !open;
   $('visuals-btn').setAttribute('aria-expanded', String(open));
@@ -902,6 +943,8 @@ function readState() {
     } else if (f[0] === 'V') {
       // type: 0 map, 1 kick; slot and team: the kick's target
       s.vote = { type: +f[1], left: +f[2], slot: +f[3], team: +f[4], target: f[5], starter: f[6], reason: f.slice(7).join('\t') };
+    } else if (f[0] === 'L') {
+      s.loading = f.slice(1).join('\t');  // a Reloaded game: the next map coming, its picture black
     }
   }
   return s;
@@ -942,13 +985,17 @@ function poll() {
   if (!s) return;
   // a Reloaded game, its first state: the camera as the page has it
   if (reloadedFrame && !match) {
+    reconnect.n = 0;
     notice('');
     if (phone) call('soldat_tv_fill', 1);  // the whole screen, as a 1.7.1 match has it
     syncAuto(true);
     applyZoom();
+    applyVisuals();
     if (mode === 'auto' && director) follow(director);
     if (clean) call('soldat_tv_kill_feed', 0);
   }
+  // its next map coming: the game's picture is black meanwhile, the page says what comes
+  if (reloadedFrame && (s.loading || '') !== (match && match.loading || '')) notice(s.loading || '');
   match = s;
   // the followed player left: the game shows the free camera. A picked player who is still
   // on the server is followed again as soon as they can be (Spectator.pas); one who is gone
@@ -2161,6 +2208,37 @@ function closeReloaded() {
   clearInterval(pollTimer);
 }
 
+// A live match's line lost (the hub lost the server, the round's change went wrong, the
+// connection dropped): its game opened again after a while, "Reconnecting..." meanwhile,
+// RELOADED_RETRIES times before the guide; a password asked for goes to the guide at once.
+// Its first state again (poll) and the count starts over. True while it tries.
+const RELOADED_RETRIES = 8;
+const reconnect = { n: 0, timer: 0 };
+function reloadedLost(ch) {
+  if (!ch || ch.replay || ch.game !== 'reloaded' || watching !== ch) return false;
+  if (reconnect.timer) return true;
+  if (reconnect.n >= RELOADED_RETRIES) { reconnect.n = 0; return false; }
+  reconnect.n++;
+  closeReloaded();
+  match = null;
+  $('scorebug').hidden = true;
+  $('card').hidden = true;
+  scoreKey = cardKey = '';
+  notice('Reconnecting...');
+  reconnect.timer = setTimeout(() => {
+    reconnect.timer = 0;
+    if (watching !== ch) return;
+    watchReloaded(ch);
+    pollTimer = setInterval(poll, 250);
+  }, Math.min(2000 * reconnect.n, 10_000));
+  return true;
+}
+function stopReconnect() {
+  clearTimeout(reconnect.timer);
+  reconnect.timer = 0;
+  reconnect.n = 0;
+}
+
 function tellReloaded(m) {
   if (reloadedFrame && reloadedFrame.contentWindow) reloadedFrame.contentWindow.postMessage({ soldatTv: m }, location.origin);
 }
@@ -2186,6 +2264,7 @@ window.addEventListener('message', (e) => {
     if (debug) console.log('[tv] director follows slot', director);
     if (mode === 'auto') call('soldat_spectator_follow', director);
   } else if (m.type === 'error') {
+    if (m.reason !== 'password' && reloadedLost(ch)) return;
     showGuide();
     if (m.reason === 'password' && ch) {
       passwords.delete(ch.id);
@@ -2195,6 +2274,7 @@ window.addEventListener('message', (e) => {
       setStatus(String(m.message || 'The match feed stopped.'), true);
     }
   } else if (m.type === 'closed' || m.type === 'exit') {
+    if (reloadedLost(ch)) return;
     showGuide();
   } else if (m.type === 'activity') {
     wake();
