@@ -5,7 +5,8 @@
 #
 #   tools/reloaded/dump-wire.sh ../soldatreloaded
 #
-# writes relay/lib/reloaded/wire-<version>.json; the relay reads the newest one there.
+# writes relay/lib/reloaded/wire-<version>.json, and the newest as a module for the page and
+# the relay (web/js/spectate/reloaded-wire-data.js, tools/reloaded/wire-js.mjs).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 sr=$(cd "${1:?usage: dump-wire.sh <soldatreloaded checkout>}" && pwd)
@@ -16,3 +17,4 @@ version=$(sed -n 's/^"version": \([0-9]*\),$/\1/p' "$out/wire.json")
 mv "$out/wire.json" "$here/../../relay/lib/reloaded/wire-$version.json"
 rm -rf "$out"
 echo "relay/lib/reloaded/wire-$version.json"
+node "$here/wire-js.mjs"

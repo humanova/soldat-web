@@ -391,3 +391,10 @@ test('a demo recorded without the director\'s picks has them worked out, a carri
   // with picks of its own, none are made up
   assert.equal(reloadedPlays(await flagRound(true)).cams, undefined);
 });
+
+test('the page\'s wire module is the newest wire-<version>.json', async () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../relay/lib/reloaded');
+  const newest = fs.readdirSync(dir).map((f) => /^wire-(\d+)\.json$/.exec(f)).filter(Boolean).sort((a, b) => b[1] - a[1])[0];
+  const { default: data } = await import('../../web/js/spectate/reloaded-wire-data.js');
+  assert.deepEqual(data, JSON.parse(fs.readFileSync(path.join(dir, newest[0]), 'utf8')), 'run node tools/reloaded/wire-js.mjs');
+});

@@ -74,7 +74,8 @@ found yet (the hub finds them, for its own recordings).
 
 A Reloaded match has highlights and a rating as a 1.7.1 match has them: the same plays, the
 same rules, by the same code (`findPlays` in `web/js/spectate/highlights.js`).
-`relay/lib/reloaded/plays.mjs` reads the demo into what that code takes. The kills, the
+`web/js/spectate/reloaded-plays.js` reads the demo into what that code takes, in the relay
+and in the page alike (a demo file dropped on `/demo` is read where it is). The kills, the
 flags taken and the captures are the server's words in the snapshots; who plays, where,
 where the flags are, the clock and the score are the snapshots' state. A kill's weapon is
 given 1.7.1's number for it, and its distance is in metres in both games.
@@ -119,7 +120,7 @@ Reloaded server ──ENet──> client.mjs ──the server's own messages─�
   the server's words (kills, captures) in them. A word comes again in every snapshot until
   it is acknowledged, so none is missed. The others pass through with only their header
   read.
-- The hub's director (`director.mjs`, around `web/js/spectate/director.js`) scores the
+- The hub's director (`web/js/spectate/reloaded-director.js`, around `director.js` there) scores the
   players on the snapshots it reads and the words in them (shots, damage, kills), as it scores
   them on a 1.7.1 server's messages. Its picks go to the viewers as `{ type: 'follow', slot }`
   text through the delay, a little early, and a viewer who comes in hears the last one. The
@@ -136,11 +137,15 @@ UDP. Each viewer adds about 0.1%.
 
 - `relay/lib/reloaded/enet.mjs`: the client side of ENet 1.3, as much as Reloaded uses
   (one peer, a reliable and an unreliable channel, fragments).
-- `relay/lib/reloaded/wire.mjs`: Reloaded's messages. Its snapshots are written by field
+- `web/js/spectate/reloaded-wire.js`: Reloaded's wire as the page and the relay both read it:
+  the bits, the field tables, the words and the snapshots. Its snapshots are written by field
   tables made from its structs' `net` tags. `tools/reloaded/dump-wire.sh` builds a small
   Odin program against a Reloaded checkout that prints those tables, the unions' variants
-  and the enums as `wire-<version>.json`. A new protocol version is a new dump, and a new
-  build of `reloaded/` on the same version.
+  and the enums as `relay/lib/reloaded/wire-<version>.json`, and copies the newest into
+  `web/js/spectate/reloaded-wire-data.js` (`tools/reloaded/wire-js.mjs`). A new protocol
+  version is a new dump, and a new build of `reloaded/` on the same version.
+- `relay/lib/reloaded/wire.mjs`: that, and Reloaded's messages, which only the relay reads and
+  writes.
 - `relay/lib/reloaded/query.mjs`: the server's own query, for the guide's list.
 
 ## Developing
