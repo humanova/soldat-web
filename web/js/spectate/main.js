@@ -1473,7 +1473,8 @@ let cardKey = '';
 function renderCard(s) {
   const p = s.players.find(q => q.slot === s.follow);
   const card = $('card');
-  if (!p || mode === 'overview') { card.hidden = true; cardKey = ''; return; }
+  // (none while a Reloaded game's next map comes: its players are the last round's)
+  if (!p || mode === 'overview' || s.loading) { card.hidden = true; cardKey = ''; return; }
   const key = JSON.stringify(p);
   if (key === cardKey && !card.hidden) return;
   cardKey = key;
