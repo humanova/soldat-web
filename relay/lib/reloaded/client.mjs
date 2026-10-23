@@ -15,7 +15,8 @@
 //
 //   const c = new ReloadedClient({ host, port, name, password }, handlers); c.connect()
 //
-// handlers: onJoined({ slot }), onMessage(data, kind, info), onGone(reason). info is the
+// handlers: onJoined({ slot }), onMessage(data, kind, info), onGone(reason), and optionally
+// onRead(frame, words): a snapshot read (snapshotBody's) and the words new in it. info is the
 // message read (the body), or for a snapshot its header ({ round, tick, base }).
 import dgram from 'node:dgram';
 import { EnetPeer } from './enet.mjs';
@@ -190,7 +191,9 @@ export class ReloadedClient {
       if (f.word[i] === State) this.players[i] = { active: f.soldiers[i].active, team: f.soldiers[i].team };
       else if (f.word[i] === Gone) this.players[i] = null;
     }
-    for (const w of heard) if (w.seq > this.wordsHeard) this.wordsHeard = w.seq;
+    const fresh = heard.filter((w) => w.seq > this.wordsHeard);
+    for (const w of fresh) if (w.seq > this.wordsHeard) this.wordsHeard = w.seq;
+    if (this.h.onRead) this.h.onRead(f, fresh);
   }
 
   // the players as the snapshots read have them, the hub's own spectator aside:

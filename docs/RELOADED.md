@@ -32,9 +32,16 @@ git submodule update --init
 ODIN=... WASI_SDK=... RAYLIB=... reloaded/web/build.sh all    # writes reloaded/web/dist
 ```
 
-The page shows a Reloaded channel as any other: the guide, the channel bar, the delay and
-Soldat TV's chat. The picture is the game in a frame (`/reloaded/?line=<hub>/watch&watch=<id>`),
-with its own HUD, scoreboard, chat and controls for following the players.
+The page shows a Reloaded channel as any other. The picture is the game in a frame
+(`/reloaded/?line=<hub>/watch&watch=<id>&tv=1`) under the page's own picture, which takes the
+mouse and the keys. With `tv` the game is Soldat TV's as the 1.7.1 spectator build is
+(`apps/client/match/tv.odin` in `reloaded/`): it takes the same calls by the same names
+(`soldat_spectator_follow`, `_zoom`, `_pan`, `_overview`, `_frame`, `_mouse`, `_auto`) and hands
+over its state and events as text in the same formats. The frame is of the page's origin, so
+the page calls it directly (`window.soldatTv`). So the camera (Auto, a player, free, the whole
+map, the zoom), the score, the flag news, the vote, the followed player's card, the roster
+and the game's chat are the page's, as on a 1.7.1 channel; the game draws the world, the kill
+feed and the names over heads. A replay still plays in the game's own HUD and bar.
 
 ## Recordings
 
@@ -74,6 +81,11 @@ Reloaded server ──ENet──> client.mjs ──the server's own messages─�
   the server's words (kills, captures) in them. A word comes again in every snapshot until
   it is acknowledged, so none is missed. The others pass through with only their header
   read.
+- The hub's director (`director.mjs`, around `web/js/spectate/director.js`) scores the
+  players on the snapshots it reads and the words in them (shots, damage, kills), as it scores
+  them on a 1.7.1 server's messages. Its picks go to the viewers as `{ type: 'follow', slot }`
+  text through the delay, a little early, and a viewer who comes in hears the last one. The
+  page's Auto follows them.
 - A viewer's game reads no snapshots while its map loads, so afterwards it needs a whole
   one. The hub holds its acknowledgement back until the server, its base grown too old,
   sends whole snapshots. Without a delay it does this while some viewer has not yet heard

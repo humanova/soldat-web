@@ -18,6 +18,10 @@
 // heard nothing of the stream, at most every KEY_AGAIN_MS; with a delay, every
 // KEY_DELAYED_MS, since a whole one asked for now comes to viewers only a delay later.
 //
+// The hub's director picks whom the viewers' cameras follow (director.mjs, on what the hub
+// reads): each pick goes to them as { type: 'follow', slot } (1 to 32) through the delay,
+// a little early, as the 1.7.1 hub sends its picks; a viewer who comes in hears the last.
+//
 // With `record`, each round the viewers see is written into a demo of Reloaded's own
 // (record.mjs), with who played and the score: what the hub read of the snapshots, once a
 // second, through the delay as the stream goes.
@@ -26,6 +30,8 @@ import net from 'node:net';
 import { Hub } from '../hub.mjs';
 import { E, MSG, TICK_RATE, SIZES, Bits, build, parse } from './wire.mjs';
 import { ReloadedClient } from './client.mjs';
+import { ReloadedDirector } from './director.mjs';
+import { PICK_MS, LEAD_MS as DIRECTOR_LEAD_MS } from '../../../web/js/spectate/director.js';
 import { ReloadedRecording } from './record.mjs';
 import { queryServer } from './query.mjs';
 
@@ -141,6 +147,7 @@ export class ReloadedHub extends Hub {
     const c = new ReloadedClient({ host: this.ip, port: this.cfg.port, name: this.playerName, password: this.password }, {
       onJoined: on(({ slot }) => { this.slot = slot; }),
       onMessage: on((data, kind, info) => this.heard(c, data, kind, info)),
+      onRead: on((f, words) => this.director.seeFrame(f, words, c.slot, Date.now())),
       onGone: on((why) => this.onGone(why)),
     });
     this.client = c;
@@ -187,6 +194,7 @@ export class ReloadedHub extends Hub {
     this.clearTimer('join');
     this.setTimer('flush', 20, () => this.flush(), true);
     this.setTimer('keys', KEYS_MS, () => this.keysTick(), true);
+    this.setTimer('director', PICK_MS, () => this.directorTick(), true);
     this.log(`live in slot ${this.slot} on ${this.client.mapName}`);
     // with a delay, viewers start once the delayed stream has caught up with the state
     // they get at their join; until then they see the seconds left
@@ -210,6 +218,7 @@ export class ReloadedHub extends Hub {
     if (kind === 'Welcome') return;           // the hub's own: viewers get theirs from it
     if (kind === 'Map') {
       c.mapName = info.map;
+      this.director = new ReloadedDirector();  // a new round: its players from its snapshots
       this.want(c, 0, info.hash);
       if (this.state === 'joining') this.goLive();
     } else if (kind === 'Map_Art') {
@@ -246,6 +255,7 @@ export class ReloadedHub extends Hub {
     while (this.queue.length && this.queue[0].at <= now) {
       const item = this.queue.shift();
       if (item.sample) this.sampled(item.sample);
+      else if (item.json) this.broadcastText(item.json);
       else this.deliver(item, item.at - this.delayMs);
     }
   }
@@ -321,7 +331,7 @@ export class ReloadedHub extends Hub {
 
   // what was still held back by the delay as the hub leaves: the recording's
   record(item, at) {
-    if (!this.recording) return;
+    if (!this.recording || item.json) return;
     if (item.sample) this.sampled(item.sample);
     else if (item.kind === 'Map') this.recording.finish(at);
     else this.recording.add(item.data, item.kind, item.info, at);
@@ -361,6 +371,34 @@ export class ReloadedHub extends Hub {
     }
     v.welcomed = true;
     v.since = Date.now();
+    if (this.following) v.sendText({ type: 'follow', slot: this.following });
+  }
+
+  // ------------------------------------------------------------ the director
+
+  // Whom the cameras follow: a new pick goes to the viewers, through the delay a little
+  // before its time (the camera gets there as their part begins), as the 1.7.1 hub does.
+  directorTick() {
+    if (!this.client || this.state !== 'live') return;
+    const now = Date.now();
+    const was = this.director.target;
+    const want = this.director.pickNow(now);
+    if (!want || want === was) return;
+    const item = { type: 'follow', slot: want };
+    if (this.delayMs > 0) {
+      const at = now + this.delayMs - Math.min(DIRECTOR_LEAD_MS, this.delayMs / 2);
+      let i = this.queue.length;
+      while (i > 0 && this.queue[i - 1].at > at) i--;
+      this.queue.splice(i, 0, { at, json: item });
+    } else {
+      this.broadcastText(item);
+    }
+  }
+
+  // to every viewer the relay greeted; the last pick is kept for those who come in
+  broadcastText(obj) {
+    if (obj.type === 'follow') this.following = obj.slot;
+    for (const v of this.viewers) if (v.greeted) v.sendText(obj);
   }
 
   // A viewer's download of one of its round's files, from the hub's copy: the parts it
@@ -435,6 +473,8 @@ export class ReloadedHub extends Hub {
     this.slot = 0;
     this.keyAt = 0;
     this.sampledAt = 0;
+    this.director = new ReloadedDirector();
+    this.following = 0;   // the last pick the viewers heard
   }
 
   // ------------------------------------------------------------ for the page

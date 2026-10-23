@@ -129,6 +129,8 @@ function setCvar(name, value) {
 }
 
 function call(name, ...args) {
+  // a Soldat Reloaded match: the same calls, to its game in the frame (Soldat Reloaded, below)
+  if (reloadedFrame) { const tv = reloadedTv(); return tv ? tv.call(name, ...args) || 0 : 0; }
   if (!game.running) return 0;
   try { return game.call(name, ...args); } catch (e) { console.error(e); return 0; }
 }
@@ -214,6 +216,8 @@ function watch(ch) {
   if (ch.game === 'reloaded') {
     clearInterval(pollTimer);
     watchReloaded(ch);
+    // live, its state and events are read as the 1.7.1 game's (a replay's game has its own HUD yet)
+    if (!ch.replay) pollTimer = setInterval(poll, 250);
     wake();
     return;
   }
@@ -643,7 +647,8 @@ if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
 
 window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (reloadedFrame) {
+  // a Reloaded replay: its game in the frame has the keys yet, but Enter here
+  if (reloadedFrame && watching.replay) {
     if (e.code === 'Enter' && !(e.target.closest && e.target.closest('button, a, label, input, textarea'))) {
       e.preventDefault();
       sayKey();
@@ -758,6 +763,7 @@ function setClean(on, hint = on) {
   $('watch').classList.toggle('clean', on);
   $('clean').checked = on;
   if (game.started) setCvar('ui_killconsole', on ? '0' : '1');
+  call('soldat_tv_kill_feed', on ? 0 : 1);  // a Reloaded match's game (none other has it)
   clearTimeout(cleanHintTimer);
   const h = $('clean-hint');
   h.hidden = !hint;
@@ -860,10 +866,17 @@ document.addEventListener('fullscreenchange', () => { fitPicture(); movables.for
 const stateBuf = { ptr: 0, size: 16384 };
 
 function readState() {
-  if (!stateBuf.ptr) stateBuf.ptr = game.rt.alloc(stateBuf.size);
-  const n = call('soldat_spectator_state', stateBuf.ptr, stateBuf.size);
-  if (!n) return null;
-  const text = new TextDecoder('latin1').decode(game.rt.u8().subarray(stateBuf.ptr, stateBuf.ptr + n));
+  let text;
+  if (reloadedFrame) {
+    const tv = reloadedTv();
+    text = tv ? tv.state() : '';
+    if (!text) return null;
+  } else {
+    if (!stateBuf.ptr) stateBuf.ptr = game.rt.alloc(stateBuf.size);
+    const n = call('soldat_spectator_state', stateBuf.ptr, stateBuf.size);
+    if (!n) return null;
+    text = new TextDecoder('latin1').decode(game.rt.u8().subarray(stateBuf.ptr, stateBuf.ptr + n));
+  }
   const s = { players: [], spectators: [], flags: [] };
   for (const line of text.split('\n')) {
     const f = line.split('\t');
@@ -888,10 +901,17 @@ function readState() {
 // chat and flag events since the last poll (soldat_spectator_events, Spectator.pas)
 const eventBuf = { ptr: 0, size: 32768 };
 function readEvents() {
-  if (!eventBuf.ptr) eventBuf.ptr = game.rt.alloc(eventBuf.size);
-  const n = call('soldat_spectator_events', eventBuf.ptr, eventBuf.size);
-  if (!n) return;
-  const text = new TextDecoder('utf-8').decode(game.rt.u8().subarray(eventBuf.ptr, eventBuf.ptr + n));
+  let text;
+  if (reloadedFrame) {
+    const tv = reloadedTv();
+    text = tv ? tv.events() : '';
+    if (!text) return;
+  } else {
+    if (!eventBuf.ptr) eventBuf.ptr = game.rt.alloc(eventBuf.size);
+    const n = call('soldat_spectator_events', eventBuf.ptr, eventBuf.size);
+    if (!n) return;
+    text = new TextDecoder('utf-8').decode(game.rt.u8().subarray(eventBuf.ptr, eventBuf.ptr + n));
+  }
   for (const line of text.split('\n')) {
     const f = line.split('\t');
     if (f[0] === 'C') {
@@ -907,10 +927,17 @@ function readEvents() {
 }
 
 function poll() {
-  if (!game.running) return;
+  if (!reloadedFrame && !game.running) return;
   readEvents();
   const s = readState();
   if (!s) return;
+  // a Reloaded game, its first state: the camera as the page has it
+  if (reloadedFrame && !match) {
+    syncAuto(true);
+    applyZoom();
+    if (mode === 'auto' && director) follow(director);
+    if (clean) call('soldat_tv_kill_feed', 0);
+  }
   match = s;
   // the followed player left: the game shows the free camera. A picked player who is still
   // on the server is followed again as soon as they can be (Spectator.pas); one who is gone
@@ -2010,12 +2037,23 @@ bar.line.addEventListener('keydown', (e) => {
 // ======================================================== Soldat Reloaded
 
 // A Soldat Reloaded server is watched in Reloaded's own game (its web build: the reloaded/
-// submodule, served at /reloaded/), in a frame over the picture, with the hub's /watch line
+// submodule, served at /reloaded/), in a frame under the picture, with the hub's /watch line
 // as its line to the server (relay/lib/reloaded/hub.mjs); its recorded matches are played
-// there too, from their demos. The guide, the channel's bar, the
-// delay and Soldat TV's chat are the page's as on any channel; the HUD, the scoreboard, the
-// game's chat and following the players are the game's own.
+// there too, from their demos.
+//
+// Live, the game is Soldat TV's as the 1.7.1 game is (&tv: apps/client/match/tv.odin): the
+// frame is of this origin, and call(), readState() and readEvents() go to its soldatTv, by
+// the 1.7.1 game's names and in its formats. So the camera (Auto with the hub's director,
+// a player, free, the map, the zoom), the score, the flag news, the vote, the card, the
+// roster and the game's chat are the page's as on any channel; the game draws the world,
+// the kill feed and the names. The frame takes no input: the page's picture is over it.
+// A replay's game still has its own HUD, bar and keys.
 let reloadedFrame = null;
+
+// the frame's game, once it is up (null before, or for a replay)
+function reloadedTv() {
+  try { return (reloadedFrame && reloadedFrame.contentWindow && reloadedFrame.contentWindow.soldatTv) || null; } catch (_) { return null; }
+}
 
 function watchReloaded(ch) {
   closeReloaded();
@@ -2026,20 +2064,23 @@ function watchReloaded(ch) {
     q = new URLSearchParams({ demo: demoUrl(m.id, m) });
     if (m.mapHash) q.set('map', m.map), q.set('mapUrl', httpBase() + '/reloaded/maps/' + m.mapHash + '.pms');
   } else {
-    q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id });
+    q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id, tv: '1' });
     const password = passwords.get(ch.id);
     if (password) q.set('password', password);
   }
+  const tv = !ch.replay;
   const f = el('iframe', 'reloaded');
   f.title = 'The match';
   f.allow = 'autoplay; fullscreen';
   f.src = 'reloaded/?' + q;
+  if (tv) f.tabIndex = -1;
   f.addEventListener('load', () => {
     applyVolume();
-    f.focus();
+    if (!tv) f.focus();
   });
   $('watch').prepend(f);
   $('watch').classList.add('reloaded');
+  $('watch').classList.toggle('tv', tv);
   $('unmute').hidden = true;
   reloadedFrame = f;
 }
@@ -2048,7 +2089,8 @@ function closeReloaded() {
   if (!reloadedFrame) return;
   reloadedFrame.remove();  // the game goes with its page
   reloadedFrame = null;
-  $('watch').classList.remove('reloaded');
+  $('watch').classList.remove('reloaded', 'tv');
+  clearInterval(pollTimer);
 }
 
 function tellReloaded(m) {
@@ -2069,6 +2111,11 @@ window.addEventListener('message', (e) => {
     $('ch-delay').textContent = `${m.delay} s delay`;
   } else if (m.type === 'status') {
     notice(String(m.message || ''));
+  } else if (m.type === 'follow') {
+    // the hub's director (relay/lib/reloaded/director.mjs)
+    director = m.slot | 0;
+    if (debug) console.log('[tv] director follows slot', director);
+    if (mode === 'auto') call('soldat_spectator_follow', director);
   } else if (m.type === 'error') {
     showGuide();
     if (m.reason === 'password' && ch) {
