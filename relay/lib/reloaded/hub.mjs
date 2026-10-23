@@ -255,7 +255,10 @@ export class ReloadedHub extends Hub {
     while (this.queue.length && this.queue[0].at <= now) {
       const item = this.queue.shift();
       if (item.sample) this.sampled(item.sample);
-      else if (item.json) this.broadcastText(item.json);
+      else if (item.json) {
+        this.broadcastText(item.json);
+        if (this.recording) this.recording.camera(item.json.slot, item.at - this.delayMs);
+      }
       else this.deliver(item, item.at - this.delayMs);
     }
   }
@@ -314,6 +317,7 @@ export class ReloadedHub extends Hub {
       delay: this.delayMs / 1000, round: map.round, slot: this.slot, name: this.playerName,
     }, at, s.weapons ? [s.weapons] : [], ReloadedRecording);
     this.recording.add(build('Map', map), 'Map', map, at);
+    if (this.following) this.recording.camera(this.following, at);
   }
 
   // who played and the score, as the hub read them a delay ago
@@ -331,7 +335,8 @@ export class ReloadedHub extends Hub {
 
   // what was still held back by the delay as the hub leaves: the recording's
   record(item, at) {
-    if (!this.recording || item.json) return;
+    if (!this.recording) return;
+    if (item.json) { this.recording.camera(item.json.slot, at); return; }
     if (item.sample) this.sampled(item.sample);
     else if (item.kind === 'Map') this.recording.finish(at);
     else this.recording.add(item.data, item.kind, item.info, at);
@@ -392,6 +397,7 @@ export class ReloadedHub extends Hub {
       this.queue.splice(i, 0, { at, json: item });
     } else {
       this.broadcastText(item);
+      if (this.recording) this.recording.camera(want, now);
     }
   }
 

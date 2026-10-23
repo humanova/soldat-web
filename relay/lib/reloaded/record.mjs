@@ -11,6 +11,9 @@
 //   frame   the packets before it are all in: what they began is taken now
 //   tick    a tick of the game: the tick on show, the recorder's command and cursor, and
 //           its soldier if it plays (the hub's never does: a spectator)
+//   camera  whom the hub's director has the cameras follow from here, a u8 slot (1 to 32),
+//           for the replay's auto camera (the game's Soldat TV mode reads it, others pass
+//           over it)
 //
 // The hub writes a tick for each 60th of a second it has heard the stream for, showing
 // a few ticks behind the newest snapshot, as a game watching it live would. The round
@@ -27,7 +30,7 @@ import { VERSION, TICK_RATE, TABLES, Bits, fields } from './wire.mjs';
 const DEMO_VERSION = 2;
 const NAME_BYTES = 24, MAP_BYTES = 64;
 const HEADER_SIZE = 4 + 2 + 2 + 4 + 4 + 1 + NAME_BYTES + MAP_BYTES;
-const PACKET = 1, FRAME = 2, TICK = 3;
+const PACKET = 1, FRAME = 2, TICK = 3, CAMERA = 4;
 const RECORD_MAX = 65535;
 const VIEW_BEHIND = 3;          // ticks the view keeps behind the newest snapshot
 const MAX_MS = 3 * 3600_000;    // longer, and the demo ends (a round is never this long)
@@ -115,6 +118,12 @@ export class ReloadedRecording {
     this.advance(at);
     this.packet(data);
     if (kind === 'Snapshot' && info.tick > this.newest) this.newest = info.tick;
+  }
+
+  // the director follows `slot` (1 to 32) from `at` on
+  camera(slot, at) {
+    this.advance(at);
+    this.write(record(CAMERA, Buffer.from([slot & 0xFF])));
   }
 
   // who plays now: [{ slot, name, team }] (no spectators); the teams' captures

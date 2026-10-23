@@ -20,7 +20,7 @@ console.log({
   slot: d[16], name: text(17, 41), map: text(41, 105),
 });
 
-let o = HEADER, packets = 0, frames = 0, ticks = 0, round = 0, read = 0, noBase = 0, bad = 0, badTicks = 0;
+let o = HEADER, packets = 0, frames = 0, cameras = 0, ticks = 0, round = 0, read = 0, noBase = 0, bad = 0, badTicks = 0;
 let firstView = null, lastView = 0, viewJumps = 0;
 const kinds = {};
 const ring = new Array(STREAM_RING).fill(null);
@@ -28,6 +28,7 @@ while (o + 3 <= d.length) {
   const kind = d[o], size = d.readUInt16LE(o + 1), data = d.subarray(o + 3, o + 3 + size);
   o += 3 + size;
   if (kind === 2) { frames++; continue; }
+  if (kind === 4) { cameras++; continue; }
   if (kind === 3) {
     ticks++;
     const r = Bits.reader(data);
@@ -59,4 +60,4 @@ while (o + 3 <= d.length) {
   ring[h.tick % STREAM_RING] = f;
   read++;
 }
-console.log({ bytesLeft: d.length - o, packets, frames, ticks, kinds, snapshotsRead: read, noBase, bad, badTicks, firstView, lastView, viewJumps });
+console.log({ bytesLeft: d.length - o, packets, frames, cameras, ticks, kinds, snapshotsRead: read, noBase, bad, badTicks, firstView, lastView, viewJumps });
