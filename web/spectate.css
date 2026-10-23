@@ -249,9 +249,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 /* live: the page's picture, see-through, over the frame takes the pointer; the page shows the rest */
 #watch.reloaded.tv iframe.reloaded { pointer-events: none; }
 #watch.reloaded.tv #canvas { opacity: 0; }
-#watch.reloaded.tv :is(#clipcap, #unmute, .visuals, #replaybar) { display: none; }
-/* a replay: the game's own HUD, bar and keys */
-#watch.reloaded:not(.tv) :is(#canvas, #scorebug, #banners, #vote, #bigmsg, #card, #clipcap, #dock, #chat, #roster, #unmute, #chat-btn, #roster-btn, .visuals, #replaybar) { display: none; }
+#watch.reloaded.tv :is(#unmute, .visuals) { display: none; }
 
 /* the clean view: the match alone, for recording it; only a notice (a lost connection) stays */
 #watch.clean :is(.ui, .scorebug, .banners, .vote, .bigmsg, .card, .clipcap, .chat, .unmute) { visibility: hidden; }

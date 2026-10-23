@@ -6,6 +6,7 @@ import { SoldatRuntime } from '../runtime.js';
 import { flag } from '../flags.js';
 import { TvChat, MAX_TEXT, MAX_NAME } from './chat.js';
 import { Replay, parseDemo, TICKS } from './replay.js';
+import { ReloadedReplay } from './reloaded-replay.js';
 import { migrateDemo } from './legacy.js';
 import { INTROS } from './intros.js';
 import { pickMaps, renameMaps, shownMap } from './old-maps.js';
@@ -90,7 +91,7 @@ const game = new SoldatRuntime(canvas, {
   // a replay stands in for the hub
   openSocket: () => (replay && watching && watching.replay ? replay.socket() : null),
   beforeFrame(now) {
-    if (!replay) return;
+    if (!replay || reloadedFrame) return;  // a Reloaded replay is pumped on its own (pumpReloaded)
     replay.pump(now);
     renderBar();
   },
@@ -208,7 +209,7 @@ function watch(ch) {
     if (ch.local) history.replaceState(null, '', './demo' + (debug ? '?debug' : ''));
     else history.replaceState(null, '', './replay?id=' + encodeURIComponent((ch.meta || replay.meta).id) + (debug ? '&debug' : ''));
     showReplayTitle(ch);
-    if (ch.game !== 'reloaded') showBar();  // the Reloaded game has its own
+    showBar();
   } else {
     history.replaceState(null, '', './' + encodeURIComponent(ch.id) + (debug ? '?debug' : ''));
     document.title = `${ch.name} · Soldat TV`;
@@ -216,8 +217,9 @@ function watch(ch) {
   if (ch.game === 'reloaded') {
     clearInterval(pollTimer);
     watchReloaded(ch);
-    // live, its state and events are read as the 1.7.1 game's (a replay's game has its own HUD yet)
-    if (!ch.replay) pollTimer = setInterval(poll, 250);
+    // its state and events are read as the 1.7.1 game's; a replay's bar each frame
+    pollTimer = setInterval(poll, 250);
+    if (ch.replay) requestAnimationFrame(pumpReloaded);
     wake();
     return;
   }
@@ -647,14 +649,6 @@ if (!document.fullscreenEnabled) $('fullscreen').hidden = true;
 
 window.addEventListener('keydown', (e) => {
   if (!watching || e.ctrlKey || e.metaKey || e.altKey) return;
-  // a Reloaded replay: its game in the frame has the keys yet, but Enter here
-  if (reloadedFrame && watching.replay) {
-    if (e.code === 'Enter' && !(e.target.closest && e.target.closest('button, a, label, input, textarea'))) {
-      e.preventDefault();
-      sayKey();
-    }
-    return;
-  }
   // Enter and Space on a button press it
   if ((e.code === 'Enter' || e.code === 'Space') && e.target.closest && e.target.closest('button, a, label')) return;
   // a choice in the menu takes its own arrow keys
@@ -1579,9 +1573,9 @@ function when(ms) {
 const demoExt = (meta) => (meta && meta.game === 'reloaded' ? '.srdm' : '.sdm');
 const demoUrl = (id, meta) => httpBase() + '/demos/' + encodeURIComponent(id) + demoExt(meta);
 
-// a recorded match's listing
-async function recordingMeta(id) {
-  const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id), { cache: 'no-store' });
+// a recorded match's listing; clips: a Soldat Reloaded match's with its clips (the relay finds them)
+async function recordingMeta(id, clips = false) {
+  const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id) + (clips ? '&clips' : ''), { cache: 'no-store' });
   const meta = res.ok ? (await res.json()).demos[0] : null;
   if (!meta) throw new Error('This recording is not available (any more).');
   return meta;
@@ -1628,11 +1622,15 @@ async function openReplay(id) {
   $('loading').hidden = false;
   try {
     await started;
-    const listed = await recordingMeta(id);
+    const listed = await recordingMeta(id, true);
     if (listed.game === 'reloaded') {
-      replay = null;
+      replay = makeReloadedReplay(listed);
       $('loading').hidden = true;
       watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
+      if (replayClip && replay.highlights.length) {
+        if (mode !== 'auto') setMode('auto', true);
+        replay.playReel(replayClip - 1);
+      }
       return;
     }
     const { meta, demo } = await loadRecording(id, loadingProgress('the recording'), listed);
@@ -1705,6 +1703,33 @@ function makeReplay(demo, meta, clip = 0) {
       return [{ ...c, parts, from, to }];
     });
   }
+  return r;
+}
+
+// a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any
+function makeReloadedReplay(meta) {
+  const r = new ReloadedReplay(meta, meta.clips, {
+    call: (name, ...args) => call(name, ...args),
+    caps: () => {
+      const tv = reloadedTv();
+      return (tv && tv.caps ? tv.caps() : '').split('\n').filter(Boolean).map((l) => l.split('\t').map(Number));
+    },
+    onFollow: (slot) => onHubMessage({ type: 'follow', slot }),
+    onTime: () => { barKey = ''; renderBar(); },
+    onEnd: () => { barKey = ''; renderBar(); wake(); },
+    onClip: (h) => {
+      reelClip(h);
+      history.replaceState(null, '', './replay?id=' + encodeURIComponent(meta.id) + (h ? `&clip=${r.reel.i + 1}` : '') + (debug ? '&debug' : ''));
+      if (!h) return;
+      clearNews();
+      showClip(h.parts[0]);
+      barKey = '';
+      renderBar();
+    },
+    onPart: (p) => { reelCam.fit = null; showClip(p); },
+    onShot: (shot) => reelShot(shot),
+    onReady: () => { syncAuto(true); showBar(); },
+  });
   return r;
 }
 
@@ -1811,9 +1836,10 @@ function showBar() {
   const conv = replay.meta.converted;
   $('rp-download').hidden = !replay.meta.id && !conv;
   if (replay.meta.id) {
-    $('rp-download').href = demoUrl(replay.meta.id);
-    $('rp-download').setAttribute('download', replay.meta.id + '.sdm');
-    $('rp-download').title = `Download the demo (${replay.meta.id}.sdm, ${(replay.meta.bytes / 1048576).toFixed(1)} MB)`;
+    const ext = demoExt(replay.meta);
+    $('rp-download').href = demoUrl(replay.meta.id, replay.meta);
+    $('rp-download').setAttribute('download', replay.meta.id + ext);
+    $('rp-download').title = `Download the demo (${replay.meta.id}${ext}, ${(replay.meta.bytes / 1048576).toFixed(1)} MB)`;
   } else if (conv) {
     if (convertedUrl) URL.revokeObjectURL(convertedUrl);
     convertedUrl = URL.createObjectURL(new Blob([conv.data], { type: 'application/octet-stream' }));
@@ -2061,14 +2087,14 @@ function watchReloaded(ch) {
   if (ch.replay) {
     // a recorded match: its demo, on its map (the hub's copy, for one the game hasn't got)
     const m = ch.meta;
-    q = new URLSearchParams({ demo: demoUrl(m.id, m) });
+    q = new URLSearchParams({ demo: demoUrl(m.id, m), tv: '1' });
     if (m.mapHash) q.set('map', m.map), q.set('mapUrl', httpBase() + '/reloaded/maps/' + m.mapHash + '.pms');
   } else {
     q = new URLSearchParams({ line: hubBase() + '/watch', watch: ch.id, tv: '1' });
     const password = passwords.get(ch.id);
     if (password) q.set('password', password);
   }
-  const tv = !ch.replay;
+  const tv = true;
   const f = el('iframe', 'reloaded');
   f.title = 'The match';
   f.allow = 'autoplay; fullscreen';
@@ -2083,6 +2109,14 @@ function watchReloaded(ch) {
   $('watch').classList.toggle('tv', tv);
   $('unmute').hidden = true;
   reloadedFrame = f;
+}
+
+// a Reloaded replay, each frame: where its game is (reloaded-replay.js), on the bar
+function pumpReloaded() {
+  if (!reloadedFrame || !replay || !(replay instanceof ReloadedReplay)) return;
+  replay.pump();
+  renderBar();
+  requestAnimationFrame(pumpReloaded);
 }
 
 function closeReloaded() {
