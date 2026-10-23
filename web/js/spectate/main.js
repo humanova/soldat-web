@@ -763,7 +763,7 @@ function setClean(on, hint = on) {
   $('watch').classList.toggle('clean', on);
   $('clean').checked = on;
   if (game.started) setCvar('ui_killconsole', on ? '0' : '1');
-  call('soldat_tv_kill_feed', on ? 0 : 1);  // a Reloaded match's game (none other has it)
+  if (reloadedFrame) call('soldat_tv_kill_feed', on ? 0 : 1);  // a Reloaded match's game
   clearTimeout(cleanHintTimer);
   const h = $('clean-hint');
   h.hidden = !hint;
