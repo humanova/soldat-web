@@ -769,6 +769,7 @@ begin
   spec_health := TBooleanCvar.Add('spec_health', 'Shows health bars under the players', True, True, [CVAR_CLIENT], nil);
   spec_trails := TBooleanCvar.Add('spec_trails', 'Draws the path of a flag carrier', True, True, [CVAR_CLIENT], nil);
   spec_offscreen := TIntegerCvar.Add('spec_offscreen', 'Players off the screen: 0 nothing, 1 an arrow at its edge, 2 their name at its edge', 1, 1, [CVAR_CLIENT], nil, 0, 2);
+  spec_background := TStringCvar.Add('spec_background', 'The map''s background in one colour, as rrggbb (empty: the map''s own)', '', '', [CVAR_CLIENT], nil, 0, 255);
   {$ENDIF}
   r_msaa := TIntegerCVar.Add('r_msaa', 'Sets the number of samples for anti-aliasing (MSAA).', 0, 0, [CVAR_CLIENT, CVAR_INITONLY], nil, 0, 32);
 

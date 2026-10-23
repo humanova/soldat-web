@@ -870,6 +870,10 @@ var
   GrabActionSnap: Boolean;
   Rc: TRect;
   Rt: TGfxTexture;
+  {$IFDEF SPECTATOR}
+  BgColor: TGfxColor;
+  HasBgColor: Boolean;
+  {$ENDIF}
 begin
   GameInfoShown := False;
   mg := @MapGfx;
@@ -936,6 +940,14 @@ begin
     dx := CameraX - w / 2;
     dy := CameraY - h / 2;
 
+    {$IFDEF SPECTATOR}
+    // The page's colour for the background (spec_background): the screen is cleared with it
+    // and the map's gradient is not drawn, so the colour shows wherever the map's would.
+    HasBgColor := SpectatorBackground(BgColor);
+    if HasBgColor then
+      GfxClear(BgColor)
+    else
+    {$ENDIF}
     if CameraY > 0 then
       GfxClear(MapGfx.BgColorBtm)
     else
@@ -946,6 +958,9 @@ begin
 
     GfxTransform(GfxMat3Ortho(0, 1, dy, h + dy));
     GfxBindTexture(nil);
+    {$IFDEF SPECTATOR}
+    if not HasBgColor then
+    {$ENDIF}
     GfxDraw(mg.VertexBuffer, mg.Background, mg.BackgroundCount);
 
     GfxTransform(GfxMat3Ortho(dx, w + dx, dy, h + dy));

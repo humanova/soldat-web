@@ -130,6 +130,7 @@ var
   spec_health: TBooleanCvar;
   spec_trails: TBooleanCvar;
   spec_offscreen: TIntegerCvar;  // 0: nothing, 1: an arrow, 2: the name at the edge
+  spec_background: TStringCvar;  // '' the map's own, or one colour as rrggbb (SpectatorBackground)
   {$ENDIF}
   r_msaa: TIntegerCVar;
 

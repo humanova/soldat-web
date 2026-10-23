@@ -2,7 +2,8 @@
   The spectator's overlays in the match's world (Soldat TV): players behind scenery as
   silhouettes, bullet tracers, where players died, and the path of a flag carrier. The
   names and health bars are drawn with the other markers (InterfaceGraphics). Each one is a
-  spec_* setting the page can turn off (Client.pas).
+  spec_* setting the page can turn off (Client.pas). The page can also paint the map's
+  background in one colour of its choice (spec_background, SpectatorBackground).
 }
 unit SpectatorGraphics;
 
@@ -31,6 +32,9 @@ var
 function SpectatorTeamColor(i: Integer; Light: Boolean): Cardinal;
 function SpectatorFlagColor(Style: Integer): Cardinal;
 function CarriesFlag(i: Integer): Integer;  // the style of the flag the player holds, or 0
+// The colour spec_background asks for in place of the map's background (its top and bottom
+// both), False when it asks for none: empty, or not six hex digits (then the map's own shows)
+function SpectatorBackground(out Color: TGfxColor): Boolean;
 
 procedure SpectatorGraphicsTick;   // a tick of the match: the deaths and the flag paths
 procedure SpectatorGraphicsClear;  // a replay's jump: the match starts again here
@@ -337,6 +341,30 @@ begin
         GfxVertex(P[k].X - N[k].X, P[k].Y - N[k].Y, 0, 0, C[k]),
         GfxVertex(P[k - 1].X - N[k - 1].X, P[k - 1].Y - N[k - 1].Y, 0, 0, C[k - 1]));
   end;
+end;
+
+function SpectatorBackground(out Color: TGfxColor): Boolean;
+var
+  S: AnsiString;
+  i: Integer;
+  Rgb: LongWord;
+begin
+  Result := False;
+  Color := RGBA(0, 0, 0);
+  S := spec_background.Value;
+  if Length(S) <> 6 then
+    Exit;
+  Rgb := 0;
+  for i := 1 to 6 do
+    case S[i] of
+      '0'..'9': Rgb := Rgb * 16 + LongWord(Ord(S[i]) - Ord('0'));
+      'a'..'f': Rgb := Rgb * 16 + LongWord(Ord(S[i]) - Ord('a') + 10);
+      'A'..'F': Rgb := Rgb * 16 + LongWord(Ord(S[i]) - Ord('A') + 10);
+    else
+      Exit;
+    end;
+  Color := RGBA((Rgb shr 16) and $FF, (Rgb shr 8) and $FF, Rgb and $FF);
+  Result := True;
 end;
 
 procedure RenderFlagTrails;
