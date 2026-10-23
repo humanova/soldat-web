@@ -117,7 +117,8 @@ const game = new SoldatRuntime(canvas, {
       askPassword(ch, message);
     }
   },
-  onLeave: () => showGuide(),
+  // the 1.7.1 game let go as a reel goes on to a Reloaded match: the page stays
+  onLeave: () => { if (!reloadedFrame) showGuide(); },
   onExit: () => showGuide(),
 });
 window.soldat = game; // for debugging from the browser console
@@ -223,6 +224,7 @@ function watch(ch) {
     wake();
     return;
   }
+  closeReloaded();  // a reel from a Reloaded match on to a 1.7.1 one
   setCvar('cl_player_team', '5');  // join as a spectator, no team menu
   // a replay may have held the game's clock
   try { game.call('soldat_spectator_speed', 1); } catch (_) {}
@@ -1688,27 +1690,30 @@ function makeReplay(demo, meta, clip = 0) {
     onShot: (shot) => reelShot(shot),
   });
   r.smooth = !!prefs.smooth;
-  // a reel of several matches: the clip it asks for, or the clips with the plays it asks for,
-  // from the first of them to the last
-  if (reelSet && clip) r.highlights = r.highlights.slice(clip - 1, clip);
-  else if (reelSet) {
-    r.highlights = r.highlights.flatMap((c) => {
-      const first = c.parts.findIndex(reelSet.wants), last = c.parts.findLastIndex(reelSet.wants);
-      if (first < 0) return [];
-      // each end as that play's own clip has it
-      const parts = c.parts.slice(first, last + 1);
-      const from = Math.min(parts[0].start, parts[0].from), to = Math.max(parts[parts.length - 1].end, parts[parts.length - 1].to);
-      parts[0] = { ...parts[0], start: from };
-      parts[parts.length - 1] = { ...parts[parts.length - 1], end: to };
-      return [{ ...c, parts, from, to }];
-    });
-  }
+  r.highlights = reelHighlights(r.highlights, clip);
   return r;
 }
 
+// a reel of several matches: the clip it asks for, or the clips with the plays it asks for,
+// from the first of them to the last (no reel: them all)
+function reelHighlights(list, clip) {
+  if (!reelSet) return list;
+  if (clip) return list.slice(clip - 1, clip);
+  return list.flatMap((c) => {
+    const first = c.parts.findIndex(reelSet.wants), last = c.parts.findLastIndex(reelSet.wants);
+    if (first < 0) return [];
+    // each end as that play's own clip has it
+    const parts = c.parts.slice(first, last + 1);
+    const from = Math.min(parts[0].start, parts[0].from), to = Math.max(parts[parts.length - 1].end, parts[parts.length - 1].to);
+    parts[0] = { ...parts[0], start: from };
+    parts[parts.length - 1] = { ...parts[parts.length - 1], end: to };
+    return [{ ...c, parts, from, to }];
+  });
+}
+
 // a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any
-function makeReloadedReplay(meta) {
-  const r = new ReloadedReplay(meta, meta.clips, {
+function makeReloadedReplay(meta, clip = 0) {
+  const r = new ReloadedReplay(meta, reelHighlights(meta.clips || [], clip), {
     call: (name, ...args) => call(name, ...args),
     caps: () => {
       const tv = reloadedTv();
@@ -1716,10 +1721,15 @@ function makeReloadedReplay(meta) {
     },
     onFollow: (slot) => onHubMessage({ type: 'follow', slot }),
     onTime: () => { barKey = ''; renderBar(); },
-    onEnd: () => { barKey = ''; renderBar(); wake(); },
+    onEnd: () => {
+      barKey = '';
+      renderBar();
+      wake();
+      if (reelSet && replay && replay.reel && replay.reel.done) reelMatch(1);
+    },
     onClip: (h) => {
       reelClip(h);
-      history.replaceState(null, '', './replay?id=' + encodeURIComponent(meta.id) + (h ? `&clip=${r.reel.i + 1}` : '') + (debug ? '&debug' : ''));
+      if (!reelSet) history.replaceState(null, '', './replay?id=' + encodeURIComponent(meta.id) + (h ? `&clip=${r.reel.i + 1}` : '') + (debug ? '&debug' : ''));
       if (!h) return;
       clearNews();
       showClip(h.parts[0]);
@@ -1764,7 +1774,9 @@ async function openReel(ids) {
 // match i of the reel, loaded once (the last few are kept, for going back)
 function reelLoad(set, i, progress) {
   if (!set.loads.has(i)) {
-    set.loads.set(i, loadRecording(set.ids[i].id, progress));
+    // a Soldat Reloaded match: its listing, with its clips (its game loads the demo itself)
+    const id = set.ids[i].id;
+    set.loads.set(i, recordingMeta(id, true).then((meta) => (meta.game === 'reloaded' ? { meta } : loadRecording(id, progress, meta))));
     for (const k of set.loads.keys()) if (set.loads.size > 3 && k !== i) set.loads.delete(k);
   }
   return set.loads.get(i);
@@ -1786,19 +1798,24 @@ async function reelMatch(step, last = false) {
         continue;  // gone: the next one
       }
       if (reelSet !== set) return false;
-      const r = makeReplay(got.demo, got.meta, set.ids[j].clip);
+      const reloaded = got.meta.game === 'reloaded';
+      const r = reloaded ? makeReloadedReplay(got.meta, set.ids[j].clip) : makeReplay(got.demo, got.meta, set.ids[j].clip);
       if (!r.highlights.length) continue;
       set.i = j;
-      if (replay && replay.sock) {
+      if (!reloaded && replay && replay.sock) {
         r.takeOver(replay);
         replay = r;
         clearNews();
         showReplayTitle(watching);
         showBar();
       } else {
+        // a match of the other game: its own picture (a 1.7.1 game let go, a Reloaded frame closed)
+        const held = replay && replay.sock;
         replay = r;
         $('loading').hidden = true;
-        watch(replayChannel(got.meta));
+        clearNews();
+        watch(reloaded ? { ...replayChannel(got.meta), game: 'reloaded', meta: got.meta } : replayChannel(got.meta));
+        if (held) game.leave();
       }
       history.replaceState(null, '', set.address);
       if (mode !== 'auto') setMode('auto', true);
