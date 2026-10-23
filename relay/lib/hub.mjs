@@ -17,6 +17,7 @@ import {
 } from './soldat171.mjs';
 // the page's own: Auto follows whom it picks
 import { Director, DIRECTOR_VERSION, LEAD_MS as DIRECTOR_LEAD_MS } from '../../web/js/spectate/director.js';
+import { hideAddresses } from './util.mjs';
 
 const JOIN_RETRY_MS = 3000;
 const JOIN_TIMEOUT_MS = 20_000;
@@ -171,7 +172,7 @@ export class Hub {
       if (net.isIP(ip) === 0) ip = (await dns.lookup(ip, { family: 4 })).address;
       this.ip = ip;
     } catch (e) {
-      if (this.state === 'joining') this.fail('cannot resolve ' + this.cfg.host + ': ' + e.message);
+      if (this.state === 'joining') { this.log(`cannot resolve ${this.cfg.host}: ${e.message}`); this.fail('cannot find the server\'s address'); }
       return;
     }
     if (this.state !== 'joining') return;  // given up while resolving (no viewers left)
@@ -198,7 +199,7 @@ export class Hub {
     this.log(`joining ${this.ip}:${this.cfg.port} as "${this.playerName}"`);
   }
 
-  disconnect(reason, message = 'The match feed stopped: ' + reason) {
+  disconnect(reason, message = 'The match feed stopped: ' + hideAddresses(reason, [this.cfg.host, this.ip])) {
     if (this.sock) {
       const sock = this.sock;
       const close = () => { try { sock.close(); } catch (_) {} };
@@ -240,7 +241,7 @@ export class Hub {
     this.log(`${reason}; retrying in ${wait / 1000} s`);
     this.disconnect(reason);
     this.state = 'waiting';
-    this.error = reason;
+    this.error = hideAddresses(reason, [this.cfg.host, this.ip]);
     this.setTimer('reconnect', wait, () => {
       this.state = 'idle';
       if (this.viewers.size) this.connect();

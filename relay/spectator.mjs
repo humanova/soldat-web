@@ -18,8 +18,10 @@
 //                   keeps the last one that worked and then anyone can watch; record: demos
 //                   of its matches while Soldat TV watches it; game: "reloaded" for a Soldat
 //                   Reloaded server (relay/lib/reloaded/hub.mjs; its port is the game port);
-//                   play: the "host:port" a Reloaded server's Play link in the guide joins
-//                   through play.soldat.live (default: host:port; set it when host is internal)
+//                   play: a Reloaded server's Play link in the guide, to its game on
+//                   play.soldat.live: true for host:port, or the "host:port" to join (when
+//                   host is internal); none, no link: an address is shown only for a
+//                   server put on the play relay's list too (its SERVER_LIST or ALLOW)
 //   reloaded        { dir (default data/reloaded next to the config): the map files the hubs
 //                   fetched from Reloaded servers, for viewers' games to download; web (default
 //                   reloaded/web/dist, the web build of the reloaded/ submodule): the game
@@ -101,7 +103,7 @@ const hubs = new Map();
 for (const s of config.servers || []) {
   if (!/^[a-z0-9_-]{1,32}$/i.test(s.id || '') || !s.host || !(s.port > 0 && s.port < 65536) ||
       (s.group != null && !/^[\w .'-]{1,24}$/.test(s.group)) || (s.game != null && !GAMES[s.game]) ||
-      (s.play != null && !/^[\w.-]{1,253}:\d{1,5}$/.test(s.play))) {
+      (s.play != null && s.play !== true && s.play !== false && !/^[\w.-]{1,253}:\d{1,5}$/.test(s.play))) {
     throw new Error('bad server entry in config: ' + JSON.stringify(s));
   }
   if (hubs.has(s.id)) throw new Error('duplicate server id ' + s.id);
@@ -342,8 +344,9 @@ async function listServers(fresh) {
       bots,
       country: e ? e.Country : null,
       listed: !!e,
-      // a Reloaded server's Play link (play.soldat.live/reloaded/?play=<host>:<port>)
-      play: h.cfg.game === 'reloaded' ? h.cfg.play || `${h.cfg.host}:${h.cfg.port}` : null,
+      // a Reloaded server's Play link (play.soldat.live/reloaded/?play=<host>:<port>): only
+      // where the config asks for one, the one place a server's address is in the listing
+      play: h.cfg.game === 'reloaded' && h.cfg.play ? (h.cfg.play === true ? `${h.cfg.host}:${h.cfg.port}` : h.cfg.play) : null,
     };
   }));
   const humans = (s) => (s.players || 0) - (s.bots || 0);

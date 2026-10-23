@@ -38,3 +38,13 @@ export function clientIpOf(trustProxy) {
 export function requestUrl(req) {
   try { return new URL(req.url, 'http://x'); } catch (_) { return null; }
 }
+
+// a hub's reason as viewers see it (the guide's listing, the page's notice): with no server
+// address in it (the host it joins, its ip, any other IPv4 address with its port), as a
+// socket's or a lookup's error has them; the relay's log keeps them
+export function hideAddresses(text, hosts = []) {
+  const port = '(?::\\d{1,5})?';
+  let t = String(text);
+  for (const h of hosts) if (h) t = t.replace(new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + port, 'gi'), 'the server');
+  return t.replace(new RegExp('\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b' + port, 'g'), 'the server');
+}

@@ -129,7 +129,7 @@ export class ReloadedHub extends Hub {
       if (net.isIP(ip) === 0) ip = (await dns.lookup(ip, { family: 4 })).address;
       this.ip = ip;
     } catch (e) {
-      if (this.state === 'joining') this.fail('cannot resolve ' + this.cfg.host + ': ' + e.message);
+      if (this.state === 'joining') { this.log(`cannot resolve ${this.cfg.host}: ${e.message}`); this.fail('cannot find the server\'s address'); }
       return;
     }
     if (this.state !== 'joining') return;
