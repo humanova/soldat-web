@@ -8,7 +8,7 @@
 // count them. Something the server did on its tick T is put at the first demo tick that
 // shows T (its tick record's view), as the game shows it then.
 //
-//   reloadedPlays(demo, { scores }) -> { clips, highlights, rating }
+//   reloadedPlays(demo, { scores }) -> { clips, highlights, rating, cams? }
 // demo: the .srdm's bytes (not gzipped); scores: the final [alpha, bravo] the match is
 // listed with (default: the snapshots' last). It takes a second or two for a long match:
 // the relay has playsOf do it on a thread of its own (plays-worker.mjs).
@@ -16,10 +16,12 @@
 import { Worker } from 'node:worker_threads';
 import { MSG, STREAM_RING, E, Bits, parse, snapshotHeader, snapshotBody, words, fields, TABLES } from './wire.mjs';
 import { findPlays, countHighlights, rateMatch } from '../../../web/js/spectate/highlights.js';
+import { PICK_MS, LEAD_MS } from '../../../web/js/spectate/director.js';
+import { ReloadedDirector } from './director.mjs';
 
 const TICKS = 60;
 const HEADER_SIZE = 4 + 2 + 2 + 4 + 4 + 1 + 24 + 64;
-const PACKET = 1, TICK = 3;
+const PACKET = 1, TICK = 3, CAMERA = 4;
 const ALPHA_FLAG = E.Thing_Kind.Alpha_Flag, BRAVO_FLAG = E.Thing_Kind.Bravo_Flag;  // a flag of team n is kind n
 const SPECTATOR = E.Team.Spectator;
 const PLAYING = E.Round_Wire_Phase.Playing;
@@ -36,13 +38,15 @@ const KILL_WEAPON = {
 // The demo's records, in order: what happened at which server tick, and which server tick
 // each demo tick showed. { items: [{ tick (the server's), word } or { tick, state }],
 // views: [the server tick each demo tick showed], mapChange: the demo tick of the round's
-// end (null: none) }
-function readDemo(d) {
+// end (null: none), cameras: its camera records (the hub's director's picks) }.
+// onFrame(f, words, tick): each new snapshot as read (snapshotBody's frame), the words new
+// in it, at the demo tick it came.
+function readDemo(d, onFrame = null) {
   if (d.length < HEADER_SIZE || d.toString('latin1', 0, 4) !== 'SRDM') throw new Error('not a Soldat Reloaded demo');
   const items = [], views = [];
   const ring = new Array(STREAM_RING).fill(null);
   const heard = new Set();     // the words' seqs: each comes again until acknowledged
-  let round = 0, mapChange = null, newest = 0;
+  let round = 0, mapChange = null, newest = 0, cameras = 0;
   for (let o = HEADER_SIZE; o + 3 <= d.length;) {
     const kind = d[o], size = d.readUInt16LE(o + 1), data = d.subarray(o + 3, o + 3 + size);
     o += 3 + size;
@@ -51,6 +55,7 @@ function readDemo(d) {
       views.push(t.view || 0);
       continue;
     }
+    if (kind === CAMERA) cameras++;
     if (kind !== PACKET) continue;
     const b = Bits.reader(data);
     const k = MSG[b.kind()];
@@ -79,8 +84,8 @@ function readDemo(d) {
     if (!b.done) continue;
     f.tick = h.tick;
     ring[h.tick % STREAM_RING] = f;
-    for (const w of said) {
-      if (heard.has(w.seq)) continue;
+    const fresh = said.filter((w) => !heard.has(w.seq));
+    for (const w of fresh) {
       heard.add(w.seq);
       items.push({ tick: w.tick, word: w.word });
     }
@@ -89,11 +94,39 @@ function readDemo(d) {
     if (h.tick > newest) {
       newest = h.tick;
       items.push({ tick: h.tick, state: compact(f) });
+      if (onFrame) onFrame(f, fresh, views.length);
     }
   }
   // by the server's tick, a tick's words before its state (the state is as the tick left it)
   items.sort((a, b) => a.tick - b.tick || (a.word ? 0 : 1) - (b.word ? 0 : 1));
-  return { items, views, mapChange };
+  return { items, views, mapChange, cameras };
+}
+
+// The director's picks for a demo recorded without them (before camera records were written),
+// as the hub's would have been (directDemo in web/js/spectate/director.js has a 1.7.1 demo's):
+// asked every PICK_MS of the demo's time, each pick LEAD_MS early, as on a server with a
+// delay. own: the recorder's soldier (the header's slot). see(f, words, tick) as readDemo's
+// onFrame; cams: [{ tick, slot }]
+function directing(own) {
+  const d = new ReloadedDirector();
+  const cams = [];
+  const ms = (tick) => (tick * 1000) / TICKS;
+  const lead = Math.round((LEAD_MS * TICKS) / 1000);
+  let next = 0;
+  const pick = (tick) => {
+    const was = d.target;
+    const slot = d.pickNow(ms(tick));
+    if (!slot || slot === was) return;
+    const last = cams.length ? cams[cams.length - 1].tick : -1;
+    cams.push({ tick: Math.max(last + 1, tick - lead, 0), slot });
+  };
+  return {
+    cams,
+    see(f, said, tick) {
+      while (ms(tick) >= next) { pick(Math.round((next * TICKS) / 1000)); next += PICK_MS; }
+      d.seeFrame(f, said, own, ms(tick));
+    },
+  };
 }
 
 // a snapshot's players (null: gone; a name where it came whole), flags and round
@@ -114,8 +147,9 @@ function compact(f) {
 }
 
 // what highlights.js's findPlays takes (readMatch there has it for 1.7.1), from a demo
-export function readReloadedMatch(demo) {
-  const { items, views, mapChange } = readDemo(demo);
+// (and `cameras`, its camera records; with onFrame, readDemo's)
+export function readReloadedMatch(demo, onFrame = null) {
+  const { items, views, mapChange, cameras } = readDemo(demo, onFrame);
   // the first demo tick showing each server tick: views only grow but where the stream jumps
   const shown = [];
   let top = 0;
@@ -214,15 +248,18 @@ export function readReloadedMatch(demo) {
     }
   }
   // last: the last snapshot read (compact's), its players' tallies for a check
-  return { kills, carrierKills, caps, resting, score, mapChanged, end, ticks: views.length, last, names };
+  return { kills, carrierKills, caps, resting, score, mapChanged, end, ticks: views.length, last, names, cameras };
 }
 
-// The match's clips (findPlays's), how many plays of each kind, and its rating.
+// The match's clips (findPlays's), how many plays of each kind, and its rating; and for a
+// demo without camera records, cams: the director's picks worked out (directing).
 export function reloadedPlays(demo, { scores } = {}) {
-  const m = readReloadedMatch(demo);
+  const director = directing(demo.length > 16 ? demo[16] : -1);
+  const m = readReloadedMatch(demo, director.see);
   const clips = findPlays(m);
   const seconds = m.ticks / TICKS;
-  return { clips, highlights: countHighlights(clips), rating: rateMatch(clips, seconds, scores || m.score) };
+  return { clips, highlights: countHighlights(clips), rating: rateMatch(clips, seconds, scores || m.score),
+    ...(m.cameras ? {} : { cams: director.cams }) };
 }
 
 export function playsOf(file, scores) {
@@ -235,20 +272,22 @@ export function playsOf(file, scores) {
 }
 
 // The plays of a recordings store's (relay/lib/recorder.mjs) Soldat Reloaded demos: a demo's
-// clips, worked out when asked and kept for the next asks (the last KEPT), and the
+// clips (and its director's picks, for one recorded without them), worked out when asked and
+// kept for the next asks (the last KEPT), and the
 // summaries of demos kept without highlights (before they were found, or when finding them
 // failed) filled in, one after another.
 const KEPT = 20;
 
 export function makeReloadedPlays(recordings, log) {
-  const kept = new Map();   // id -> its clips (a promise)
+  const kept = new Map();   // id -> its clips and cams (a promise)
   return {
-    // a published Soldat Reloaded demo's clips (findPlays's); null if it has none
-    clips(id) {
+    // a published Soldat Reloaded demo's { clips (findPlays's), cams (reloadedPlays's) }; null
+    // if it has none
+    plays(id) {
       const f = recordings.file(id);
       if (!f || f.meta.game !== 'reloaded') return Promise.resolve(null);
       if (!kept.has(id)) {
-        const p = playsOf(f.path, f.meta.scores).then((m) => m.clips);
+        const p = playsOf(f.path, f.meta.scores).then(({ clips, cams }) => ({ clips, cams }));
         p.catch(() => kept.delete(id));
         kept.set(id, p);
         if (kept.size > KEPT) kept.delete(kept.keys().next().value);

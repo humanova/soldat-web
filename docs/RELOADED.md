@@ -77,6 +77,11 @@ own (`plays-worker.mjs`):
 - for `/api/demos?id=<id>&clips`, which adds the demo's `clips` (the last 20 are kept).
   The page finds a 1.7.1 demo's clips in the demo itself.
 
+A demo recorded before the hub wrote its director's picks into it has no camera records.
+For one of those, `&clips` also adds `cams` (`[{ tick, slot }]`): the picks worked out from
+its snapshots by the hub's director, each 800 ms early, as `directDemo` does for an old 1.7.1
+demo. A demo with picks of its own has no `cams`.
+
 ## How it works
 
 The hub forwards the server's messages unchanged. It reads as little of them as it can:
