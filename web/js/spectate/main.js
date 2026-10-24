@@ -98,15 +98,7 @@ const game = new SoldatRuntime(canvas, {
     renderBar();
   },
   args: debug ? ['-log_level', params.get('debug') || '1'] : [],
-  displaySize() {
-    // always a landscape picture; phones get at most 2x their CSS size (sharp and cheap)
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let w = Math.round(Math.max(screen.width, screen.height) * dpr);
-    let h = Math.round(Math.min(screen.width, screen.height) * dpr);
-    const max = 2560 * 1600;
-    if (w * h > max) { const s = Math.sqrt(max / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
-    return [w, h];
-  },
+  displaySize: () => pictureSize(),
   onNetError(message, data) {
     const ch = watching;
     const password = !!(ch && data && data.reason === 'password');
@@ -235,6 +227,7 @@ function watch(ch) {
   applyVolume();
   applyVisuals();
   setClean(clean, false);
+  resizeGame();  // the picture area's shape, now that it shows
   if (!game.join('tv', 1, '')) {
     showGuide();
     setStatus('Could not start watching.', true);
@@ -909,8 +902,36 @@ for (const box of movables) {
   // a panel that grows or shrinks keeps its place against the nearest edges
   new ResizeObserver(() => place(box)).observe(box);
 }
-window.addEventListener('resize', () => { fitPicture(); movables.forEach(place); });
-document.addEventListener('fullscreenchange', () => { fitPicture(); movables.forEach(place); });
+window.addEventListener('resize', () => { resizeGame(); fitPicture(); movables.forEach(place); });
+document.addEventListener('fullscreenchange', () => { resizeGame(); fitPicture(); movables.forEach(place); });
+
+// The 1.7.1 game draws at the picture area's size, whatever its shape, and follows it as the
+// window changes (soldat_spectator_resize): more of the world on a wider one, no bars, but
+// past the game's shapes (5:4 to 2.4:1), where the canvas keeps the nearest and the page
+// letterboxes it. The size in pixels, at most 2x the CSS size (sharp and cheap) and 2560x1600.
+function pictureSize() {
+  const r = $('watch').hidden ? { width: innerWidth, height: innerHeight } : $('watch').getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  const max = 2560 * 1600;
+  if (w * h > max) { const k = Math.sqrt(max / (w * h)); w = Math.round(w * k); h = Math.round(h * k); }
+  return [w, h];
+}
+let resizing = false;
+function resizeGame() {
+  if (resizing) return;
+  resizing = true;
+  requestAnimationFrame(() => {  // once a frame at most, as a window is dragged
+    resizing = false;
+    if (!game.running || reloadedFrame) return;
+    const [w, h] = pictureSize();
+    const got = game.call('soldat_spectator_resize', w, h);  // the size it takes: width << 16 | height
+    if (!got) return;
+    const cw = got >>> 16, ch = got & 0xffff;
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    fitPicture();
+  });
+}
 
 // ---------- the match state (soldat_spectator_state, Spectator.pas)
 
