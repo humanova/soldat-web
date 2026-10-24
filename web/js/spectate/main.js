@@ -722,7 +722,9 @@ function setVisual(name, value) {
     // the background: 0xRRGGBB, or -1 for the map's own
     const n = name === 'spec_background' ? (/^[0-9a-f]{6}$/i.test(value) ? parseInt(value, 16) : -1) : +value;
     call('soldat_tv_visual', id, n);
-  } else if (game.running) {
+  } else if (game.started) {
+    // started, not running: a watch sets them before it joins, and the game's own defaults
+    // (health bars on) would show
     setCvar(name, value);
   }
 }
