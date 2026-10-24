@@ -26,6 +26,10 @@ var
 
 function InitGameGraphics: Boolean;
 procedure ReloadGraphics;
+{$IFDEF SPECTATOR}
+// after Client.ResizeWindow: the fonts, render targets and viewport for the new size
+procedure ResizeGameGraphics;
+{$ENDIF}
 procedure DestroyGameGraphics();
 procedure RenderFrame(TimeElapsed, FramePercent: Extended; Paused: Boolean);
 procedure RenderGameInfo(TextString: WideString);
@@ -684,6 +688,39 @@ begin
   LoadMapFile(MapInfo, MapFile);
   LoadMapGraphics(MapFile, BgForce, Color[0], Color[1]);
 end;
+
+{$IFDEF SPECTATOR}
+procedure ResizeGameGraphics;
+var
+  i: Integer;
+begin
+  if not Initialized then
+    Exit;
+
+  // the fonts' sizes are in pixels, worked out from RenderHeight (LoadFonts)
+  for i := Low(Fonts) to High(Fonts) do
+    GfxDeleteFont(Fonts[i]);
+  LoadFonts();
+  SetFontStyle(FONT_SMALL);
+
+  if ActionSnapTexture <> nil then
+  begin
+    GfxDeleteTexture(ActionSnapTexture);
+    ActionSnapTexture := GfxCreateRenderTarget(RenderWidth, RenderHeight, 4, True);
+    ActionSnapTaken := False;
+  end;
+
+  // the window is the picture's size now (ResizeWindow), so nothing is drawn through a
+  // render target to be scaled into it
+  if RenderTarget <> nil then
+    GfxDeleteTexture(RenderTarget);
+  if RenderTargetAA <> nil then
+    GfxDeleteTexture(RenderTargetAA);
+
+  GfxTarget(nil);
+  GfxViewport(0, 0, WindowWidth, WindowHeight);
+end;
+{$ENDIF}
 
 procedure DestroyGameGraphics();
 var

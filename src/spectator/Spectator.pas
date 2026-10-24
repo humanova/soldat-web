@@ -34,6 +34,12 @@ function SpectatorFrame(A, B: LongInt; Mix: Single): Single;
 procedure SpectatorAim(Slot: Integer; var X, Y: Single);
 // sets a client setting without the console's "is now set to" line
 procedure SpectatorSet(Name, Value: PAnsiChar);
+// The page's picture is W x H pixels now (its canvas's drawing buffer): the game draws in
+// that shape from the next frame on, showing more or less of the world as the width
+// changes (Client.ResizeWindow). A shape wider than MaxFov (2.4) or narrower than MIN_FOV
+// (1.25) keeps that limit: returns the size the picture takes, width shl 16 or height, and
+// the canvas must be given that size (the page letterboxes it in its place).
+function SpectatorResize(W, H: LongInt): LongInt;
 // writes a text snapshot of the match into Buf (see SpectatorState in the .pas), returns
 // its length (0 when it does not fit)
 function SpectatorState(Buf: PAnsiChar; Size: LongInt): LongInt;
@@ -102,7 +108,7 @@ implementation
 
 uses
   SysUtils, Math, Client, ClientGame, Game, Sprites, Things, Bullets, Sparks, Constants, Cvar, Net,
-  Vector, InterfaceGraphics, SpectatorGraphics;
+  Vector, InterfaceGraphics, SpectatorGraphics, GameMenus;
 
 var
   Events: AnsiString = '';
@@ -559,6 +565,41 @@ begin
   HeldY := Max(0, Min(GameHeight, HeldY + DY * cl_sensitivity.Value));
   mx := HeldX;
   my := HeldY;
+end;
+
+var
+  AskedW: Integer = 0;  // the size the page asked for last (the picture's may be clamped)
+  AskedH: Integer = 0;
+
+function SpectatorResize(W, H: LongInt): LongInt;
+var
+  Old: Single;
+  i, DX: Integer;
+begin
+  W := Min(W, $7FFF);
+  H := Min(H, $7FFF);
+  if (W > 0) and (H > 0) and ((W <> AskedW) or (H <> AskedH)) then
+  begin
+    AskedW := W;
+    AskedH := H;
+    Old := GameWidth;
+    ResizeWindow(W, H);
+    // the cursor (in the game's units, 0 to GameWidth) keeps its place on the screen
+    mx := mx * GameWidth / Old;
+    HeldX := HeldX * GameWidth / Old;
+    // the game's menus are placed once (InitGameMenus); the Esc menu is centered
+    if r_scaleinterface.Value and (EscMenu <> nil) then
+    begin
+      DX := Round((GameWidth - EscMenu.w) / 2) - EscMenu.x;
+      Inc(EscMenu.x, DX);
+      for i := 0 to High(EscMenu.Button) do
+      begin
+        Inc(EscMenu.Button[i].x1, DX);
+        Inc(EscMenu.Button[i].x2, DX);
+      end;
+    end;
+  end;
+  Result := RenderWidth shl 16 or RenderHeight;
 end;
 
 // ---------------------------------------------------------------- the auto camera

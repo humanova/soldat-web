@@ -51,6 +51,11 @@ procedure LeaveToLauncher;
 procedure ShutDown;
 procedure ExitToMenu;
 procedure RestartGraph;
+{$IFDEF SPECTATOR}
+// The page's picture changed size: works out again, for a drawing buffer of W x H pixels,
+// the sizes StartGame works out from the display, and applies them (Spectator.SpectatorResize)
+procedure ResizeWindow(W, H: Integer);
+{$ENDIF}
 procedure ShowMessage(MessageText: AnsiString); overload;
 procedure ShowMessage(MessageText: WideString); overload;
 
@@ -593,6 +598,70 @@ const
 {$ELSE}
 const
   MaxFov = MAX_FOV;
+{$ENDIF}
+
+{$IFDEF SPECTATOR}
+// As StartGame does it, except that the window is the picture itself: the canvas takes the
+// size worked out here, so a shape beyond MIN_FOV..MaxFov keeps the nearest one (the page
+// letterboxes the rest), and the world shown grows and shrinks with the width (GameWidth),
+// as in a wider window of the game. Textures stay as they are: they are loaded at full size
+// (r_optimizetextures off); the fonts are made again for the new pixel size.
+procedure ResizeWindow(W, H: Integer);
+var
+  fov: Single;
+begin
+  RenderWidth := Max(W, 1);
+  RenderHeight := Max(H, 1);
+
+  fov := RenderWidth / RenderHeight;
+  if fov > MaxFov then
+  begin
+    RenderWidth := Ceil(RenderHeight * MaxFov);
+    fov := MaxFov;
+  end
+  else if fov < MIN_FOV then
+  begin
+    RenderHeight := Ceil(RenderWidth / MIN_FOV);
+    fov := MIN_FOV;
+  end;
+
+  GameWidth := Round(fov * GameHeight);
+  GameWidthHalf := GameWidth / 2;
+  GameHeightHalf := GameHeight / 2;
+
+  ScreenWidth := RenderWidth;
+  ScreenHeight := RenderHeight;
+  WindowWidth := ScreenWidth;
+  WindowHeight := ScreenHeight;
+
+  // the interface's scale factors (see StartGame)
+  if r_scaleinterface.Value then
+  begin
+    _RScala.x := 1;
+    _RScala.y := 1;
+
+    _iscala.x := GameWidth / DEFAULT_WIDTH;
+    _iscala.y := 1;
+
+    fragx := floor(GameWidthHalf - 300) - 25;
+  end
+  else
+  begin
+    _RScala.x := RenderWidth / GameWidth;
+    _RScala.y := RenderHeight / GameHeight;
+
+    _iscala.x := RenderWidth / 640;
+    _iscala.y := RenderHeight / 480;
+
+    fragx := floor(RenderWidth / 2 - 300) - 25;
+
+    if RenderHeight > GameHeight then
+      fragy := Round(10 * _rscala.y);
+  end;
+
+  GfxLog(Format('Resized to %dx%d', [RenderWidth, RenderHeight]));
+  ResizeGameGraphics;
+end;
 {$ENDIF}
 
 procedure StartGame();

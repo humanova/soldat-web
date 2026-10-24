@@ -80,6 +80,11 @@ begin
   Result := SpectatorAuto(On, Bias);
 end;
 
+function soldat_spectator_resize(W, H: LongInt): LongInt; cdecl;
+begin
+  Result := SpectatorResize(W, H);
+end;
+
 exports
   soldat_spectator_auto,
   soldat_spectator_speed,
@@ -92,7 +97,8 @@ exports
   soldat_spectator_frame,
   soldat_spectator_state,
   soldat_spectator_set,
-  soldat_spectator_mouse;
+  soldat_spectator_mouse,
+  soldat_spectator_resize;
 
 begin
   DefaultSystemCodePage := CP_UTF8;
