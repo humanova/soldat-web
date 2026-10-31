@@ -2281,7 +2281,7 @@ let reloadedFetched = false;
 function fetchReloaded(e) {
   if (reloadedFetched || !(e.target instanceof Element)) return;
   const row = e.target.closest('.channel');
-  if (!row || !row.querySelector('.chip.reloaded')) return;
+  if (!row || row.dataset.game !== 'reloaded') return;
   reloadedFetched = true;
   for (const f of ['soldat-reloaded.wasm', 'reloaded-assets.zip', 'assets-lazy.json']) {
     fetch('reloaded/' + f).then((r) => r.arrayBuffer()).catch(() => {});
@@ -2415,10 +2415,10 @@ function renderDemos() {
     const b = el('button', 'channel demo');
     b.type = 'button';
     b.title = 'Watch the replay';
+    if (d.game) b.dataset.game = d.game;
     const main = el('span', 'ch-main');
     const title = el('span', 'ch-title');
     title.append(el('span', 'ch-label', when(d.start)), el('span', 'chip', d.serverName));
-    if (d.game === 'reloaded') title.append(el('span', 'chip reloaded', 'Reloaded'));
     main.append(title);
     const sub = el('span', 'ch-sub', d.map);
     const score = scoreOf(d);
@@ -2768,6 +2768,7 @@ function renderGuide() {
     const li = el('li');
     const b = el('button', 'channel' + ((c.players || 0) ? '' : ' quiet'));
     b.type = 'button';
+    if (c.game) b.dataset.game = c.game;
 
     // the name with its tags; on a phone the map and mode go under it
     const main = el('span', 'ch-main');
