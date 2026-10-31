@@ -9,7 +9,8 @@
 //
 // hooks: call(export, ...args) into the game, onFollow(slot), onTime(), onEnd(),
 // onClip(clip), onPart(play), onShot(shot), onReady() (the game has the demo: its length and
-// captures are known)
+// captures are known), onWaiting(waiting) (the frame downloads the demo as it plays: the game
+// waits for a part that hasn't come)
 import { Replay } from './replay.js';
 
 const TICKS = 60;
@@ -28,6 +29,7 @@ export class ReloadedReplay {
     this.end = Math.max(1, Math.round((meta.seconds || 0) * TICKS));
     this.pos = 0;
     this.ready = false;
+    this.loading = 0;           // of the demo still coming: 1 more to come, 2 the game waits for it
     this.wanted = null;         // a jump asked before the game had the demo
     this.pick = -1;             // the director's pick, as last told
     this.reel = null;
@@ -109,6 +111,17 @@ export class ReloadedReplay {
       return;
     }
     this.pos = at;
+    // a demo still coming: its length and captures again once all of it has
+    const loading = this.hooks.call('soldat_tv_demo_loading') || 0;
+    if (loading !== this.loading) {
+      if (!loading) {
+        this.end = Math.max(1, this.hooks.call('soldat_tv_demo_length') || this.end);
+        this.markers = this.hooks.caps().map(([tick, team]) => ({ tick, team, name: '' }));
+        this.hooks.onTime();
+      }
+      if ((loading === 2) !== (this.loading === 2)) this.hooks.onWaiting(loading === 2);
+      this.loading = loading;
+    }
     const clip = this.clip;
     if (clip && at >= clip.to && !this.reel.done) {
       if (this.reel.i + 1 < this.highlights.length) {

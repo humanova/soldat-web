@@ -59,6 +59,21 @@ A map's images the game hasn't (its pack has Classic's) are looked for in the 1.
 images beside it (`/assets/`, `web/assets/index.json`): served by this site, the game finds
 many maps' textures and scenery there.
 
+What a Reloaded match waits for as it opens, kept short:
+
+- The relay marks the page of a Reloaded server's address and of a Reloaded replay
+  (`<html data-game="reloaded">`). On those the page leaves its 1.7.1 game for later
+  (`load171`): its 13 MB don't share the line with the match's own game, and it loads three
+  seconds after the match shows, for the next one. A 1.7.1 link, the guide and the rest load it
+  at once, as before.
+- The guide fetches the Reloaded game (its .wasm and pack) as the pointer comes to one of its
+  channels or replays, so the click finds them in the browser's cache.
+- The pack is about 10 MB (its PNGs slimmed, `reloaded/web/pack.py`).
+- A replay's demo (a ten-minute match is some 15 MB) is fetched after the game's files, and
+  plays once its first megabyte is in; the rest comes as it plays. A jump past what has come
+  waits for it, "Loading the replay..." meanwhile, and the bar's captures and length are read
+  again once all of it is in.
+
 ## Recordings
 
 With `record`, the hub records each round it is watched for as Reloaded's own demo (a

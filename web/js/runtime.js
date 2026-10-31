@@ -67,6 +67,9 @@ export class SoldatRuntime {
     this.rafId = 0;
     this.hiddenTimer = 0;
     this.log = [];
+    // the sound, there before the game is (it makes nothing until it is used): the page
+    // holds and resumes it whichever game shows (js/spectate/main.js)
+    this.al = createAL(this.rt);
   }
 
   async fetchBytes(url, label, onProgress) {
@@ -141,7 +144,6 @@ export class SoldatRuntime {
       stencil: hooks.stencil,  // the spectator's silhouettes
     });
     this.gl = createGL(rt, () => this.sdl.getContext());
-    this.al = createAL(rt);
     this.physfs = createPhysFS(rt, this.vfs, this.archives);
     this.net = createNet(rt, this.vfs, {
       relayUrl: () => hooks.relayUrl(),

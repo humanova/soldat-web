@@ -120,6 +120,7 @@ Object.defineProperty(window, 'soldatReplay', { get: () => replay });
 
 // a client setting, without the console line game.command would print
 function setCvar(name, value) {
+  if (!game.started) return;  // set again as it watches (applyVolume, applyVisuals)
   const n = game.rt.allocCString(name), v = game.rt.allocCString(value);
   try { game.call('soldat_spectator_set', n, v); } finally { game.rt.free(n); game.rt.free(v); }
 }
@@ -1011,6 +1012,7 @@ function poll() {
   if (reloadedFrame && !match) {
     reconnect.n = 0;
     notice('');
+    if (!started) setTimeout(load171, 3000);  // a Reloaded link's: the 1.7.1 game, for the next match, once this one plays
     call('soldat_tv_fill', 1);  // the whole picture area, whatever its shape: no bars
     syncAuto(true);
     applyZoom();
@@ -1710,7 +1712,6 @@ async function openReplay(id) {
   $('guide').hidden = true;
   $('loading').hidden = false;
   try {
-    await started;
     const listed = await recordingMeta(id, true);
     if (listed.game === 'reloaded') {
       replay = makeReloadedReplay(listed);
@@ -1722,6 +1723,7 @@ async function openReplay(id) {
       }
       return;
     }
+    await load171();
     const { meta, demo } = await loadRecording(id, loadingProgress('the recording'), listed);
     playDemo(demo, meta, replayChannel(meta));
     // a link to a clip: the highlights from it on, the camera on whoever made each
@@ -1799,6 +1801,7 @@ function reelHighlights(list, clip) {
 }
 
 // a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any
+let waitingTimer = 0;
 function makeReloadedReplay(meta, clip = 0) {
   const r = new ReloadedReplay(meta, reelHighlights(meta.clips || [], clip), {
     // nothing (not 0) before its game is up: the replay waits for its demo (soldat_tv_demo_at -1 or more)
@@ -1827,6 +1830,12 @@ function makeReloadedReplay(meta, clip = 0) {
     onPart: (p) => { reelCam.fit = null; showClip(p); },
     onShot: (shot) => reelShot(shot),
     onReady: () => { syncAuto(true); showBar(); },
+    // the notice kept between the parts that come, which the game takes a frame each
+    onWaiting: (waiting) => {
+      clearTimeout(waitingTimer);
+      if (waiting) notice('Loading the replay...');
+      else waitingTimer = setTimeout(() => notice(''), 600);
+    },
   });
   return r;
 }
@@ -1846,7 +1855,7 @@ async function openReel(ids) {
   const wants = (p) => (!only.size || only.has(p.type)) && (!player || p.name.toLowerCase() === player);
   reelSet = { ids, i: -1, wants, loads: new Map(), address: location.pathname + location.search };
   try {
-    await started;
+    await load171();
     if (!(await reelMatch(1))) throw new Error('These matches have no such highlights (or are not available any more).');
   } catch (e) {
     reelSet = null;
@@ -2265,6 +2274,21 @@ function stopReconnect() {
   reconnect.n = 0;
 }
 
+// the Reloaded game fetched ahead as the pointer (or a finger, or the keys) comes to one of
+// its channels or replays: in the browser's cache by the click, the frame's own fetches
+// answered from there
+let reloadedFetched = false;
+function fetchReloaded(e) {
+  if (reloadedFetched || !(e.target instanceof Element)) return;
+  const row = e.target.closest('.channel');
+  if (!row || !row.querySelector('.chip.reloaded')) return;
+  reloadedFetched = true;
+  for (const f of ['soldat-reloaded.wasm', 'reloaded-assets.zip', 'assets-lazy.json']) {
+    fetch('reloaded/' + f).then((r) => r.arrayBuffer()).catch(() => {});
+  }
+}
+for (const type of ['pointerover', 'touchstart', 'focusin']) document.addEventListener(type, fetchReloaded, { passive: true });
+
 function tellReloaded(m) {
   if (reloadedFrame && reloadedFrame.contentWindow) reloadedFrame.contentWindow.postMessage({ soldatTv: m }, location.origin);
 }
@@ -2524,10 +2548,10 @@ async function openFile(file, title = null) {
   $('loading-text').textContent = 'Opening the demo...';
   $('loading-bar').style.width = '0%';
   try {
-    await started;
     file = await file;
     const data = await readDemoFile(file);
     if (isReloadedDemo(data)) { openReloadedFile(file, data, title); return; }
+    await load171();
     // a demo of an older Soldat is converted to 1.7.1's layout first (js/spectate/legacy.js)
     const migrated = await migrateDemo(data);
     // it plays on the maps of its version where 1.7.1's differ (the download keeps the names)
@@ -2873,6 +2897,9 @@ $('refresh').addEventListener('click', () => refresh(true));
 
 // The guide shows at once and the game loads behind it (search engines see the guide, not
 // a loading screen). A channel picked before the game is ready waits on the loading screen.
+// A link straight to a Soldat Reloaded match leaves it for later (load171): that match's
+// own game comes first, the 1.7.1 game's download not in its way; it loads once that plays,
+// or a 1.7.1 match is picked.
 async function startGame() {
   const text = $('loading-text');
   const bar = $('loading-bar');
@@ -2897,8 +2924,16 @@ async function startGame() {
 }
 
 let ready = false, tuning = false;
-const started = startGame();
-started.catch((e) => console.error(e));
+let started = null;
+function load171() {
+  if (!started) {
+    started = startGame();
+    started.catch((e) => console.error(e));
+  }
+  return started;
+}
+// but for a link to a Soldat Reloaded match, which the relay marks (<html data-game>)
+if (document.documentElement.dataset.game !== 'reloaded') load171();
 
 async function tuneIn(ch) {
   if (tuning) return;
@@ -2907,11 +2942,11 @@ async function tuneIn(ch) {
     askPassword(ch);
     return;
   }
-  if (!ready) {
+  if (!ready && ch.game !== 'reloaded') {
     tuning = true;
     $('loading').hidden = false;
     try {
-      await started;
+      await load171();
     } catch (e) {
       setStatus('Could not start: ' + (e && e.message ? e.message : e), true);
       return;

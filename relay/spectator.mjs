@@ -419,41 +419,55 @@ function serveDemo(req, res, id, ext) {
 
 // ---------------------------------------------------------------- http
 
-// /demo: spectate.html with the demo player's title, description and address, built once per
-// version of the file
+// spectate.html as `edit` changes it (`kind` names the edit), built once per version of the file
+const pages = new Map();  // kind -> { etag, html, gz }
+function servePage(req, res, kind, edit) {
+  const file = path.join(ROOT, 'spectate.html');
+  fs.stat(file, (err, st) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
+    const etag = `"${kind}-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+    const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: etag,
+      'X-Content-Type-Options': 'nosniff', Vary: 'Accept-Encoding' };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
+    let page = pages.get(kind);
+    if (!page || page.etag !== etag) {
+      const html = edit(fs.readFileSync(file, 'utf8'));
+      page = { etag, html: Buffer.from(html), gz: zlib.gzipSync(html) };
+      pages.set(kind, page);
+    }
+    const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (gzip) headers['Content-Encoding'] = 'gzip';
+    const body = gzip ? page.gz : page.html;
+    headers['Content-Length'] = body.length;
+    res.writeHead(200, headers);
+    res.end(req.method === 'HEAD' ? undefined : body);
+  });
+}
+
+// /demo: the page with the demo player's title, description and address
 const DEMO_HEAD = {
   title: 'Soldat demo player · Watch .sdm demos of any version in your browser',
   description: 'Watch Soldat demos (.sdm) in your browser: any version from 1.2.0 to 1.7.1 plays here. ' +
     'Older demos are converted as they open, and you can download the converted file. No install, no account.',
   url: 'https://soldat.live/demo',
 };
-let demoPage = null;  // { etag, html, gz }
 function serveDemoPage(req, res) {
-  const file = path.join(ROOT, 'spectate.html');
-  fs.stat(file, (err, st) => {
-    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
-    const etag = `"demo-${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
-    const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: etag,
-      'X-Content-Type-Options': 'nosniff', Vary: 'Accept-Encoding' };
-    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
-    if (!demoPage || demoPage.etag !== etag) {
-      const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      const html = fs.readFileSync(file, 'utf8')
-        .replace(/<title>[^<]*<\/title>/, `<title>${DEMO_HEAD.title}</title>`)
-        .replace(/(<meta name="description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`)
-        .replace(/(<link rel="canonical" href=")[^"]*/, `$1${DEMO_HEAD.url}`)
-        .replace(/(<meta property="og:url" content=")[^"]*/, `$1${DEMO_HEAD.url}`)
-        .replace(/(<meta property="og:title" content=")[^"]*/, `$1${attr(DEMO_HEAD.title)}`)
-        .replace(/(<meta property="og:description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`);
-      demoPage = { etag, html: Buffer.from(html), gz: zlib.gzipSync(html) };
-    }
-    const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-    if (gzip) headers['Content-Encoding'] = 'gzip';
-    const body = gzip ? demoPage.gz : demoPage.html;
-    headers['Content-Length'] = body.length;
-    res.writeHead(200, headers);
-    res.end(req.method === 'HEAD' ? undefined : body);
-  });
+  const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  servePage(req, res, 'demo', (html) => html
+    .replace(/<title>[^<]*<\/title>/, `<title>${DEMO_HEAD.title}</title>`)
+    .replace(/(<meta name="description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`)
+    .replace(/(<link rel="canonical" href=")[^"]*/, `$1${DEMO_HEAD.url}`)
+    .replace(/(<meta property="og:url" content=")[^"]*/, `$1${DEMO_HEAD.url}`)
+    .replace(/(<meta property="og:title" content=")[^"]*/, `$1${attr(DEMO_HEAD.title)}`)
+    .replace(/(<meta property="og:description" content=")[^"]*/, `$1${attr(DEMO_HEAD.description)}`));
+}
+
+// a Soldat Reloaded match's address (its server's, a replay's): the page marked so
+// (<html data-game="reloaded">), which leaves the 1.7.1 game it loads for later, the match's own
+// game coming first (js/spectate/main.js load171)
+function servePageFor(req, res, game) {
+  if (game === 'reloaded') servePage(req, res, 'reloaded', (html) => html.replace('<html lang="en">', '<html lang="en" data-game="reloaded">'));
+  else serveStatic(ROOT, req, res, { file: '/spectate.html' });
 }
 
 const server = http.createServer((req, res) => {
@@ -478,7 +492,11 @@ const server = http.createServer((req, res) => {
     return;
   }
   // a recorded match: /replay?id=<demo>
-  if (url.pathname === '/replay') { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
+  if (url.pathname === '/replay') {
+    const demo = recordings && url.searchParams.get('id') ? recordings.list({ id: url.searchParams.get('id') })[0] : null;
+    servePageFor(req, res, demo && demo.game);
+    return;
+  }
   // the demo player's own address: the page, with the player's title and description for search
   // engines and link previews (the page opens on the player there: js/spectate/main.js demoPage)
   if (url.pathname === '/demo/') { res.writeHead(301, { Location: '../demo' + url.search }).end(); return; }
@@ -505,7 +523,7 @@ const server = http.createServer((req, res) => {
   }
   // a server's own address (/<id>): the page, tuned in to it
   const id = url.pathname.slice(1);
-  if (hubs.has(id)) { serveStatic(ROOT, req, res, { file: '/spectate.html' }); return; }
+  if (hubs.has(id)) { servePageFor(req, res, hubs.get(id).cfg.game); return; }
   serveStatic(ROOT, req, res, { index: 'spectate.html', hidden: HIDDEN });
 });
 
