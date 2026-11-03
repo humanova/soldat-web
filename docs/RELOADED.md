@@ -74,8 +74,8 @@ What a Reloaded match waits for as it opens, kept short:
   waits for it, "Loading the replay..." meanwhile, and the bar's captures and length are read
   again once all of it is in.
 - A replay's link asks for its listing as the page starts, and the replay starts without
-  waiting for the server list. Its clips (`&clips`) come apart, as it plays; a link to a clip
-  jumps to it as they come.
+  waiting for the server list. Its clips are found once all its demo is in (below); a link to
+  a clip jumps to it then.
 
 ## Recordings
 
@@ -118,20 +118,20 @@ given 1.7.1's number for it, and its distance is in metres in both games.
 Times are the demo's ticks, as its player and the game's bar count them. Something the
 server did on its tick T is at the first demo tick that shows T.
 
-Reading a demo's snapshots takes seconds (up to some 20 on the VPS for a ten-minute match),
-so the relay does it on a thread of its own (`plays-worker.mjs`), and once for a demo:
+Reading a demo's snapshots takes seconds (up to some 20 on the VPS for a ten-minute match).
+The relay does it once for a demo, on a thread of its own (`plays-worker.mjs`), for the
+statistics: its summary's `highlights` and `rating`, as the round's demo is kept (and as the
+relay starts, for any Reloaded summary kept without them).
 
-- as a round's demo is kept, for its summary's `highlights` and `rating`, and its clips,
-  kept next to it (`<id>.plays`) for its replays;
-- as the relay starts, for any Reloaded summary kept without them;
-- for `/api/demos?id=<id>&clips`, which adds the demo's `clips`: read from its `.plays`, or
-  for a demo kept before those, found once and kept there (the last 20 asked stay in
-  memory). The page finds a 1.7.1 demo's clips in the demo itself.
+A replay's clips are found in the viewer's browser, as a 1.7.1 replay's are: once the game in
+the frame has all the demo, the page reads it again (from the browser's cache, not the
+network) on a thread of its own (`reloaded-plays-worker.js`), and the bar has its plays and
+highlights only from then. A reel finds a match's clips before it plays it.
 
 A demo recorded before the hub wrote its director's picks into it has no camera records.
-For one of those, `&clips` also adds `cams` (`[{ tick, slot }]`): the picks worked out from
-its snapshots by the hub's director, each 800 ms early, as `directDemo` does for an old 1.7.1
-demo. A demo with picks of its own has no `cams`.
+For one of those, the same reading also gives `cams` (`[{ tick, slot }]`): the picks worked
+out from its snapshots by the hub's director, each 800 ms early, as `directDemo` does for an
+old 1.7.1 demo. A demo with picks of its own has no `cams`.
 
 ## Playing
 

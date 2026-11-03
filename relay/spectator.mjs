@@ -90,7 +90,7 @@ const recordings = (config.servers || []).some((s) => s.record) ? makeRecordings
 }) : null;
 
 const GAMES = { '1.7.1': Hub, reloaded: ReloadedHub };
-// the plays of the Soldat Reloaded recordings: a demo's clips, and the summaries kept without them
+// the Soldat Reloaded recordings kept without highlights and a rating: those found
 const reloadedPlays = recordings && (config.servers || []).some((s) => s.game === 'reloaded')
   ? makeReloadedPlays(recordings, log) : null;
 const reloaded = config.reloaded || {};
@@ -363,9 +363,7 @@ async function listServers(fresh) {
 // ---------------------------------------------------------------- recordings
 
 // /api/demos: the recorded matches, newest first; ?id=<demo>, ?server=<id>, ?group=<name>
-// (empty: the main list), ?limit=<n> (50); ?id=<demo>&clips: with a Soldat Reloaded demo's
-// clips (highlights.js's findPlays) too, and for one recorded without camera records the
-// director's picks worked out (cams: [{ tick, slot }])
+// (empty: the main list), ?limit=<n> (50). A replay's clips the page finds in its demo.
 async function listDemos(url, res) {
   const q = url.searchParams;
   const filter = {};
@@ -374,13 +372,6 @@ async function listDemos(url, res) {
   if (q.has('group')) filter.group = q.get('group') || null;
   const limit = Math.min(500, Math.max(1, parseInt(q.get('limit'), 10) || 50));
   const demos = recordings ? recordings.list(filter).slice(0, limit).map(({ delay, ...m }) => m) : [];
-  // ?id=<id>&clips: a Soldat Reloaded demo's clips too, worked out by the relay
-  // (relay/lib/reloaded/plays.mjs); a 1.7.1 demo's the page finds in it
-  if (filter.id && q.has('clips') && demos.length === 1 && demos[0].game === 'reloaded' && reloadedPlays) {
-    const plays = await reloadedPlays.plays(filter.id).catch(() => null);
-    demos[0].clips = plays ? plays.clips : null;
-    if (plays && plays.cams) demos[0].cams = plays.cams;
-  }
   res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify({ demos, keepDays: rec.keepDays ?? 14 }));
 }

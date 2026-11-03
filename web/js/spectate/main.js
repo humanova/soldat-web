@@ -1664,9 +1664,9 @@ function when(ms) {
 const demoExt = (meta) => (meta && meta.game === 'reloaded' ? '.srdm' : '.sdm');
 const demoUrl = (id, meta) => httpBase() + '/demos/' + encodeURIComponent(id) + demoExt(meta);
 
-// a recorded match's listing; clips: a Soldat Reloaded match's with its clips (the relay finds them)
-async function recordingMeta(id, clips = false) {
-  const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id) + (clips ? '&clips' : ''), { cache: 'no-store' });
+// a recorded match's listing
+async function recordingMeta(id) {
+  const res = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(id), { cache: 'no-store' });
   const meta = res.ok ? (await res.json()).demos[0] : null;
   if (!meta) throw new Error('This recording is not available (any more).');
   return meta;
@@ -1675,6 +1675,11 @@ async function recordingMeta(id, clips = false) {
 // a recorded match: { meta (the hub's listing), demo (parseDemo's) }; progress(got, of) as it loads
 async function loadRecording(id, progress = () => {}, meta = null) {
   meta = meta || await recordingMeta(id);
+  return { meta, demo: parseDemo(await demoBytes(id, meta, progress)) };
+}
+
+// a recorded match's demo, uncompressed; progress(got, of) as it loads
+async function demoBytes(id, meta, progress = () => {}) {
   const file = await fetch(demoUrl(id, meta));
   if (!file.ok) throw new Error(`The recording did not load (HTTP ${file.status}).`);
   const reader = file.body.getReader();
@@ -1690,7 +1695,21 @@ async function loadRecording(id, progress = () => {}, meta = null) {
   const buf = new Uint8Array(got);
   let o = 0;
   for (const c of chunks) { buf.set(c, o); o += c.length; }
-  return { meta, demo: parseDemo(buf) };
+  return buf;
+}
+
+// a recorded Soldat Reloaded match's { clips, cams }, found in its demo here as a 1.7.1 match's
+// are (the hub reads it once, for its summary's highlights and rating), on a thread of its
+// own (reloaded-plays-worker.js): a long match takes seconds, and the frame's game shares the
+// page's. Once its game has all the demo, the browser has it: it isn't downloaded again.
+async function reloadedClips(meta, progress) {
+  const data = await demoBytes(meta.id, meta, progress);
+  return new Promise((resolve, reject) => {
+    const w = new Worker(new URL('./reloaded-plays-worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (e) => { w.terminate(); e.data.error ? reject(new Error(e.data.error)) : resolve(e.data); };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'the plays could not be found')); };
+    w.postMessage(data, [data.buffer]);
+  });
 }
 
 function loadingProgress(what) {
@@ -1715,20 +1734,15 @@ async function openReplay(id, listed = null) {
   try {
     listed = await (listed || recordingMeta(id));
     if (listed.game === 'reloaded') {
-      const r = replay = makeReloadedReplay(listed);
-      $('loading').hidden = true;
-      watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
-      // its clips come apart (the relay may have to work them out: seconds), as it plays
-      recordingMeta(id, true).then((got) => {
-        if (replay !== r) return;
-        r.addClips(got.clips || [], got.cams);
-        if (r.ready) showBar();
-        // a link to a clip: the highlights from it on, the camera on whoever made each
+      // its clips come once its game has all the demo: a link to a clip goes there then
+      replay = makeReloadedReplay(listed, 0, (r) => {
         if (replayClip && r.highlights.length) {
           if (mode !== 'auto') setMode('auto', true);
           r.playReel(replayClip - 1);
         }
-      }, () => {});
+      });
+      $('loading').hidden = true;
+      watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
       return;
     }
     await load171();
@@ -1808,9 +1822,11 @@ function reelHighlights(list, clip) {
   });
 }
 
-// a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any
+// a Soldat Reloaded match (reloaded-replay.js): its game in the frame plays it, the bar as for any.
+// A recorded one without its clips (meta.clips: a reel's match has them, a file's) has them
+// found once its game has all the demo; found(r) then.
 let waitingTimer = 0;
-function makeReloadedReplay(meta, clip = 0) {
+function makeReloadedReplay(meta, clip = 0, found = () => {}) {
   const r = new ReloadedReplay(meta, reelHighlights(meta.clips || [], clip), {
     // nothing (not 0) before its game is up: the replay waits for its demo (soldat_tv_demo_at -1 or more)
     call: (name, ...args) => (reloadedTv() ? call(name, ...args) : undefined),
@@ -1838,6 +1854,15 @@ function makeReloadedReplay(meta, clip = 0) {
     onPart: (p) => { reelCam.fit = null; showClip(p); },
     onShot: (shot) => reelShot(shot),
     onReady: () => { syncAuto(true); showBar(); },
+    onWhole: () => {
+      if (!meta.id || meta.clips) return;
+      reloadedClips(meta).then(({ clips, cams }) => {
+        r.addClips(reelHighlights(clips, clip), cams);
+        if (replay !== r) return;
+        showBar();
+        found(r);
+      }, (e) => console.warn('the replay\'s plays could not be found:', e));
+    },
     // the notice kept between the parts that come, which the game takes a frame each
     onWaiting: (waiting) => {
       clearTimeout(waitingTimer);
@@ -1879,9 +1904,12 @@ async function openReel(ids) {
 // match i of the reel, loaded once (the last few are kept, for going back)
 function reelLoad(set, i, progress) {
   if (!set.loads.has(i)) {
-    // a Soldat Reloaded match: its listing, with its clips (its game loads the demo itself)
+    // a Soldat Reloaded match: its listing, with its clips found in its demo (its game then has
+    // the demo from the browser's cache)
     const id = set.ids[i].id;
-    set.loads.set(i, recordingMeta(id, true).then((meta) => (meta.game === 'reloaded' ? { meta } : loadRecording(id, progress, meta))));
+    set.loads.set(i, recordingMeta(id).then((meta) => (meta.game === 'reloaded'
+      ? reloadedClips(meta, progress).then(({ clips, cams }) => ({ meta: { ...meta, clips, ...(cams ? { cams } : {}) } }))
+      : loadRecording(id, progress, meta))));
     for (const k of set.loads.keys()) if (set.loads.size > 3 && k !== i) set.loads.delete(k);
   }
   return set.loads.get(i);

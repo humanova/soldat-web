@@ -4,8 +4,7 @@
 // replays them (web/js/spectate/replay.js).
 //
 // A Soldat Reloaded server's are Reloaded's own demos (relay/lib/reloaded/record.mjs,
-// <id>.srdm.gz), their .json marked `game: "reloaded"`, listed and kept with the rest; their
-// clips are kept in <id>.plays for their replays (relay/lib/reloaded/plays.mjs).
+// <id>.srdm.gz), their .json marked `game: "reloaded"`, listed and kept with the rest.
 //
 // A demo has Soldat's demo layout (Demo.pas): a 180-byte header ('SOLDEM', version 0, the
 // map, the start as a Unix time, the number of ticks), then records: a Word size and as many
@@ -47,7 +46,8 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
   // what is on disk; unfinished parts of an earlier run go
   for (const f of fs.readdirSync(dir)) {
     const p = path.join(dir, f);
-    if (f.endsWith('.part') || f.endsWith('.tmp')) { fs.rmSync(p, { force: true }); continue; }
+    // (.plays: the clips a relay of early November 2026 kept, which the page finds now)
+    if (f.endsWith('.part') || f.endsWith('.tmp') || f.endsWith('.plays')) { fs.rmSync(p, { force: true }); continue; }
     if (!f.endsWith('.json')) continue;
     try {
       const meta = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -72,7 +72,6 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
       total -= m.bytes;
       await fsp.rm(path.join(dir, demoFile(m)), { force: true });
       await fsp.rm(path.join(dir, m.id + '.json'), { force: true });
-      await fsp.rm(path.join(dir, m.id + '.plays'), { force: true });
       log(`recording ${m.id} removed`);
     }
   }
@@ -102,11 +101,10 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
           (filter.group === undefined || (m.group || null) === filter.group))
         .sort((a, b) => b.start - a.start);
     },
-    // the gzipped file of a published demo; plays: where a Soldat Reloaded demo's clips are kept
-    // (relay/lib/reloaded/plays.mjs)
+    // the gzipped file of a published demo
     file(id) {
       const m = demos.get(id);
-      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m, plays: path.join(dir, id + '.plays') } : null;
+      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m } : null;
     },
     // a published demo's summary with `patch` over it, on disk too (a Soldat Reloaded demo's
     // plays, found after it was kept: relay/lib/reloaded/plays.mjs)

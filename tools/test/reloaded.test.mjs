@@ -17,7 +17,7 @@ import { ReloadedHub } from '../../relay/lib/reloaded/hub.mjs';
 import { makeReloadedFiles, sha256 } from '../../relay/lib/reloaded/files.mjs';
 import { ReloadedRecording } from '../../relay/lib/reloaded/record.mjs';
 import { makeRecordings } from '../../relay/lib/recorder.mjs';
-import { playsOf, reloadedPlays, makeReloadedPlays } from '../../relay/lib/reloaded/plays.mjs';
+import { playsOf, reloadedPlays } from '../../relay/lib/reloaded/plays.mjs';
 
 test('a struct goes whole and as a delta, and reads back the same', () => {
   const a = blankSoldier();
@@ -344,18 +344,6 @@ test('a recorded round\'s highlights and rating are found as a 1.7.1 match\'s', 
     assert.equal(cap.team, 1);
     assert.ok(cap.tick >= 2100 && cap.tick <= 2106);
     assert.equal(cap.from, cap.tick - 12 * 60);   // the run from the grab (at 900), its last 12 s
-
-    // the clips kept next to it as it was packed, for its replays: read there, past a restart
-    const kept = path.join(dir, rec.id + '.plays');
-    assert.deepEqual(JSON.parse(fs.readFileSync(kept, 'utf8')).clips, clips);
-    const again = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
-    assert.equal(again.file(rec.id).plays, kept);
-    fs.writeFileSync(kept, JSON.stringify({ clips: [{ type: 'mark' }] }));
-    assert.deepEqual((await makeReloadedPlays(again, () => {}).plays(rec.id)).clips, [{ type: 'mark' }]);
-    // gone (a demo recorded before them): found once and kept
-    fs.rmSync(kept);
-    assert.deepEqual((await makeReloadedPlays(again, () => {}).plays(rec.id)).clips, clips);
-    assert.deepEqual(JSON.parse(fs.readFileSync(kept, 'utf8')).clips, clips);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

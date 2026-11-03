@@ -10,7 +10,7 @@
 // hooks: call(export, ...args) into the game, onFollow(slot), onTime(), onEnd(),
 // onClip(clip), onPart(play), onShot(shot), onReady() (the game has the demo: its length and
 // captures are known), onWaiting(waiting) (the frame downloads the demo as it plays: the game
-// waits for a part that hasn't come)
+// waits for a part that hasn't come), onWhole() (the game has all the demo)
 import { Replay } from './replay.js';
 
 const TICKS = 60;
@@ -30,6 +30,7 @@ export class ReloadedReplay {
     this.pos = 0;
     this.ready = false;
     this.loading = 0;           // of the demo still coming: 1 more to come, 2 the game waits for it
+    this.whole = false;         // the game has all the demo (onWhole told)
     this.wanted = null;         // a jump asked before the game had the demo
     this.pick = -1;             // the director's pick, as last told
     this.reel = null;
@@ -37,7 +38,7 @@ export class ReloadedReplay {
     this.following = 0;
   }
 
-  // its clips and the director's picks (meta.cams), come after it started
+  // its clips and the director's picks (meta.cams), found after it started
   addClips(highlights, cams) {
     this.highlights = highlights;
     if (Array.isArray(cams)) this.demo.cams = cams;
@@ -127,6 +128,10 @@ export class ReloadedReplay {
       }
       if ((loading === 2) !== (this.loading === 2)) this.hooks.onWaiting(loading === 2);
       this.loading = loading;
+    }
+    if (!loading && !this.whole) {
+      this.whole = true;
+      this.hooks.onWhole();
     }
     const clip = this.clip;
     if (clip && at >= clip.to && !this.reel.done) {
