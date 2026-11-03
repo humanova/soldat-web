@@ -1702,8 +1702,10 @@ async function demoBytes(id, meta, progress = () => {}) {
 // are (the hub reads it once, for its summary's highlights and rating), on a thread of its
 // own (reloaded-plays-worker.js): a long match takes seconds, and the frame's game shares the
 // page's. Once its game has all the demo, the browser has it: it isn't downloaded again.
-async function reloadedClips(meta, progress) {
+// finding(): the demo is in, its plays being found
+async function reloadedClips(meta, progress, finding = () => {}) {
   const data = await demoBytes(meta.id, meta, progress);
+  finding();
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL('./reloaded-plays-worker.js', import.meta.url), { type: 'module' });
     w.onmessage = (e) => { w.terminate(); e.data.error ? reject(new Error(e.data.error)) : resolve(e.data); };
@@ -1715,6 +1717,7 @@ async function reloadedClips(meta, progress) {
 function loadingProgress(what) {
   const text = $('loading-text'), meter = $('loading-bar');
   text.textContent = `Loading ${what}...`;
+  meter.parentElement.classList.remove('busy');
   meter.style.width = '0%';
   return (got, of) => {
     const mb = (n) => (n / 1048576).toFixed(1);
@@ -1734,7 +1737,26 @@ async function openReplay(id, listed = null) {
   try {
     listed = await (listed || recordingMeta(id));
     if (listed.game === 'reloaded') {
-      // its clips come once its game has all the demo: a link to a clip goes there then
+      // a link to a clip: the match's clips found first, the loading screen saying so (else its
+      // game would play the match from its start until they are), its game's files fetched meanwhile
+      if (replayClip && !listed.clips) {
+        prefetchReloaded();
+        const note = $('loading-note');
+        note.textContent = `This link starts at highlight ${replayClip}, so the match's highlights are found first. It takes a few seconds.`;
+        note.hidden = false;
+        try {
+          Object.assign(listed, await reloadedClips(listed, loadingProgress('the recording'), () => {
+            $('loading-text').textContent = 'Finding the highlights...';
+            $('loading-bar').parentElement.classList.add('busy');
+          }));
+        } catch (e) {
+          console.warn('the replay\'s plays could not be found:', e);
+        } finally {
+          note.hidden = true;
+          $('loading-bar').parentElement.classList.remove('busy');
+        }
+      }
+      // else its clips come once its game has all the demo: a link to a clip goes there then
       replay = makeReloadedReplay(listed, 0, (r) => {
         if (replayClip && r.highlights.length) {
           if (mode !== 'auto') setMode('auto', true);
@@ -1743,6 +1765,10 @@ async function openReplay(id, listed = null) {
       });
       $('loading').hidden = true;
       watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
+      if (replayClip && listed.clips && replay.highlights.length) {
+        if (mode !== 'auto') setMode('auto', true);
+        replay.playReel(replayClip - 1);
+      }
       return;
     }
     await load171();
@@ -2314,14 +2340,17 @@ function stopReconnect() {
 // its channels or replays: in the browser's cache by the click, the frame's own fetches
 // answered from there
 let reloadedFetched = false;
-function fetchReloaded(e) {
-  if (reloadedFetched || !(e.target instanceof Element)) return;
-  const row = e.target.closest('.channel');
-  if (!row || row.dataset.game !== 'reloaded') return;
+function prefetchReloaded() {
+  if (reloadedFetched) return;
   reloadedFetched = true;
   for (const f of ['soldat-reloaded.wasm', 'reloaded-assets.zip', 'assets-lazy.json']) {
     fetch('reloaded/' + f).then((r) => r.arrayBuffer()).catch(() => {});
   }
+}
+function fetchReloaded(e) {
+  if (reloadedFetched || !(e.target instanceof Element)) return;
+  const row = e.target.closest('.channel');
+  if (row && row.dataset.game === 'reloaded') prefetchReloaded();
 }
 for (const type of ['pointerover', 'touchstart', 'focusin']) document.addEventListener(type, fetchReloaded, { passive: true });
 

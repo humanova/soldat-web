@@ -573,6 +573,11 @@ kbd { display: inline-block; min-width: 1.7em; padding: 0 .35em; background: var
 .bar { height: 10px; background: var(--deep); overflow: hidden; }
 #loading-bar { height: 100%; width: 0; transition: width .2s;
   background: repeating-linear-gradient(90deg, var(--green) 0 11px, transparent 11px 14px); }
+/* busy for a while, with no amount to show: the bar full, its stripes moving */
+.bar.busy #loading-bar { width: 100% !important; transition: none; animation: loading-busy .5s linear infinite; }
+@keyframes loading-busy { to { background-position: 14px 0; } }
+@media (prefers-reduced-motion: reduce) { .bar.busy #loading-bar { animation: none; } }
+#loading #loading-note { margin-top: 14px; color: var(--dim); font-size: 12px; }
 
 /* ---------- a server's password: a menu window ---------- */
 .pw { width: min(340px, calc(100vw - 32px)); padding: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); }
