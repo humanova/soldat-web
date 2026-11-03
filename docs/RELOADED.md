@@ -73,6 +73,9 @@ What a Reloaded match waits for as it opens, kept short:
   plays once its first megabyte is in; the rest comes as it plays. A jump past what has come
   waits for it, "Loading the replay..." meanwhile, and the bar's captures and length are read
   again once all of it is in.
+- A replay's link asks for its listing as the page starts, and the replay starts without
+  waiting for the server list. Its clips (`&clips`) come apart, as it plays; a link to a clip
+  jumps to it as they come.
 
 ## Recordings
 
@@ -115,13 +118,15 @@ given 1.7.1's number for it, and its distance is in metres in both games.
 Times are the demo's ticks, as its player and the game's bar count them. Something the
 server did on its tick T is at the first demo tick that shows T.
 
-Reading a demo's snapshots takes a second or two, so the relay does it on a thread of its
-own (`plays-worker.mjs`):
+Reading a demo's snapshots takes seconds (up to some 20 on the VPS for a ten-minute match),
+so the relay does it on a thread of its own (`plays-worker.mjs`), and once for a demo:
 
-- as a round's demo is kept, for its summary's `highlights` and `rating`;
+- as a round's demo is kept, for its summary's `highlights` and `rating`, and its clips,
+  kept next to it (`<id>.plays`) for its replays;
 - as the relay starts, for any Reloaded summary kept without them;
-- for `/api/demos?id=<id>&clips`, which adds the demo's `clips` (the last 20 are kept).
-  The page finds a 1.7.1 demo's clips in the demo itself.
+- for `/api/demos?id=<id>&clips`, which adds the demo's `clips`: read from its `.plays`, or
+  for a demo kept before those, found once and kept there (the last 20 asked stay in
+  memory). The page finds a 1.7.1 demo's clips in the demo itself.
 
 A demo recorded before the hub wrote its director's picks into it has no camera records.
 For one of those, `&clips` also adds `cams` (`[{ tick, slot }]`): the picks worked out from

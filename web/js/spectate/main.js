@@ -1706,21 +1706,29 @@ function loadingProgress(what) {
 
 const replayChannel = (meta) => ({ id: meta.server, name: meta.serverName, group: meta.group, replay: true });
 
-async function openReplay(id) {
+// listed: its listing, when asked already (a promise)
+async function openReplay(id, listed = null) {
   if (tuning) return;
   tuning = true;
   $('guide').hidden = true;
   $('loading').hidden = false;
   try {
-    const listed = await recordingMeta(id, true);
+    listed = await (listed || recordingMeta(id));
     if (listed.game === 'reloaded') {
-      replay = makeReloadedReplay(listed);
+      const r = replay = makeReloadedReplay(listed);
       $('loading').hidden = true;
       watch({ ...replayChannel(listed), game: 'reloaded', meta: listed });
-      if (replayClip && replay.highlights.length) {
-        if (mode !== 'auto') setMode('auto', true);
-        replay.playReel(replayClip - 1);
-      }
+      // its clips come apart (the relay may have to work them out: seconds), as it plays
+      recordingMeta(id, true).then((got) => {
+        if (replay !== r) return;
+        r.addClips(got.clips || [], got.cams);
+        if (r.ready) showBar();
+        // a link to a clip: the highlights from it on, the camera on whoever made each
+        if (replayClip && r.highlights.length) {
+          if (mode !== 'auto') setMode('auto', true);
+          r.playReel(replayClip - 1);
+        }
+      }, () => {});
       return;
     }
     await load171();
@@ -2972,22 +2980,30 @@ async function boot() {
     history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
   }
   const hash = location.hash.slice(1);
-  await refresh();
   setInterval(() => { if (!watching && !document.hidden) refresh(); }, 15000);
+  // a replay plays without waiting for the server list; the guide behind it is on its
+  // server's tab once the list is in
+  if (replayId) {
+    const replayMeta = recordingMeta(replayId);
+    replayMeta.catch(() => {});
+    Promise.all([refresh(), replayMeta.then((m) => m.group, () => null)]).then(([, g]) => {
+      if (!g || !channels.some(c => c.group === g)) return;
+      tab = g;
+      renderGuide();
+      refreshDemos();
+    });
+    await openReplay(replayId, replayMeta);
+    return;
+  }
+  await refresh();
   const ch = direct && channels.find(c => c.id === direct);
   tab = ch ? ch.group || null : channels.map(c => c.group).find(g => g && slug(g) === hash) || null;
-  viewer = !ch && !replayId && (hash === 'demo' || demoPage);
+  viewer = !ch && (hash === 'demo' || demoPage);
   if (viewer && !demoPage) showTabAddress();  // an older link, #demo: the player's own address
-  if (replayId) {
-    const demo = await fetch(httpBase() + '/api/demos?id=' + encodeURIComponent(replayId)).then(r => r.json()).catch(() => null);
-    const g = demo && demo.demos[0] && demo.demos[0].group;
-    if (g && channels.some(c => c.group === g)) tab = g;
-  }
   renderGuide();
   refreshDemos();
   $('guide').hidden = false;
-  if (replayId) await openReplay(replayId);
-  else if (reelIds) await openReel(reelIds);
+  if (reelIds) await openReel(reelIds);
   else if (ch) await tuneIn(ch);
   else $('loading').hidden = true;
 }

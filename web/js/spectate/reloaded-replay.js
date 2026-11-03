@@ -37,6 +37,12 @@ export class ReloadedReplay {
     this.following = 0;
   }
 
+  // its clips and the director's picks (meta.cams), come after it started
+  addClips(highlights, cams) {
+    this.highlights = highlights;
+    if (Array.isArray(cams)) this.demo.cams = cams;
+  }
+
   get length() { return this.end; }
   get time() { return this.wanted ?? this.pos; }
   get clip() { return this.reel ? this.highlights[this.reel.i] : null; }

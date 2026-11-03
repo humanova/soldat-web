@@ -28,7 +28,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { VERSION, TICK_RATE, TABLES, Bits, fields } from './wire.mjs';
-import { playsOf } from './plays.mjs';
+import { playsOf, savePlays } from './plays.mjs';
 
 // the demo's layout, as of its VERSION 2 (apps/client/demo/demo.odin)
 const DEMO_VERSION = 2;
@@ -206,6 +206,11 @@ export class ReloadedRecording {
       ]);
       await fsp.rename(gz + '.tmp', gz);
       await fsp.rm(this.part, { force: true });
+      // its clips, for its replays (before the .json, which lists it)
+      if (plays.clips) {
+        await savePlays(path.join(store.dir, this.id + '.plays'), plays)
+          .catch((e) => store.log(`recording ${this.id}: plays not kept: ${e.message}`));
+      }
       const meta = {
         id: this.id, game: 'reloaded', server: this.info.server, serverName: this.info.serverName,
         group: this.info.group || null, map: this.info.map, mapHash: this.info.mapHash || null,

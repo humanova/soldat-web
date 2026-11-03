@@ -4,7 +4,8 @@
 // replays them (web/js/spectate/replay.js).
 //
 // A Soldat Reloaded server's are Reloaded's own demos (relay/lib/reloaded/record.mjs,
-// <id>.srdm.gz), their .json marked `game: "reloaded"`, listed and kept with the rest.
+// <id>.srdm.gz), their .json marked `game: "reloaded"`, listed and kept with the rest; their
+// clips are kept in <id>.plays for their replays (relay/lib/reloaded/plays.mjs).
 //
 // A demo has Soldat's demo layout (Demo.pas): a 180-byte header ('SOLDEM', version 0, the
 // map, the start as a Unix time, the number of ticks), then records: a Word size and as many
@@ -71,6 +72,7 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
       total -= m.bytes;
       await fsp.rm(path.join(dir, demoFile(m)), { force: true });
       await fsp.rm(path.join(dir, m.id + '.json'), { force: true });
+      await fsp.rm(path.join(dir, m.id + '.plays'), { force: true });
       log(`recording ${m.id} removed`);
     }
   }
@@ -100,10 +102,11 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
           (filter.group === undefined || (m.group || null) === filter.group))
         .sort((a, b) => b.start - a.start);
     },
-    // the gzipped file of a published demo
+    // the gzipped file of a published demo; plays: where a Soldat Reloaded demo's clips are kept
+    // (relay/lib/reloaded/plays.mjs)
     file(id) {
       const m = demos.get(id);
-      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m } : null;
+      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m, plays: path.join(dir, id + '.plays') } : null;
     },
     // a published demo's summary with `patch` over it, on disk too (a Soldat Reloaded demo's
     // plays, found after it was kept: relay/lib/reloaded/plays.mjs)
