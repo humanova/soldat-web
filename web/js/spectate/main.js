@@ -2751,8 +2751,6 @@ $('demo-file').addEventListener('change', (e) => {
 });
 for (const a of document.querySelectorAll('.open-demo')) a.addEventListener('click', (e) => { e.preventDefault(); setViewer(); });
 $('viewer-back').addEventListener('click', () => setTab(tab));
-$('ribbon').hidden = !!prefs.ribbonClosed;
-$('ribbon-close').addEventListener('click', () => { $('ribbon').hidden = true; prefs.ribbonClosed = true; savePrefs(); });
 
 // a file dropped anywhere on the guide opens (on a match: nothing; the browser would leave the page for it)
 const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
