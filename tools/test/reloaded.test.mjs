@@ -192,7 +192,7 @@ test('a viewer\'s game is answered as the server answers a joining player', asyn
 test('a round is recorded as the game\'s own demo', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-rec-'));
   try {
-    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const store = makeRecordings({ dir, keepDays: 36500, minSeconds: 1, minPlayers: 2, log: () => {} });
     const t0 = Date.UTC(2026, 9, 22, 12);
     const weapons = build('Weapons', { weapons: blank(TABLES.weapons) });
     const map = { round: 3, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
@@ -294,7 +294,7 @@ function wholeSnapshot(round, tick, soldiers, things, said, roundFields = {}) {
 test('a recorded round\'s highlights and rating are found as a 1.7.1 match\'s', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-plays-'));
   try {
-    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const store = makeRecordings({ dir, keepDays: 36500, minSeconds: 1, minPlayers: 2, log: () => {} });
     const t0 = Date.UTC(2026, 9, 23, 12);
     const map = { round: 4, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
       hash: Buffer.alloc(32, 0xcd), art: 0, timeLeft: 36000 };
@@ -354,7 +354,7 @@ test('a recorded round\'s highlights and rating are found as a 1.7.1 match\'s', 
 async function flagRound(picked) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-cams-'));
   try {
-    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const store = makeRecordings({ dir, keepDays: 36500, minSeconds: 1, minPlayers: 2, log: () => {} });
     const t0 = Date.UTC(2026, 9, 23, 13);
     const map = { round: 5, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
       hash: Buffer.alloc(32, 0xee), art: 0, timeLeft: 36000 };

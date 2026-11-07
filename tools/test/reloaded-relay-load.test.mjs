@@ -113,7 +113,7 @@ test('a hub without a delay has no timer for the delayed stream', () => {
 test('a long recording\'s demo holds every record, in order, across the chunks it is written in', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-chunks-'));
   try {
-    const store = makeRecordings({ dir, minSeconds: 1, minPlayers: 2, log: () => {} });
+    const store = makeRecordings({ dir, keepDays: 36500, minSeconds: 1, minPlayers: 2, log: () => {} });
     const t0 = Date.UTC(2026, 9, 24, 12);
     const map = { round: 3, map: 'ctf_Test', hostname: 'Host', limit: 10, grenades: 2, gunsOff: 0,
       hash: Buffer.alloc(32, 0xab), art: 0, timeLeft: 3600 };
