@@ -277,6 +277,9 @@ function showGuide() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $('watch').hidden = true;
   $('guide').hidden = false;
+  // a Reloaded link's page: the 1.7.1 game now, for the next match; not while the match
+  // plays (its start holds the page some half a second, the match's picture with it)
+  load171();
   listen();
   renderGuideChat();
   showTabAddress();
@@ -1012,7 +1015,6 @@ function poll() {
   if (reloadedFrame && !match) {
     reconnect.n = 0;
     notice('');
-    if (!started) setTimeout(load171, 3000);  // a Reloaded link's: the 1.7.1 game, for the next match, once this one plays
     call('soldat_tv_fill', 1);  // the whole picture area, whatever its shape: no bars
     syncAuto(true);
     applyZoom();

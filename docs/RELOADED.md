@@ -63,9 +63,10 @@ What a Reloaded match waits for as it opens, kept short:
 
 - The relay marks the page of a Reloaded server's address and of a Reloaded replay
   (`<html data-game="reloaded">`). On those the page leaves its 1.7.1 game for later
-  (`load171`): its 13 MB don't share the line with the match's own game, and it loads three
-  seconds after the match shows, for the next one. A 1.7.1 link, the guide and the rest load it
-  at once, as before.
+  (`load171`): its 13 MB don't share the line with the match's own game, and it loads as the
+  viewer goes back to the guide, for the next match; not while the match plays, since its start
+  holds the page (and the match's picture) some half a second. A 1.7.1 link, the guide and the
+  rest load it at once, as before.
 - The guide fetches the Reloaded game (its .wasm and pack) as the pointer comes to one of its
   channels or replays, so the click finds them in the browser's cache.
 - The pack is about 10 MB (its PNGs slimmed, `reloaded/web/pack.py`).
