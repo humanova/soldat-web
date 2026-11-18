@@ -6,7 +6,6 @@
 <meta name="theme-color" content="#313d4f">
 <title>Soldat TV · Watch live Soldat matches in your browser</title>
 <meta name="description" content="Watch Soldat matches live from the public servers, right in your browser: every server, map and player, the score, the chat and the kills, or watch your own demos, from Soldat 1.2.0 to 1.7.1. No install, no account.">
-<!-- the site's address: change it here when the page is hosted elsewhere -->
 <link rel="canonical" href="https://soldat.live/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Soldat TV">
@@ -23,10 +22,7 @@
 </script>
 <link rel="icon" href="favicon-tv.ico" sizes="16x16 32x32 48x48 64x64">
 <link rel="apple-touch-icon" href="apple-touch-icon-tv.png">
-<!-- ?v: a new address when the page needs new rules, since browsers may keep the old file -->
 <link rel="stylesheet" href="spectate.css?v=23">
-<!-- a link to a match (/<id>, or ?watch=<id>) opens on the loading screen, not the guide
-     (js/spectate/main.js: boot) -->
 <script>if (/[?&]watch=/.test(location.search) || (/\/[\w-]+$/.test(location.pathname) && !/\/demo$/.test(location.pathname))) document.documentElement.classList.add('direct');</script>
 </head>
 <body>
@@ -49,12 +45,10 @@
   <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3m0 1h9l-2 3.5 2 3.5H5" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
 </svg>
 
-<!-- the channel guide -->
 <div id="guide">
   <header class="tabs">
     <a class="tab logo" href="./" aria-label="Soldat TV"><img class="logo-icon" src="soldat-icon.png" alt=""><span class="logo-word">Soldat</span><span class="logo-tv">TV</span></a>
     <a class="tab live-tab active" href="./">Live</a>
-    <!-- the hub's server groups (Gather) are put between Live and Stats: js/spectate/main.js renderTabs -->
     <a class="tab" href="/stats/" title="The Gather matches Soldat TV recorded: players, maps and replays">Stats</a>
     <span class="fill-tab"></span>
     <a class="play-link" id="play-link" href="https://play.soldat.live/" title="Play Soldat in your browser"><svg width="13" height="13" aria-hidden="true"><use href="#i-play"/></svg>Play</a>
@@ -76,7 +70,6 @@
       <p id="list-empty" class="list-empty" hidden></p>
       <noscript><p class="list-empty">Soldat TV needs JavaScript to list and show the matches.</p></noscript>
 
-      <!-- the matches the hub recorded on this tab's servers (js/spectate/main.js: renderDemos) -->
       <section id="demos" class="demos" aria-labelledby="demos-title" hidden>
         <div class="listing-head">
           <h2 id="demos-title">Recorded matches</h2>
@@ -91,7 +84,6 @@
         <a id="demos-all" class="all-link" href="/stats/" hidden>All recorded matches, with their players →</a>
       </section>
 
-      <!-- the demo viewer: a demo from the viewer's computer, played here (js/spectate/main.js: openFile) -->
       <section id="viewer" class="viewer" aria-labelledby="viewer-title" hidden>
         <div class="listing-head">
           <h1 id="viewer-title">Watch a demo</h1>
@@ -114,7 +106,6 @@
           </div>
           <ol id="opened-list" class="channels demo-list opened-list"></ol>
         </section>
-        <!-- the demo each version of the game played behind its menu (js/spectate/intros.js) -->
         <details class="opened intros">
           <summary><h2>Soldat's intro demos</h2><span id="intros-count" class="intros-count">10 matches, 2004 to 2015</span></summary>
           <p class="intros-note">The match each version played behind its menu, as it was recorded then.</p>
@@ -175,15 +166,11 @@
   </footer>
 </div>
 
-<!-- watching a match -->
 <div id="watch" hidden>
   <canvas id="canvas" tabindex="0" aria-label="The match"></canvas>
 
-  <!-- always on screen: the score, flag news, the followed player. Drag them by their bars;
-       a double-click on a bar puts the panel back (js/spectate/main.js: movable panels) -->
   <div id="scorebug" class="scorebug move" data-move="score" hidden></div>
   <ol id="banners" class="banners move" data-move="news" aria-live="polite"></ol>
-  <!-- a kick or map vote: one line under the score, then its result (js/spectate/main.js: votes) -->
   <div id="vote" class="vote move" data-move="vote" aria-live="polite" hidden></div>
   <div id="bigmsg" class="bigmsg" aria-live="polite" hidden></div>
   <div id="card" class="card win move" data-move="card" hidden>
@@ -206,12 +193,10 @@
       <button id="chat-btn" type="button" class="icon-btn" aria-label="Game chat (C)" aria-expanded="false"><svg><use href="#i-chat"/></svg><i class="unread" hidden></i></button>
       <button id="tvchat-btn" type="button" class="icon-btn" aria-label="Soldat TV chat (Enter)" aria-expanded="false"><svg><use href="#i-talk"/></svg><i class="unread" hidden></i></button>
       <button id="roster-btn" type="button" class="icon-btn" aria-label="Players (Tab)" aria-expanded="false"><svg><use href="#i-people"/></svg></button>
-      <!-- the volume slides out of the sound button (on touch screens: the first tap) -->
       <div class="volume">
         <input id="volume" type="range" min="0" max="100" step="5" aria-label="Volume">
         <button id="sound" type="button" class="icon-btn" aria-label="Mute"><svg><use href="#i-sound"/></svg></button>
       </div>
-      <!-- what is drawn over the match (the game's spec_* settings, js/spectate/main.js: visuals) -->
       <div class="visuals">
         <button id="visuals-btn" type="button" class="icon-btn" aria-label="What is shown (V)" aria-expanded="false" aria-controls="visuals"><svg><use href="#i-eye"/></svg></button>
         <div id="visuals" class="visuals-menu" role="group" aria-labelledby="visuals-title" hidden>
@@ -225,17 +210,13 @@
           <label class="pick">Players off screen
             <select data-cvar="spec_offscreen"><option value="1" selected>Arrow</option><option value="2">Name</option><option value="0">Off</option></select>
           </label>
-          <!-- the map's sky in one colour (spec_background; js/spectate/main.js: background) -->
           <label class="pick">Map background
             <span class="bg-pick">
               <input type="color" id="bg-color" value="#202020" aria-label="Background colour" hidden>
               <select id="bg-mode"><option value="" selected>Map's own</option><option value="color">Colour</option></select>
             </span>
           </label>
-          <!-- demos: the players move on a curve between the server's words, without its jumps
-               (js/spectate/replay.js: smooth movement) -->
           <label class="smooth-pick"><input type="checkbox" id="smooth"> Smooth movement</label>
-          <!-- everything over the match hidden, for recording it (js/spectate/main.js: clean view) -->
           <label class="only-match"><input type="checkbox" id="clean"> Only the match (U)</label>
         </div>
       </div>
@@ -244,11 +225,8 @@
   </div>
 
   <div id="notice" class="notice" hidden></div>
-  <!-- a page opened from a link has no sound until it is clicked (js/spectate/main.js: sound) -->
   <button id="unmute" type="button" class="unmute" hidden><svg><use href="#i-mute"/></svg><span>Click for sound</span></button>
 
-  <!-- a recorded match: play, the time, the timeline (captures and highlights marked), the
-       highlights only, speed, the file (js/spectate/main.js: replays) -->
   <div id="replaybar" class="replaybar ui" hidden>
     <button id="rp-play" type="button" class="icon-btn" aria-label="Pause (Space)"><svg><use href="#i-pause"/></svg></button>
     <span id="rp-time" class="rp-time">0:00 / 0:00</span>
@@ -265,10 +243,8 @@
     <a id="rp-download" class="icon-btn" aria-label="Download the demo"><svg><use href="#i-download"/></svg></a>
   </div>
 
-  <!-- how to bring the controls back, for a moment after the clean view comes on -->
   <div id="clean-hint" class="clean-hint" hidden></div>
 
-  <!-- the highlight being played: what, by whom, which one of how many -->
   <div id="clipcap" class="clipcap" aria-live="polite" hidden></div>
 
   <div id="dock" class="dock ui move" data-move="dock">
@@ -293,8 +269,6 @@
       <p class="chat-empty">Nothing said yet.</p>
     </div>
   </aside>
-  <!-- Soldat TV's chat: everyone on the site and who watches this server, each line with its
-       channel; the boxes pick the channels (js/spectate/main.js: Soldat TV's chat) -->
   <aside id="tvchat" class="chat tvchat win move" data-move="tvchat" hidden aria-label="Soldat TV chat">
     <div class="win-head handle"><span>Soldat TV chat</span><i class="grip"></i></div>
     <div class="chat-filters">
@@ -322,7 +296,6 @@
   </div>
 </div>
 
-<!-- the password of a server that asks for one (js/spectate/main.js: askPassword) -->
 <dialog id="pw" class="pw" aria-labelledby="pw-title">
   <form method="dialog">
     <div class="win-head"><span id="pw-title">Password</span></div>
