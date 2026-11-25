@@ -29,8 +29,9 @@
 //                   reloaded/web/dist, the web build of the reloaded/ submodule): the game
 //                   viewers watch a Reloaded server in, served at /reloaded/ }
 //   recordings      { dir (default data/recordings next to the config), keepDays (14), maxGB (5),
-//                   minSeconds (60), minPlayers (2) }: shorter demos, or with fewer players, are
-//                   not kept; the oldest go after keepDays or while all take more than maxGB
+//                   archive (false), minSeconds (60), minPlayers (2) }: shorter demos, or with
+//                   fewer players, are not kept; the oldest go after keepDays or while all take
+//                   more than maxGB, or with archive only once tools/archive-hf.py pushed them
 //   playerName      name of the spectator on the servers (at most 23 characters)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left (with
@@ -84,6 +85,7 @@ const recordings = (config.servers || []).some((s) => s.record) ? makeRecordings
   dir: path.resolve(path.dirname(CONFIG), rec.dir || 'data/recordings'),
   keepDays: rec.keepDays ?? 14,
   maxBytes: (rec.maxGB ?? 5) * 1024 ** 3,
+  archive: !!rec.archive,
   minSeconds: rec.minSeconds ?? 60,
   minPlayers: rec.minPlayers ?? 2,
   log,

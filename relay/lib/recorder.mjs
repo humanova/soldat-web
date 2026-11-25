@@ -37,7 +37,7 @@ const stamp = (t) => new Date(t).toISOString().replace(/[-:]/g, '').replace('T',
 export const demoExt = (meta) => (meta.game === 'reloaded' ? '.srdm' : '.sdm');
 const demoFile = (meta) => meta.id + demoExt(meta) + '.gz';
 
-export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, minSeconds = 60, minPlayers = 2, log }) {
+export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, archive = false, minSeconds = 60, minPlayers = 2, log }) {
   fs.mkdirSync(dir, { recursive: true });
   const demos = new Map();     // id -> meta, the finished ones
   const pending = new Set();   // demos being finished
@@ -60,8 +60,19 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
     } catch (_) {}
   }
 
-  // the oldest go first: past keepDays, or while all of them take more than maxBytes
+  // the oldest go first: past keepDays, or while all of them take more than maxBytes. With
+  // archive, none is deleted here: tools/archive-hf.py removes them once they are on Hugging
+  // Face, and the ones it removed are forgotten
   async function prune() {
+    if (archive) {
+      for (const m of demos.values()) {
+        if (fs.existsSync(path.join(dir, demoFile(m)))) continue;
+        demos.delete(m.id);
+        taken.delete(m.id);
+        log(`recording ${m.id} archived`);
+      }
+      return;
+    }
     const list = [...demos.values()].sort((a, b) => a.start - b.start);
     let total = list.reduce((n, m) => n + m.bytes, 0);
     const old = Date.now() - keepDays * 86400_000;
@@ -104,7 +115,8 @@ export function makeRecordings({ dir, keepDays = 14, maxBytes = 5 * 1024 ** 3, m
     // the gzipped file of a published demo
     file(id) {
       const m = demos.get(id);
-      return m && published(m) ? { path: path.join(dir, demoFile(m)), meta: m } : null;
+      const p = m && path.join(dir, demoFile(m));
+      return m && published(m) && fs.existsSync(p) ? { path: p, meta: m } : null;
     },
     // a published demo's summary with `patch` over it, on disk too (a Soldat Reloaded demo's
     // plays, found after it was kept: relay/lib/reloaded/plays.mjs)
