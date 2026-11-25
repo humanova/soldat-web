@@ -4,8 +4,9 @@
 The recordings older than the config's recordings.keepDays (relay/spectator.json) go up with
 their metadata, the Soldat Reloaded maps they need, and an index.jsonl of every match. A
 recording is deleted here only once Hugging Face holds both its files, the same size and
-hash. The relay (recordings.archive) never deletes one itself, and forgets those removed here
-within the hour.
+hash, along with its hard link in ~/data/soldat-archive (deploy/soldat-archive/link_new.sh),
+or no space is freed. The relay (recordings.archive) never deletes one itself, and forgets
+those removed here within the hour.
 
   python3 tools/archive-hf.py              # push, check, delete
   python3 tools/archive-hf.py --dry-run    # only list what would go
@@ -81,6 +82,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--config', default=os.path.join(ROOT, 'relay/spectator.json'))
     ap.add_argument('--repo', default='Emir/soldat-tv-recordings')
+    ap.add_argument('--links', default=os.path.expanduser('~/data/soldat-archive/recordings'),
+                    help='the hard links kept of the recordings, removed with them')
     ap.add_argument('--days', type=float, help='older than this many days (default: keepDays)')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
@@ -152,8 +155,11 @@ def main():
         for meta, f, demo, at in batch:
             jl, dl = os.path.join(rdir, f), os.path.join(rdir, demo)
             if same(jl, remote.get(f'{at}/{f}')) and same(dl, remote.get(f'{at}/{demo}')):
-                os.remove(dl)
-                os.remove(jl)
+                for name, local in ((demo, dl), (f, jl)):
+                    link = os.path.join(args.links, name)
+                    if os.path.exists(link) and os.path.samefile(link, local):
+                        os.remove(link)
+                    os.remove(local)
                 removed += 1
             else:
                 print(f'  {meta["id"]}: not on Hugging Face as it is here, kept', file=sys.stderr)
