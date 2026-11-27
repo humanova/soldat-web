@@ -31,6 +31,7 @@ from huggingface_hub.hf_api import RepoFile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BATCH_BYTES = 1 << 30   # a commit
 GAMES = {'1.7.1': 'Soldat 1.7.1', 'reloaded': 'Soldat Reloaded'}
+IMAGE = os.path.join(ROOT, 'web/og-2.jpg')   # the card's picture: Soldat TV's share image
 
 CARD = """---
 pretty_name: Soldat TV Gather recordings
@@ -45,6 +46,8 @@ configs:
 ---
 
 # Soldat TV Gather recordings
+
+![Soldat TV: watch live Soldat matches in your browser](https://huggingface.co/datasets/Emir/soldat-tv-recordings/resolve/main/images/soldat-tv.jpg)
 
 Official Soldat matchmaking matches: the Gather servers' games
 [Soldat TV](https://soldat.live) recorded while someone was watching, so some matches are
@@ -179,6 +182,8 @@ def main():
                 lines = ''.join(json.dumps(m) + '\n' for m in sorted(index[g].values(), key=lambda m: m['start']))
                 ops.append(CommitOperationAdd(f'index/{g}.jsonl', lines.encode()))
             ops.append(CommitOperationAdd('README.md', CARD.encode()))
+            if 'images/soldat-tv.jpg' not in remote:
+                ops.append(CommitOperationAdd('images/soldat-tv.jpg', IMAGE))
         api.create_commit(args.repo, ops, repo_type='dataset',
                           commit_message=f'Add {len(batch)} recordings' if batch else 'Update the index')
         remote.update({f'maps/reloaded/{h}': True for h in maps})
