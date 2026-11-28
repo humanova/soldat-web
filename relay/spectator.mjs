@@ -33,6 +33,8 @@
 //                   fewer players, are not kept; the oldest go after keepDays or while all take
 //                   more than maxGB, or with archive only once tools/archive-hf.py pushed them
 //   playerName      name of the spectator on the servers (at most 23 characters)
+//   notPlayers      names the server list does not count as players (a server's own bots the
+//                   lobby counts as people, as "https://mellbot.site" on the #Mellouki servers)
 //   delaySeconds    broadcast delay (anti ghosting), per server overridable
 //   lingerSeconds   how long the spectator stays on a server after the last viewer left (with
 //                   record, and a match under way then, until the match ends)
@@ -72,6 +74,8 @@ const MAX_VIEWERS = config.maxViewers ?? 500;
 const MAX_VIEWERS_PER_IP = config.maxViewersPerIp ?? 3;
 const PLAYER_NAME = String(config.playerName || '[soldat.live] Soldat TV').slice(0, 23);
 const LOBBY_URL = config.lobbyUrl || 'https://api.soldat.pl/v0/servers';
+// not counted as players: notPlayers, and Soldat TV's own spectator (the lobby lists it a moment after it left)
+const NOT_PLAYERS = new Set([...(config.notPlayers || []), PLAYER_NAME]);
 const lobby = makeLobby(LOBBY_URL, log);
 const lobbyPlayers = makeLobbyPlayers(LOBBY_URL, log);
 const originAllowed = originChecker(new Set(config.origins || []));
@@ -331,9 +335,16 @@ async function listServers(fresh) {
     const e = h.query ? reloadedEntry(await h.query()) : fromLobby.get(h.cfg.id);
     const bots = e ? e.NumBots || 0 : 0;
     // who plays: the hub's own roster while it watches (with teams), else the lobby's names
-    const names = info.names ?? (e && e.NumPlayers > 0
+    let names = info.names ?? (e && e.NumPlayers > 0
       ? (await lobbyPlayers(e.IP, e.Port))?.map((name) => ({ name })) ?? null
       : null);
+    let players = info.players ?? (e ? e.NumPlayers : null);
+    // the names that are no one playing (notPlayers) out of the count too
+    if (names && NOT_PLAYERS.size) {
+      const kept = names.filter((p) => !NOT_PLAYERS.has(p.name));
+      if (players != null) players = Math.max(0, players - (names.length - kept.length));
+      names = kept;
+    }
     return {
       ...info,
       game: h.cfg.game || '1.7.1',
@@ -344,7 +355,7 @@ async function listServers(fresh) {
       title: e ? e.Name : null,
       mode: e ? e.GameStyle : null,
       map: info.state === 'live' ? info.map : (e ? e.CurrentMap : info.map) || null,
-      players: info.players ?? (e ? e.NumPlayers : null),
+      players,
       maxPlayers: e ? e.MaxPlayers : null,
       bots,
       country: h.cfg.country || (e ? e.Country : null),

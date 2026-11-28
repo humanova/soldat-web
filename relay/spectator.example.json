@@ -6,6 +6,7 @@
   "maxViewersPerIp": 3,
   "trustProxy": false,
   "origins": [],
+  "notPlayers": [],
   "recordings": { "dir": "data/recordings", "keepDays": 14, "maxGB": 5 },
   "servers": [
     { "id": "local", "name": "Local test server", "host": "127.0.0.1", "port": 23073 },
